@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Escriba Médico UBS - SOAP & Regulação Estadual</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- BARRA SUPERIOR: CONTROLE DE TOKENS, DISCO, MODELOS E CHAVE API -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">⚕️</span>
+      <div>
+        <h1>Escriba Médico UBS • SOAP & Regulação Estadual</h1>
+        <small>Salvamento Anti-Crash no Disco (3s) • Fila em Segundo Plano • Semiologia & Resguardo Jurídico</small>
+      </div>
+    </div>
+
+    <div class="topbar-metrics">
+      <span class="metric-pill" title="Estimativa de tokens do áudio atual (32 tokens/seg)">
+        🎙️ Consulta Atual: <strong id="liveTokenEstimate">0 tok</strong>
+      </span>
+      <span class="metric-pill" title="Total de tokens consumidos hoje na sua chave">
+        📊 Uso Hoje: <strong id="dailyTokenCounter">0 tok (0 cons.)</strong>
+      </span>
+      <span class="metric-pill" id="diskUsageBadge" title="Espaço usado pelas gravações salvas no disco local">
+        💽 Disco: 0.0 MB
+      </span>
+      <button type="button" class="btn-top" id="btnSelectDiskFolder" title="Opcional: Salvar também uma cópia física .webm em uma pasta do seu Windows/Mac">
+        📁 Pasta Backup (Opcional)
+      </button>
+      <button type="button" class="btn-top" id="btnOpenTemplatesModal">
+        📝 Meus 7 Modelos
+      </button>
+      <button type="button" class="btn-top" id="btnOpenApiKeyModal">
+        🔑 Configurar Chave Gemini
+      </button>
+    </div>
+  </header>
+
+  <!-- ÁREA DE TRABALHO PRINCIPAL -->
+  <main class="workspace">
+
+    <!-- COLUNA ESQUERDA: MODELO, GRAVADOR E FILA EM SEGUNDO PLANO -->
+    <section class="left-column">
+
+      <!-- 1. ESCOLHA DO MODELO DE ATENDIMENTO -->
+      <div class="card">
+        <div class="card-title">
+          <span>1. Selecione o Modelo da Consulta / VD</span>
+          <span style="font-size: 11px; font-weight: 500;">7 máscaras configuradas</span>
+        </div>
+        <div class="template-grid" id="templateGrid"></div>
+      </div>
+
+      <!-- 2. CALCULADORA AUTOMÁTICA DE Z-SCORE (APARECE NA PUERICULTURA) -->
+      <div class="zscore-box" id="puericulturaZScoreBox">
+        <div style="font-weight: 700; font-size: 12.5px; color: #166534;">
+          👶 Calculadora Automática de Z-Score (OMS / Caderneta da Criança)
+        </div>
+        <div class="zscore-grid">
+          <div>
+            <label>Sexo</label>
+            <select id="zSex" class="select-box" style="padding: 5px;">
+              <option value="M">Masc</option>
+              <option value="F">Fem</option>
+            </select>
+          </div>
+          <div>
+            <label>Idade (meses)</label>
+            <input type="number" id="zMonths" class="input-text" style="padding: 5px;" placeholder="Ex: 6" step="0.5" />
+          </div>
+          <div>
+            <label>Peso (kg ou g)</label>
+            <input type="number" id="zWeight" class="input-text" style="padding: 5px;" placeholder="7.8 ou 7800" step="0.01" />
+          </div>
+          <div>
+            <label>Estatura (cm)</label>
+            <input type="number" id="zHeight" class="input-text" style="padding: 5px;" placeholder="Ex: 67.5" step="0.1" />
+          </div>
+          <div>
+            <label>PC (cm)</label>
+            <input type="number" id="zHC" class="input-text" style="padding: 5px;" placeholder="Ex: 43.2" step="0.1" />
+          </div>
+        </div>
+        <div class="zscore-preview" id="zScorePreviewResult">
+          Preencha idade (meses) e medidas acima para calcular os Z-Scores (OMS) automaticamente.
+        </div>
+      </div>
+
+      <!-- 3. GRAVADOR ANTI-CRASH + NOTAS RÁPIDAS -->
+      <div class="card">
+        <div class="card-title">
+          <span>2. Gravação da Consulta / Interconsulta</span>
+          <span id="diskSaveIndicator" style="font-size: 11px; color: #059669;">💾 Proteção Anti-Crash Ativa</span>
+        </div>
+
+        <div class="patient-row">
+          <input type="text" id="patientIdentifier" class="input-text" placeholder="Identificação / Iniciais (ex: Maria S.)" />
+          <select id="micSelect" class="select-box">
+            <option value="">🎤 Microfone Padrão</option>
+          </select>
+        </div>
+
+        <div class="recorder-box">
+          <div class="rec-header">
+            <div class="rec-status-wrap">
+              <span class="rec-dot" id="recStatusDot"></span>
+              <span id="recStatusLabel">Pronto para gravar</span>
+            </div>
+            <div class="rec-timer" id="recTimerDisplay">00:00</div>
+          </div>
+
+          <!-- Medidor Visual de Voz (VU Meter) -->
+          <div class="vu-meter-bar" title="Nível de captação de voz do microfone">
+            <div class="vu-meter-fill" id="vuMeterFill"></div>
+          </div>
+
+          <div class="rec-SubInfo">
+            <span>Compressão Opus 24kbps (~1 MB / 6 min)</span>
+            <span>Salva no HD a cada 3 seg (Zero RAM)</span>
+          </div>
+
+          <div class="silence-banner" id="silenceWarningBanner"></div>
+
+          <div class="rec-buttons">
+            <button type="button" class="btn btn-record" id="btnStartRec">
+              🔴 Iniciar Gravação da Consulta
+            </button>
+            <button type="button" class="btn btn-pause" id="btnPauseRec" style="display: none;">
+              ⏸️ Pausar
+            </button>
+            <button type="button" class="btn btn-finish" id="btnStopRec" style="display: none;">
+              ✅ Finalizar e Enviar p/ Fila (Liberar Gravador)
+            </button>
+          </div>
+        </div>
+
+        <!-- Campo de Notas Rápidas / Sinais Vitais em Silêncio -->
+        <div style="margin-bottom: 8px;">
+          <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px;">
+            ✍️ Notas Rápidas / Sinais Vitais / Exames (opcional — se não quiser falar em voz alta):
+          </label>
+          <textarea id="quickNotesInput" class="textarea-box" rows="3" placeholder="Ex: PA 130x80, Peso 72kg, AU 29cm, BCF 142bpm, HGT 98. Exames trazidos: Hb 12.4, Cr 0.8. Ou digite aqui o caso se quiser gerar sem áudio."></textarea>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px;">
+          <label class="btn btn-primary" style="cursor: pointer; flex: 1; background: #0d9488;">
+            📱 Subir Áudio(s) do WhatsApp / iPhone 14
+            <input type="file" id="audioFileInput" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" multiple style="display: none;" />
+          </label>
+          <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly">
+            ⚡ Gerar Só das Notas
+          </button>
+        </div>
+
+        <div id="whatsappDropZone" class="drop-zone">
+          📥 <strong>Fez Visita Domiciliar (VD)?</strong> Arraste os áudios baixados do seu <strong>WhatsApp Web (.ogg)</strong> ou <strong>iPhone 14 (.m4a)</strong> direto para cá (pode soltar vários de uma vez!)
+        </div>
+      </div>
+
+      <!-- 4. FILA ASSÍNCRONA & HISTÓRICO DO DIA -->
+      <div class="card">
+        <div class="card-title">
+          <span>3. Fila em Segundo Plano & Atendimentos (<span id="queueTotalBadge">0</span>)</span>
+          <button type="button" class="btn-secondary" id="btnClearOldAudios" style="padding: 3px 8px; font-size: 11px; border-radius: 5px; border: none; cursor: pointer;">
+            🧹 Limpar Tudo
+          </button>
+        </div>
+        <div class="queue-list" id="consultationQueueList"></div>
+      </div>
+
+    </section>
+
+    <!-- COLUNA DIREITA: PRONTUÁRIO SOAP ESTRUTURADO + GERADOR DE ENCAMINHAMENTO ESTADUAL -->
+    <section class="right-column">
+      <div class="card" style="flex: 1;">
+
+        <!-- Estado Vazio -->
+        <div class="viewer-empty" id="viewerEmptyState">
+          <div style="font-size: 42px; margin-bottom: 10px;">🩺</div>
+          <h3 style="font-size: 16px; color: var(--text-main); margin-bottom: 6px;">
+            Nenhuma consulta selecionada
+          </h3>
+          <p style="max-width: 460px;">
+            Escolha um dos <strong>6 modelos da UBS</strong> à esquerda e inicie a gravação. Você pode gravar vários pacientes seguidos mesmo se a internet do posto estiver lenta — a fila processa cada evolução em segundo plano!
+          </p>
+        </div>
+
+        <!-- Conteúdo da Consulta Selecionada -->
+        <div id="viewerContentState" style="display: none;">
+          <div class="viewer-header">
+            <div class="viewer-title-group">
+              <h2 id="viewPatientTitle">Paciente</h2>
+              <span class="badge-model" id="viewTemplateBadge">Modelo</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <audio id="savedAudioPlayer" controls style="height: 30px; display: none;"></audio>
+              <button type="button" class="btn btn-secondary" id="btnDownloadAudio" style="display: none;">
+                ⬇️ Baixar Áudio
+              </button>
+              <button type="button" class="btn btn-secondary" id="btnReprocessConsultation" title="Reprocessar áudio com a IA">
+                🔄 Reprocessar
+              </button>
+              <button type="button" class="btn btn-secondary" id="btnDeleteConsultation" style="color: var(--danger);">
+                🗑️ Excluir
+              </button>
+            </div>
+          </div>
+
+          <!-- Banner de Erro / Reprocessamento -->
+          <div class="error-banner" id="viewErrorBanner">
+            <span id="viewErrorText"></span>
+            <button type="button" class="btn btn-primary" onclick="document.getElementById('btnReprocessConsultation').click()">
+              🔄 Tentar Novamente Agora
+            </button>
+          </div>
+
+          <!-- Alertas de Auditoria / Campos em Branco -->
+          <div class="audit-box" id="auditAlertsBox"></div>
+
+          <!-- Barra de Botões de Cópia Rápida para o PEC / e-SUS -->
+          <div class="copy-toolbar">
+            <button type="button" class="btn btn-primary" id="btnCopyFullEvolution">
+              📋 Copiar Evolução Completa
+            </button>
+            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="subjetivo">
+              Copiar S (Subjetivo)
+            </button>
+            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="objetivo">
+              Copiar O (Objetivo)
+            </button>
+            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="avaliacao">
+              Copiar A (Avaliação)
+            </button>
+            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="conduta">
+              Copiar P (Conduta/Plano)
+            </button>
+          </div>
+
+          <!-- Editor da Evolução (Preenchido na sua máscara exata) -->
+          <textarea id="mainEvolutionEditor" class="evolution-editor" placeholder="A evolução estruturada aparecerá aqui..."></textarea>
+
+          <!-- GERADOR DE ENCAMINHAMENTO PARA REGULAÇÃO ESTADUAL (TODOS OS 6 MODELOS) -->
+          <div class="referral-section">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+              <div style="font-weight: 800; font-size: 14px; color: #5b21b6;">
+                🏛️ Gerador de Encaminhamento — Sistema de Regulação do Estado (SISREG / CROSS / GERCON / Telessaúde)
+              </div>
+              <span style="font-size: 11.5px; color: #6b21a8; font-weight: 600;">
+                Compatível com Consulta Geral, Pré-Natal, Puericultura, Interconsulta e LGBTQIAP+
+              </span>
+            </div>
+
+            <div class="referral-grid">
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Especialidade Solicitada (Lista SUS):
+                </label>
+                <select id="referralSpecialtySelect" class="select-box">
+                  <option value="Cardiologia">Cardiologia</option>
+                  <option value="Pré-Natal de Alto Risco (PNAR)">Pré-Natal de Alto Risco (PNAR)</option>
+                  <option value="Endocrinologia e Metabologia">Endocrinologia e Metabologia</option>
+                  <option value="Ambulatório Trans / Processo Transexualizador">Ambulatório Trans / Processo Transexualizador</option>
+                  <option value="Ortopedia e Traumatologia">Ortopedia e Traumatologia</option>
+                  <option value="Neuropediatria / Neurologia Infantil">Neuropediatria / Neurologia Infantil</option>
+                  <option value="Pediatria / Especialidade Pediátrica">Pediatria / Especialidade Pediátrica</option>
+                  <option value="Neurologia Adulto">Neurologia Adulto</option>
+                  <option value="Ginecologia / Mastologia">Ginecologia / Mastologia</option>
+                  <option value="Oftalmologia">Oftalmologia</option>
+                  <option value="Otorrinolaringologia">Otorrinolaringologia</option>
+                  <option value="Cirurgia Geral / Ambulatorial">Cirurgia Geral / Ambulatorial</option>
+                  <option value="Urologia">Urologia</option>
+                  <option value="Gastroenterologia / Hepatologia">Gastroenterologia / Hepatologia</option>
+                  <option value="Pneumologia">Pneumologia</option>
+                  <option value="Reumatologia">Reumatologia</option>
+                  <option value="Nefrologia">Nefrologia</option>
+                  <option value="Vascular / Angiologia">Vascular / Angiologia</option>
+                  <option value="Psiquiatria / Saúde Mental">Psiquiatria / Saúde Mental</option>
+                  <option value="Dermatologia">Dermatologia</option>
+                  <option value="Fonoaudiologia / Reabilitação">Fonoaudiologia / Reabilitação</option>
+                </select>
+              </div>
+
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Ou digite outra especialidade/exame:
+                </label>
+                <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." />
+              </div>
+
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Prioridade sugerida:
+                </label>
+                <select id="referralPrioritySelect" class="select-box">
+                  <option value="Prioritário / P1 (Amarelo)">Prioritário / P1 (Amarelo)</option>
+                  <option value="Urgência Eletiva / P0 (Vermelho)">Urgência Eletiva / P0 (Vermelho)</option>
+                  <option value="Rotina / Eletivo / P2 (Verde/Azul)">Rotina / Eletivo / P2 (Verde/Azul)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                📋 Colar Exames Antigos c/ Datas ou Tratamentos Prévios do PEC (opcional — evita devolução pela regulação):
+              </label>
+              <input type="text" id="referralExtraDataInput" class="input-text" placeholder="Ex: USG de 12/05/2026 com colelitíase; já fez uso de Omeprazol e Simeticona por 60 dias sem melhora..." />
+            </div>
+
+            <button type="button" class="btn btn-purple" id="btnGenerateReferral" style="width: 100%;">
+              🏛️ Gerar Texto de Encaminhamento (Sistema Estadual)
+            </button>
+
+            <div id="referralOutputContainer" style="display: none; margin-top: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <strong style="font-size: 12.5px; color: #4c1d95;">Texto Pronto para Regulação Estadual:</strong>
+                <button type="button" class="btn btn-primary" id="btnCopyReferral">
+                  📋 Copiar Encaminhamento p/ Regulação
+                </button>
+              </div>
+              <textarea id="referralResultEditor" class="referral-editor"></textarea>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: CONFIGURAÇÃO DA CHAVE API GEMINI (COM PASSO A PASSO PARA COLEGAS) -->
+  <div class="modal-backdrop" id="apiKeyModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="font-size: 16px;">🔑 Configurar Sua Chave Pessoal do Google Gemini</h3>
+        <button type="button" class="btn btn-secondary" id="btnCloseApiKeyModal">✕</button>
+      </div>
+
+      <div class="step-box">
+        <strong>💡 Como gerar sua própria chave gratuita em 1 minuto (para você ou para suas colegas):</strong>
+        <ol>
+          <li>Acesse o site oficial do Google: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="color: var(--primary); font-weight: 700;">aistudio.google.com/apikey</a> com sua conta do Gmail.</li>
+          <li>Clique no botão azul <strong>"Create API Key"</strong> (Criar chave de API) e copie o código gerado.</li>
+          <li>Cole o código abaixo. <strong>Não precisa assinar o Gemini pago!</strong> Cada médica usa sua própria chave no seu usuário do Windows, sem gastar os tokens das colegas.</li>
+        </ol>
+      </div>
+
+      <div style="margin-bottom: 12px;">
+        <label style="font-weight: 700; display: block; margin-bottom: 5px;">Cole sua Chave da API do Gemini (começa com AIza...):</label>
+        <input type="password" id="apiKeyInput" class="input-text" placeholder="AIzaSy..." />
+      </div>
+
+      <div style="margin-bottom: 14px; font-size: 13px;">
+        <label style="font-weight: 700; display: block; margin-bottom: 5px;">Como deseja salvar neste computador?</label>
+        <label style="display: block; margin-bottom: 4px; cursor: pointer;">
+          <input type="radio" name="keyStorageMode" value="permanent" checked />
+          <strong>Salvar no meu usuário do Windows/Mac</strong> (Recomendado se este login do Windows tem senha só sua)
+        </label>
+        <label style="display: block; cursor: pointer;">
+          <input type="radio" name="keyStorageMode" value="session" />
+          <strong>Apenas até fechar o navegador</strong> (Para computadores com usuário compartilhado)
+        </label>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn btn-primary" id="btnSaveApiKey">
+          💾 Salvar Minha Chave
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: GERENCIAR / EDITAR OS 6 MODELOS DE EVOLUÇÃO -->
+  <div class="modal-backdrop" id="templatesModal">
+    <div class="modal-card" style="max-width: 720px;">
+      <div class="modal-header">
+        <h3 style="font-size: 16px;">📝 Personalizar Modelos de Evolução (Máscaras UBS)</h3>
+        <button type="button" class="btn btn-secondary" id="btnCloseTemplatesModal">✕</button>
+      </div>
+      <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 10px;">
+        A IA segue rigorosamente o texto do modelo abaixo. Você pode ajustar qualquer frase padrão e salvar:
+      </p>
+      <div style="margin-bottom: 10px;">
+        <select id="tplEditorSelect" class="select-box"></select>
+      </div>
+      <textarea id="tplEditorTextarea" class="evolution-editor" style="min-height: 320px; margin-bottom: 12px;"></textarea>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <button type="button" class="btn btn-secondary" id="btnResetTemplatesDefault">
+          🔄 Restaurar Padrão Original
+        </button>
+        <button type="button" class="btn btn-primary" id="btnSaveTemplateEdit">
+          💾 Salvar Alterações neste Modelo
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICAÇÃO TOAST -->
+  <div class="toast" id="toastNotification"></div>
+
+  <!-- SCRIPTS LOCAIS -->
+  <script src="templates.js"></script>
+  <script src="zscore.js"></script>
+  <script src="db.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

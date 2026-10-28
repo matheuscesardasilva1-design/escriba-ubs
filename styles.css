@@ -1,0 +1,742 @@
+/* ============================================================================
+   ESTILOS ULTRA-LEVES (ZERO BIBLIOTECAS PESADAS) - ESCRIBA MÉDICO UBS
+   ============================================================================ */
+:root {
+  --bg-app: #f1f5f9;
+  --bg-card: #ffffff;
+  --bg-subtle: #f8fafc;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --border: #e2e8f0;
+  --primary: #0284c7;
+  --primary-hover: #0369a1;
+  --primary-light: #e0f2fe;
+  --success: #059669;
+  --success-light: #d1fae5;
+  --danger: #dc2626;
+  --danger-light: #fee2e2;
+  --warning: #d97706;
+  --warning-light: #fef3c7;
+  --purple: #7c3aed;
+  --purple-light: #ede9fe;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+/* --- TOPBAR --- */
+.topbar {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  font-size: 22px;
+}
+
+.brand h1 {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.brand small {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.topbar-metrics {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.metric-pill {
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #e2e8f0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.metric-pill strong {
+  color: #38bdf8;
+}
+
+.btn-top {
+  background: #334155;
+  color: #ffffff;
+  border: 1px solid #475569;
+  padding: 6px 11px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-top:hover {
+  background: #475569;
+}
+
+.btn-top.key-ok {
+  background: #065f46;
+  border-color: #059669;
+}
+
+/* --- LAYOUT PRINCIPAL --- */
+.workspace {
+  display: grid;
+  grid-template-columns: 440px 1fr;
+  gap: 14px;
+  padding: 14px;
+  max-width: 1680px;
+  margin: 0 auto;
+  min-height: calc(100vh - 58px);
+}
+
+@media (max-width: 1080px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+.left-column, .right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* --- SELETOR DOS 6 MODELOS UBS --- */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.template-card {
+  background: var(--bg-subtle);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.template-card:hover {
+  border-color: #94a3b8;
+  background: #ffffff;
+}
+
+.template-card.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.tpl-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.tpl-icon {
+  font-size: 17px;
+}
+
+.tpl-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: #e2e8f0;
+  color: #334155;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.template-card.active .tpl-badge {
+  background: var(--primary);
+  color: #fff;
+}
+
+.tpl-name {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+/* --- PAINEL DE GRAVAÇÃO ANTI-CRASH --- */
+.patient-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.input-text, .select-box, .textarea-box {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-main);
+  background: #fff;
+}
+
+.input-text:focus, .select-box:focus, .textarea-box:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
+}
+
+.recorder-box {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.rec-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.rec-status-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.rec-dot.active {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2);
+}
+
+.rec-dot.paused {
+  background: var(--warning);
+}
+
+.rec-timer {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-main);
+}
+
+.vu-meter-bar {
+  height: 7px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.vu-meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--success);
+  transition: width 0.08s linear;
+}
+
+.rec-SubInfo {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.pulse-ok {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.silence-banner {
+  display: none;
+  background: var(--warning-light);
+  border: 1px solid #f59e0b;
+  color: #92400e;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.rec-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-record {
+  background: var(--danger);
+  color: #ffffff;
+  width: 100%;
+  font-size: 14px;
+  padding: 11px;
+}
+
+.btn-record:hover {
+  background: #b91c1c;
+}
+
+.btn-pause {
+  background: var(--warning);
+  color: #ffffff;
+  flex: 1;
+}
+
+.btn-finish {
+  background: var(--success);
+  color: #ffffff;
+  flex: 1.5;
+}
+
+.btn-secondary {
+  background: #e2e8f0;
+  color: #1e293b;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 7px 11px;
+}
+
+.btn-secondary:hover {
+  background: #cbd5e1;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-purple {
+  background: var(--purple);
+  color: #ffffff;
+}
+
+.btn-purple:hover {
+  background: #6d28d9;
+}
+
+.drop-zone {
+  border: 1.5px dashed #14b8a6;
+  background: #f0fdfa;
+  color: #115e59;
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 12px;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.drop-zone.drag-active {
+  background: #ccfbf1;
+  border-color: #0d9488;
+  transform: scale(1.01);
+}
+
+/* --- CALCULADORA Z-SCORE PUERICULTURA --- */
+.zscore-box {
+  display: none;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.zscore-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.zscore-grid label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #166534;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.zscore-preview {
+  margin-top: 7px;
+  font-size: 11.5px;
+  color: #14532d;
+  background: #dcfce7;
+  padding: 6px 8px;
+  border-radius: 5px;
+  white-space: pre-line;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* --- FILA DE ATENDIMENTOS LATERAL --- */
+.queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 330px;
+  overflow-y: auto;
+}
+
+.empty-queue {
+  text-align: center;
+  padding: 18px 10px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.queue-item {
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  border-radius: 8px;
+  padding: 9px 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.queue-item:hover {
+  border-color: #94a3b8;
+  background: #fff;
+}
+
+.queue-item.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.q-header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 3px;
+}
+
+.q-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.q-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+
+.q-status {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.st-rec { background: var(--danger-light); color: var(--danger); }
+.st-queue { background: var(--warning-light); color: var(--warning); }
+.st-up { background: #dbeafe; color: #1d4ed8; }
+.st-done { background: var(--success-light); color: var(--success); }
+.st-err { background: var(--danger-light); color: var(--danger); }
+
+/* --- COLUNA DIREITA: EVOLUÇÃO SOAP & REGULAÇÃO --- */
+.viewer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px;
+}
+
+.viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.viewer-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.viewer-title-group h2 {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.badge-model {
+  background: var(--primary-light);
+  color: var(--primary-hover);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+.audit-box {
+  display: none;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 8px 11px;
+  border-radius: 7px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.audit-tag {
+  display: inline-block;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin: 2px;
+  font-weight: 600;
+}
+
+.error-banner {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--danger-light);
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+  padding: 9px 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  margin-bottom: 10px;
+}
+
+.copy-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.evolution-editor {
+  width: 100%;
+  min-height: 410px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fcfcfd;
+  color: #0f172a;
+  resize: vertical;
+}
+
+/* --- SEÇÃO DE ENCAMINHAMENTO ESTADUAL --- */
+.referral-section {
+  background: #faf5ff;
+  border: 1.5px solid #d8b4fe;
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.referral-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.2fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .referral-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.referral-editor {
+  width: 100%;
+  min-height: 280px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 11px;
+  border: 1px solid #c084fc;
+  border-radius: 8px;
+  background: #ffffff;
+  margin-top: 8px;
+  resize: vertical;
+}
+
+/* --- MODAIS --- */
+.modal-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.65);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: 12px;
+  max-width: 620px;
+  width: 100%;
+  padding: 20px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.step-box {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.step-box ol {
+  padding-left: 18px;
+  margin-top: 6px;
+}
+
+.step-box li {
+  margin-bottom: 4px;
+}
+
+/* --- TOAST --- */
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 11px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: all 0.2s ease;
+  z-index: 2000;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}

@@ -1,0 +1,28 @@
+============================================================================
+  ESCRIBA MÉDICO UBS - SOAP & REGULAÇÃO ESTADUAL
+  Guia Rápido de Uso (Windows no Posto / Mac em Casa / Compartilhar c/ Colegas)
+============================================================================
+
+1. COMO ABRIR NO WINDOWS DO POSTO (UBS):
+   - Copie esta pasta inteira ("ubs-medical-scribe") para os seus Documentos ou Área de Trabalho no seu usuário do Windows.
+   - Dê dois cliques no arquivo:
+       Iniciar_Escriba_Windows.bat
+   - Ele abrirá uma janelinha preta (servidor local seguro em http://localhost:8765) e abrirá o programa automaticamente no seu Google Chrome / Edge.
+   - VANTAGEM DO .BAT: Como ele roda em "localhost", o Chrome lembra da permissão do seu microfone para sempre (você só clica em "Permitir" na primeira vez!).
+   - DICA: Se quiser abrir direto sem o .bat, você também pode dar dois cliques direto no arquivo "index.html".
+
+2. COMO ABRIR NO SEU MAC:
+   - Dê dois cliques no arquivo:
+       Iniciar_Escriba_Mac.command
+   - Ou dê dois cliques diretamente no arquivo "index.html".
+
+3. COMO CONFIGURAR SUA CHAVE DO GEMINI (E COMPARTILHAR COM COLEGAS):
+   - A sua chave NUNCA fica salva dentro dos arquivos da pasta.
+   - Ao abrir o programa pela primeira vez, clique em "🔑 Configurar Chave Gemini" no topo direito.
+   - Gere sua chave gratuita em https://aistudio.google.com/apikey com seu Gmail, cole lá e marque "Salvar no meu usuário do Windows/Mac".
+   - Quando você enviar esta pasta (zipada por WhatsApp, e-mail ou pendrive) para uma colega médica, o programa abrirá limpo no computador dela e pedirá para ela criar e colar a chave gratuita dela — sem gastar nenhum token seu!
+
+4. ONDE FICAM SALVAS AS GRAVAÇÕES E EVOLUÇÕES?
+   - Durante a consulta, a cada 3 segundos o áudio é salvo direto no disco rígido (IndexedDB do navegador do seu usuário do Windows/Mac), sem acumular memória RAM na aba do Chrome.
+   - Se a aba travar ou fechar por acidente, basta abrir novamente: o sistema recupera a gravação interrompida automaticamente!
+   - OPCIONAL: Se quiser salvar também os arquivos de áudio (.webm) visíveis numa pasta comum do computador, clique no botão "📁 Pasta Backup (Opcional)" no topo da tela.
