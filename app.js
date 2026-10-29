@@ -6,6 +6,7 @@
 (function() {
   const state = {
     selectedTemplateId: 'geral',
+    templateLocked: false,
     templates: {},
     activeConsultationId: null,
     recordingConsultationId: null,
@@ -243,7 +244,36 @@
 
   function renderTemplateSelector() {
     const container = document.getElementById('templateGrid');
+    const promptHeader = document.getElementById('templatePromptHeader');
+    const compactBar = document.getElementById('selectedTemplateCompactBar');
+    const btnChange = document.getElementById('btnChangeTemplateModel');
     if (!container) return;
+
+    const activeTpl = state.templates[state.selectedTemplateId] || Object.values(state.templates)[0];
+
+    // Se o médico já selecionou o tipo de consulta ou já está gravando, esconde os outros tipos e a pergunta "Qual atendimento você vai realizar?"
+    if (state.templateLocked || state.isRecording) {
+      if (promptHeader) promptHeader.style.display = 'none';
+      container.style.display = 'none';
+      if (compactBar && activeTpl) {
+        compactBar.style.display = 'flex';
+        const iconEl = document.getElementById('compactTplIcon');
+        const nameEl = document.getElementById('compactTplName');
+        const subEl = document.getElementById('compactTplSub');
+        if (iconEl) iconEl.textContent = activeTpl.icon || '🩺';
+        if (nameEl) nameEl.textContent = activeTpl.name;
+        if (subEl) subEl.textContent = state.isRecording ? 'Atendimento em andamento' : (activeTpl.badge || 'Modalidade selecionada');
+      }
+      if (btnChange) {
+        btnChange.style.display = state.isRecording ? 'none' : 'inline-flex';
+      }
+      togglePuericulturaZScorePanel();
+      return;
+    }
+
+    if (promptHeader) promptHeader.style.display = 'block';
+    if (compactBar) compactBar.style.display = 'none';
+    container.style.display = 'grid';
     container.innerHTML = '';
 
     Object.values(state.templates).forEach(tpl => {
@@ -263,6 +293,7 @@
       `;
       btn.addEventListener('click', () => {
         state.selectedTemplateId = tpl.id;
+        state.templateLocked = true;
         renderTemplateSelector();
         togglePuericulturaZScorePanel();
       });
@@ -467,6 +498,8 @@
       };
 
       recorder.start(3000);
+      state.templateLocked = true;
+      renderTemplateSelector();
       state.timerWorker.postMessage('start');
       await requestWakeLock();
       startVUMeterAndSilenceDetector(stream);
@@ -534,10 +567,12 @@
 
     state.isRecording = false;
     state.isPaused = false;
+    state.templateLocked = false;
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
     state.pendingExamFiles = [];
     renderPendingExamFilesUI();
+    renderTemplateSelector();
     updateRecordingControlsUI();
     updateRecordingTimerUI();
     updateTokenMonitorUI();
@@ -583,10 +618,12 @@
 
     state.isRecording = false;
     state.isPaused = false;
+    state.templateLocked = false;
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
     state.pendingExamFiles = [];
     renderPendingExamFilesUI();
+    renderTemplateSelector();
     updateRecordingControlsUI();
     updateRecordingTimerUI();
     updateDocumentTitle();
@@ -1949,6 +1986,10 @@
     document.getElementById('btnPauseRec')?.addEventListener('click', togglePauseRecording);
     document.getElementById('btnStopRec')?.addEventListener('click', finishRecordingAndQueue);
     document.getElementById('btnCancelRec')?.addEventListener('click', cancelCurrentRecording);
+    document.getElementById('btnChangeTemplateModel')?.addEventListener('click', () => {
+      state.templateLocked = false;
+      renderTemplateSelector();
+    });
 
     // Navegação entre as 2 Telas ("Novo Atendimento" e "Meu Histórico")
     document.getElementById('tabBtnRecord')?.addEventListener('click', () => switchMainPage('pageRecord'));

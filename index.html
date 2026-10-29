@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
-  <link rel="stylesheet" href="styles.css?v=20261028_9" />
+  <link rel="stylesheet" href="styles.css?v=20261028_10" />
 </head>
 <body>
 
@@ -50,13 +50,27 @@
        PÁGINA 1: NOVO ATENDIMENTO (TELA LIMPA E CENTRALIZADA)
        ======================================================================== -->
   <main class="page-container" id="pageRecord">
-    <div class="center-header">
+    <div class="center-header" id="templatePromptHeader">
       <h2>Qual atendimento você vai realizar?</h2>
-      <p>Escolha o modelo abaixo. As evoluções processadas ficam salvas automaticamente em <strong>Meu Histórico</strong> por 30 dias.</p>
+      <p>Escolha o modelo abaixo. As evoluções processadas ficam salvas automaticamente em <strong>Meu Histórico</strong>.</p>
     </div>
 
-    <!-- GRADE LIMPA DOS 7 MODELOS (ESTILO DR. ASSISTENTE) -->
+    <!-- GRADE LIMPA DOS 7 MODELOS (OCULTA OS OUTROS MODELOS ASSIM QUE SELECIONAR OU INICIAR ATENDIMENTO) -->
     <div class="template-grid" id="templateGrid"></div>
+
+    <!-- BARRA COMPACTA DO MODELO SELECIONADO (APARECE QUANDO OS OUTROS MODELOS SOMEM) -->
+    <div id="selectedTemplateCompactBar" style="display: none; align-items: center; justify-content: space-between; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span id="compactTplIcon" style="font-size: 20px;">🩺</span>
+        <div>
+          <div id="compactTplName" style="font-size: 14px; font-weight: 800; color: #0f172a;">Consulta Geral (SOAP)</div>
+          <div id="compactTplSub" style="font-size: 11.5px; color: #64748b;">Modalidade selecionada</div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-secondary" id="btnChangeTemplateModel" style="padding: 5px 10px; font-size: 12px;">
+        🔄 Trocar Tipo de Atendimento
+      </button>
+    </div>
 
     <!-- PAINEL ESPECÍFICO 1: PUERICULTURA (Z-SCORE + ALEITAMENTO / FÓRMULA) -->
     <div class="zscore-box" id="puericulturaZScoreBox">
@@ -569,9 +583,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261028_9"></script>
-  <script src="zscore.js?v=20261028_9"></script>
-  <script src="db.js?v=20261028_9"></script>
-  <script src="app.js?v=20261028_9"></script>
+  <script src="templates.js?v=20261028_10"></script>
+  <script src="zscore.js?v=20261028_10"></script>
+  <script src="db.js?v=20261028_10"></script>
+  <script src="app.js?v=20261028_10"></script>
 </body>
 </html>
