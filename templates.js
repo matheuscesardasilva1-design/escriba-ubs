@@ -1,5 +1,6 @@
 // ============================================================================
 // MODELOS DE EVOLUÇÃO UBS & PROMPTS CLÍNICOS (SEMIOLOGIA + RESGUARDO JURÍDICO)
+// Inclui formatação padrão de EXAMES COMPLEMENTARES (Labs com "|" e Imagem em texto corrido)
 // ============================================================================
 
 window.DEFAULT_TEMPLATES = {
@@ -23,6 +24,9 @@ AP: MVUD, SRA
 AC: BNF, 2T, RR, SS
 Extremidades aquecidas e bem perfundidas. TEC < 2 seg
 ABD: Globoso, indolor a palpação superficial e profunda
+
+EXAMES COMPLEMENTARES
+- 
 
 AVALIAÇÃO
 -
@@ -66,6 +70,9 @@ PA:  mmHg
 ABD: Globoso, indolor a palpação superficial e profunda
 AP: MVUD, SRA
 AC: BNF, 2T, RR, SS
+
+EXAMES COMPLEMENTARES
+- 
 
 AVALIAÇÃO
 1. Gestação de risco habitual em curso ou alto risco
@@ -124,6 +131,9 @@ Oroscopia: sp
 Otoscopia: MTD e MTE translúcidas e sem abaulamentos. Não visualizo secreção em canal auditivo
 Não realizado teste do olho vermelho por falta de oftalmoscópio na UBS
 
+EXAMES COMPLEMENTARES
+- 
+
 AVALIAÇÃO
 1. Criança em desenvolvimento
 
@@ -161,6 +171,9 @@ AC: BNF, 2T, RR, SS
 Extremidades aquecidas e bem perfundidas. TEC < 2 seg
 ABD: Globoso, indolor a palpação superficial e profunda
 
+EXAMES COMPLEMENTARES
+- 
+
 AVALIAÇÃO
 -
 
@@ -181,7 +194,7 @@ CONDUTA
     name: 'Interconsulta Enfermagem',
     badge: 'Interconsulta',
     icon: '🤝',
-    description: 'Ditado rápido do caso clínico discutido com a Enfermagem, exame físico direcionado e conduta.',
+    description: 'Ditado rápido do caso clínico discutido com a Enfermagem, exame físico direcionado, exames e conduta.',
     templateText: `## INTERCONSULTA COM A ENFERMAGEM ##
 
 #
@@ -194,6 +207,9 @@ Paciente avaliado(a) em decorrência de
 
 OBJETIVO
 BEG, LOC, MUC
+
+EXAMES COMPLEMENTARES
+- 
 
 AVALIAÇÃO
 - 
@@ -254,6 +270,10 @@ PA:  mmHg
 Circunferência Abdominal:  cm
 Aparelho Cardiovascular: Bulhas normofonéticas, em 2 tempos, ritmo regular, sem sopros.
 Aparelho Respiratório: Murmúrio vesicular universalmente audível, sem ruídos adventícios.
+
+EXAMES COMPLEMENTARES
+- 
+
 7. RASTREAMENTOS (BASEADO EM ÓRGÃOS PRESENTES)
 Citopatológico (Colo Uterino): 
 Indicação: Homens trans/NB com colo presente; bienal após 25 anos ou conforme início da vida sexual
@@ -346,6 +366,10 @@ PA:  mmHg
 Circunferência Abdominal:  cm
 Aparelho Cardiovascular: Bulhas normofonéticas, em 2 tempos, ritmo regular, sem sopros.
 Aparelho Respiratório: Murmúrio vesicular universalmente audível, sem ruídos adventícios.
+
+EXAMES COMPLEMENTARES
+- 
+
 7. RASTREAMENTOS (BASEADO EM ÓRGÃOS PRESENTES)
 Citopatológico (Colo Uterino): 
 Indicação: Homens trans/NB com colo presente; bienal após 25 anos ou conforme início da vida sexual
@@ -392,14 +416,15 @@ Critérios Clínicos Observados:
 };
 
 // ============================================================================
-// GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP / MODELOS UBS
+// GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary) {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles) {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   return `Você é um Médico de Família e Comunidade experiente e Perito em Auditoria/Documentação Médica na Atenção Primária à Saúde (UBS / SUS).
-Sua tarefa é ouvir atentamente o áudio da consulta médica, visita domiciliar ou ditado clínico (que pode ter sido gravado durante o atendimento ou ditado posteriormente pelo médico no WhatsApp/celular) e as anotações rápidas fornecidas, e preencher EXATAMENTE o modelo de evolução selecionado pelo médico, com rigor semiológico, coerência clínica absoluta e resguardo jurídico.
+Sua tarefa é analisar atentamente o áudio da consulta médica (se fornecido), os PDFs/imagens de exames laboratoriais e de imagem anexados (se fornecidos) e as anotações rápidas, preenchendo EXATAMENTE o modelo de evolução selecionado pelo médico, com rigor semiológico, coerência clínica absoluta e resguardo jurídico.
 
 Data de referência de hoje (se não for citada outra data no áudio): ${todayStr}.
+Arquivos de Exames (PDF/Imagem) anexados nesta consulta: ${hasExamFiles ? 'SIM (transcreva TODOS os exames anexados na seção EXAMES COMPLEMENTARES seguindo estritamente a regra 4 abaixo)' : 'Apenas se falados no áudio ou escritos nas notas rápidas'}.
 
 === REGRAS DE OURO (OBRIGATÓRIAS) ===
 
@@ -408,34 +433,37 @@ Data de referência de hoje (se não for citada outra data no áudio): ${todaySt
    - Nos modelos que possuem parênteses de seleção como "( ) Opção", marque com "(X)" as opções confirmadas na consulta e deixe "( )" nas demais.
    - Na VISITA DOMICILIAR (VD):
      * Substitua "DD/MM/AAAA" no título pela data falada no áudio ou pela data de hoje (${todayStr}).
-     * Preencha o nome do(a) Enfermeiro(a), do(a) ACS (Agente Comunitário de Saúde) e o nome + vínculo do Familiar/Cuidador(a) que estava na casa recebendo a equipe (se não tiver sido falado, deixe "[preencher nome]" visível).
-     * Preencha com muita atenção o bloco final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:", destacando receitas a fazer/renovar, trocas de medicação, exames a solicitar no sistema, encaminhamentos estaduais e demandas para a equipe.
+     * Preencha o nome do(a) Enfermeiro(a), do(a) ACS e o nome + vínculo do Familiar/Cuidador(a) que estava na casa recebendo a equipe.
+     * Preencha com muita atenção o bloco final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
 2. SUBJETIVO COM SEMIOLOGIA TÉCNICA, COERÊNCIA E RESGUARDO JURÍDICO:
-   - Converta TODA a linguagem leiga do paciente/familiar para terminologia médica semiológica formal (ex.: "dor na boca do estômago" -> "epigastralgia"; "ardência para urinar" -> "disúria"; "urinar toda hora pouquinho" -> "polaciúria"; "falta de ar deitado" -> "ortopneia"; "dor de garganta ao engolir" -> "odinofagia"; "tontura que gira" -> "vertigem"; "mancha escura na vista" -> "escotomas"; "ferida nas costas/quadril por ficar deitado" -> "lesão por pressão em região sacral/trocantérica").
-   - PACIENTE POLIQUEIXOSO: Se o paciente relatar múltiplos problemas fora de ordem, reorganize de forma lógica, cronológica e coesa (Queixa Principal e HDA detalhada primeiro, seguida das demandas associadas organizadas com clareza, início, duração, intensidade, fatores de melhora/piora e tratamentos já tentados).
+   - Converta TODA a linguagem leiga do paciente/familiar para terminologia médica semiológica formal (ex.: "dor na boca do estômago" -> "epigastralgia"; "ardência para urinar" -> "disúria"; "urinar toda hora pouquinho" -> "polaciúria"; "falta de ar deitado" -> "ortopneia"; "dor de garganta ao engolir" -> "odinofagia"; "tontura que gira" -> "vertigem"; "mancha escura na vista" -> "escotomas").
+   - PACIENTE POLIQUEIXOSO: Se o paciente relatar múltiplos problemas fora de ordem, reorganize de forma lógica, cronológica e coesa.
    - RESGUARDO JURÍDICO E NEGATIVAS PERTINENTES: Documente explicitamente todos os sinais de alarme (red flags) perguntados ou negados na consulta.
-   - PROIBIDO CONTRADIÇÃO INTERNA: Nos modelos de Pré-Natal e Puericultura que trazem frases padrão como "Paciente refere estar bem, sem queixas. Nega disúria...", SE o paciente relatou alguma queixa (ex: teve disúria ou cefaleia), você DEVE REMOVER a negativa correspondente da frase padrão e descrever a queixa tecnicamente, mantendo apenas as negativas que realmente foram negadas ou permanecem normais. Jamais deixe escrito "sem queixas" junto com uma queixa!
+   - PROIBIDO CONTRADIÇÃO INTERNA: Nos modelos de Pré-Natal e Puericultura que trazem frases padrão como "Paciente refere estar bem, sem queixas. Nega disúria...", SE o paciente relatou alguma queixa, REMOVA a negativa correspondente da frase padrão e descreva a queixa tecnicamente.
 
 3. OBJETIVO COM TRADUÇÃO TÉCNICA E PRESERVAÇÃO DA MÁSCARA:
-   - Tudo o que o médico falar sobre o exame físico ou exames complementares deve ser redigido em linguagem semiológica técnica formal (ex.: se o médico falar "garganta vermelha com placas de pus", escreva "Oroscopia: hiperemia de orofaringe e tonsilas palatinas hipertrofiadas com presença de exsudato purulento bilateral"; se falar "barriga dolorida na fossa direita com Blumberg", escreva "ABD: doloroso à palpação superficial e profunda em fossa ilíaca direita, sinal de Blumberg positivo").
-   - Se um aparelho do exame físico (AP, AC, ABD, Extremidades, Otoscopia, etc.) NÃO teve alteração citada no áudio nem nas notas, MANTENHA o texto normal padrão da máscara (ex: "AP: MVUD, SRA", "AC: BNF, 2T, RR, SS"). Exceto na "Interconsulta com a Enfermagem": na Interconsulta, descreva no Objetivo apenas os sinais vitais, exames complementares ou sistemas efetivamente examinados/relatados pelo médico.
-   - Se houver exames laboratoriais ou de imagem ditados no áudio ou colados nas notas rápidas, inclua-os de forma organizada no OBJETIVO (ou nos campos próprios do modelo).
+   - Tudo o que o médico falar sobre o exame físico deve ser redigido em linguagem semiológica técnica formal.
+   - Se um aparelho do exame físico (AP, AC, ABD, Extremidades, Otoscopia, etc.) NÃO teve alteração citada no áudio nem nas notas, MANTENHA o texto normal padrão da máscara.
 
-4. ZERO ALUCINAÇÃO (NUNCA INVENTE DADOS NUMÉRICOS):
-   - Se dados específicos do cabeçalho ou exame físico (como PA, Peso, AU, BCF, IG, Tipo Sanguíneo, APGAR, Capurro, Sorologias) NÃO forem falados no áudio nem informados nas notas rápidas, deixe o campo em branco após os dois pontos (ex: "PA:  mmHg", "# TS: ") para o médico preencher manualmente. NUNCA invente valores de PA, BCF, peso ou resultados de exames!
+4. EXAMES COMPLEMENTARES (APÓS O OBJETIVO E ANTES DA AVALIAÇÃO) — REGRA DE FORMATAÇÃO ESTRITA:
+   - Se houver PDFs/imagens de exames anexados, falados no áudio ou colados nas notas, preencha a seção "EXAMES COMPLEMENTARES" exatamente neste padrão:
+   - PARA EXAMES LABORATORIAIS (em linha única compacta separada por barras verticais " | ", agrupados por data da coleta, usando abreviações médicas limpas):
+     Exemplo exato a seguir:
+     - LABS 06/10/2026: Hb 13,2 | Ht 39% | Leuco 6.400 | Plaq 245.000 | Reticulócitos 2,8% (100.520/mm³) | Eletroforese de Hb (Hb A1 97,5%, Hb A2 2,5%, Hb Fetal 0,0%) | GJ 328 | HbA1c 7,9% (Glicemia Média Estimada 180) | Creat 0,93 | Ureia 34 | Sódio 137 | K 4,96 | CT 203,0 | HDL 52,9 | LDL 133,6 | Não-HDL 150,1 | TAG 71,0 | PCR 5,3 | Ferro 59,0 | CTLF 267,9 | Transferrina 206,7 | Ferritina 65,2 | IST 22,0% (calculado) | TSH 2,25 | T4L 0,83 | Vit B12 441 | Ácido Fólico > 24,80 | RAC 35,0 mg/g (Albuminúria 7,6 mg/L / Creatinina Urinária 22,0 mg/dL) | EQU: Leucócitos 0,4/µL, Hemácias 1,5/µL, Células 2,3/µL, Cilindros ausentes, Esterase leucocitária negativa, Nitrito negativo, Proteína ausente, Glicose (4+), pH 7,5, Densidade 1.017 | Sangue Oculto nas Fezes: Negativo
+   - PARA EXAMES DE IMAGEM E MÉTODOS GRÁFICOS (Ecocardiograma, USG, Raio-X, Tomografia, Ressonância, Mamografia, Densitometria, Endoscopia, ECG, etc.):
+     * OBRIGATÓRIO SER EM TEXTO CORRIDO (sem tópicos soltos ou quebras de linha desnecessárias), iniciando com o NOME DO EXAME EM MAIÚSCULAS + DATA + dois pontos + descrição corrida dos achados relevantes e conclusão do laudo.
+     Exemplo exato a seguir:
+     - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento. Diâmetro do átrio esquerdo limítrofe. Sinais de degeneração fibrocálcica acometendo anel mitral e cúspides da válvula aórtica.
+   - Se NÃO houver nenhum exame complementar (nem PDF anexado, nem citado no áudio/notas), você pode remover o bloco "EXAMES COMPLEMENTARES" ou deixar "- Sem novos exames complementares avaliados nesta consulta."
+   - Nos modelos de Pré-Natal ou LGBTQIAP+, se o PDF trouxer sorologias, TS ou toxoplasmose, preencha também os campos correspondentes do cabeçalho/seção de sorologias!
 
-5. AVALIAÇÃO E CONDUTA / PLANO FUTURO:
-   - Em AVALIAÇÃO: Liste as hipóteses diagnósticas ou condições avaliadas em linguagem técnica, sugerindo entre parênteses o código CID-10 e CIAP-2 correspondente quando aplicável (ex: "1. Hipertensão Arterial Sistêmica essencial (CID-10: I10 / CIAP-2: K86)").
-   - Em CONDUTA: Liste claramente:
-     a) Prescrições médicas realizadas/renovadas (com fármaco, concentração, posologia e duração se ditados);
-     b) Exames complementares solicitados;
-     c) Encaminhamentos realizados;
-     d) PLANO PARA A PRÓXIMA CONSULTA / SEGUIMENTO (se o médico mencionar algo a ser feito/cobrado no próximo atendimento, destaque um tópico "- Plano para próxima consulta: ...");
-     e) Mantenha SEMPRE no final da CONDUTA as frases padrão de orientações de sinais de alarme e concordância do modelo original para resguardo médico-legal.
+5. ZERO ALUCINAÇÃO (NUNCA INVENTE DADOS NUMÉRICOS):
+   - Se dados específicos do cabeçalho ou exame físico (como PA, Peso, AU, BCF, IG, Tipo Sanguíneo, APGAR, Capurro) NÃO forem falados no áudio nem constarem nos PDFs/notas, deixe o campo em branco após os dois pontos para o médico preencher manualmente.
 
-6. ATENDIMENTO LGBTQIAP+ / POPULAÇÃO TRANS:
-   - Se o modelo for LGBTQIAP+, respeite rigorosamente o Nome Social e os Pronomes da pessoa atendida em toda a concordância nominal e verbal do texto.
+6. AVALIAÇÃO E CONDUTA / PLANO FUTURO:
+   - Em AVALIAÇÃO: Liste as hipóteses diagnósticas ou condições avaliadas em linguagem técnica (incluindo alterações importantes vistas nos exames complementares, ex: "DM2 descompensado", "Dislipidemia"), sugerindo entre parênteses o código CID-10 e CIAP-2 correspondente.
+   - Em CONDUTA: Liste prescrições, exames solicitados, encaminhamentos, plano para a próxima consulta e mantenha no final as frases padrão de orientações de sinais de alarme e concordância do modelo.
 
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
@@ -447,13 +475,14 @@ ${templateObj.templateText}
 === FORMATO DE RESPOSTA ===
 Responda em JSON válido contendo exatamente estas chaves:
 {
-  "evolucao_completa": "Texto completo da evolução seguindo fielmente o modelo acima com quebras de linha \\n",
+  "evolucao_completa": "Texto completo da evolução seguindo fielmente o modelo acima (com EXAMES COMPLEMENTARES formatados após o OBJETIVO e antes da AVALIAÇÃO) com quebras de linha \\n",
   "resumo_subjetivo": "Apenas o bloco SUBJETIVO extraído",
-  "resumo_objetivo": "Apenas o bloco OBJETIVO extraído",
+  "resumo_objetivo": "Apenas o bloco OBJETIVO + EXAMES COMPLEMENTARES extraído",
+  "resumo_exames": "Apenas o bloco EXAMES COMPLEMENTARES formatado (LABS com '|' e IMAGEM em texto corrido)",
   "resumo_avaliacao": "Apenas o bloco AVALIAÇÃO extraído (com sugestões CID-10 / CIAP-2)",
   "resumo_conduta": "Apenas o bloco CONDUTA (e Pendências/Plano futuro) extraído",
-  "especialidade_sugerida_encaminhamento": "Se durante a consulta/VD foi citado encaminhamento, informe a especialidade (ex: Cardiologia, PNAR, Neuropediatria, Ambulatório Trans, Fisioterapia Domiciliar, etc.), caso contrário deixe string vazia",
-  "alertas_auditoria": ["Lista curta de campos importantes do modelo que não foram falados no áudio para o médico conferir antes de salvar no PEC, ex: 'PA não informada no áudio', 'Nome da ACS não mencionado'"]
+  "especialidade_sugerida_encaminhamento": "Se durante a consulta foi citado encaminhamento, informe a especialidade, caso contrário deixe string vazia",
+  "alertas_auditoria": ["Lista curta de campos importantes do modelo que não foram falados no áudio para o médico conferir antes de salvar no PEC"]
 }`;
 };
 
@@ -470,7 +499,7 @@ window.buildReferralPrompt = function({
   quickNotes
 }) {
   return `Você é um Médico Regulador e Médico de Família especialista em protocolos de Regulação Estadual do SUS (SISREG / CROSS / GERCON / Telessaúde).
-Sua missão é redigir um DOCUMENTO DE ENCAMINHAMENTO MÉDICO (Referência para Atenção Secundária/Terciária) altamente técnico, completo, persuasivo e À PROVA DE DEVOLUÇÃO pela regulação estadual, com base na evolução da consulta/visita domiciliar abaixo.
+Sua missão é redigir um DOCUMENTO DE ENCAMINHAMENTO MÉDICO (Referência para Atenção Secundária/Terciária) altamente técnico, completo, persuasivo e À PROVA DE DEVOLUÇÃO pela regulação estadual, com base na evolução da consulta/visita domiciliar e nos exames complementares abaixo.
 
 === CONTEXTO DO ATENDIMENTO ===
 - Tipo de Atendimento na UBS: ${templateName} (${templateId})
@@ -479,14 +508,8 @@ Sua missão é redigir um DOCUMENTO DE ENCAMINHAMENTO MÉDICO (Referência para 
 - Exames Prévios / Tratamentos Já Tentados / Dados Extras colados do PEC: ${dadosExtrasRegulacao || 'Vide evolução clínica'}
 - Notas Rápidas da Consulta: ${quickNotes || 'Vide evolução clínica'}
 
-=== EVOLUÇÃO CLÍNICA DA CONSULTA / VISITA DOMICILIAR ===
+=== EVOLUÇÃO CLÍNICA E EXAMES DA CONSULTA ===
 ${evolucaoTexto}
-
-=== DIRETRIZES ESPECÍFICAS POR PERFIL DE PACIENTE ===
-- Se for CONSULTA GERAL / VISITA DOMICILIAR / INTERCONSULTA: Destaque idade (se conhecida), grau de funcionalidade/mobilidade (especialmente se acamado/restrito ao domicílio em Visita Domiciliar), comorbidades (#), Medicações em Uso Contínuo (MUC) com doses, história clínica detalhada com tempo de evolução, exame físico direcionado, exames laboratoriais/imagem prévios com datas e tratamentos já realizados na APS (incluindo falha terapêutica ou refratariedade).
-- Se for PRÉ-NATAL (ex: encaminhamento ao Pré-Natal de Alto Risco - PNAR, Obstetrícia, Endocrinologia): Destaque obrigatoriamente Paridade (G/P/C/A), Idade Gestacional (IG por DUM/ECO), Tipo Sanguíneo, Sorologias, PA, Altura Uterina (AU), BCF, medicações em uso na gestação e o critério formal de Alto Risco que justifica o encaminhamento.
-- Se for PUERICULTURA / PEDIATRIA: Destaque idade da criança, antecedentes perinatais (IG ao nascer/Capurro, Peso ao nascer, APGAR, intercorrências neonatais), Triagem Neonatal (orelhinha, olhinho, coraçãozinho, pezinho), antropometria atual com Z-Scores (OMS), marcos do Desenvolvimento Neuropsicomotor (DNPM) e achados do exame físico pediátrico.
-- Se for ATENDIMENTO LGBTQIAP+ / POPULAÇÃO TRANS: Respeite Nome Social e Pronomes, destaque Identidade de Gênero, tempo de identificação, status e tempo de Terapia Hormonal de Afirmação de Gênero (THAG - fármaco, dose, via), critérios diagnósticos preenchidos (CID-10 F64.0 / CID-11 HA60/HA61), assinatura do TCLE, rastreamentos/sorologias e finalidade específica do encaminhamento (ex: Ambulatório Trans Estadual, Cirurgia de Afirmação de Gênero, Mastectomia masculinizadora, Endocrinologia, Ginecologia, Fonoaudiologia, etc.).
 
 === ESTRUTURA OBRIGATÓRIA DO ENCAMINHAMENTO (TEXTO PRONTO PARA COPIAR E COLAR NO SISTEMA DO ESTADO) ===
 Gere um texto estruturado, limpo e direto seguindo exatamente estas seções:
@@ -506,7 +529,7 @@ HIPÓTESE DIAGNÓSTICA PRINCIPAL E CID-10 / CIAP-2: [Diagnóstico + Código CID-
 [Sinais vitais, antropometria/Z-score se pediatria, dados obstétricos se gestante, e exame físico técnico focado na especialidade]
 
 4. EXAMES COMPLEMENTARES JÁ REALIZADOS (COM DATAS E RESULTADOS):
-[Listar exames informados. Se algum exame obrigatório de protocolo não tiver data/valor informado, deixar "[Inserir data/resultado: ...]" bem visível para o médico preencher antes de enviar]
+[Inclua todos os exames laboratoriais e de imagem presentes na evolução (com datas e valores) ou colados pelo médico. Se algum exame obrigatório de protocolo não tiver data/valor informado, deixar "[Inserir data/resultado: ...]" bem visível]
 
 5. MANEJO E TRATAMENTOS JÁ REALIZADOS NA ATENÇÃO PRIMÁRIA (APS) E MUC:
 [Medicações em uso contínuo com doses, medidas farmacológicas e não-farmacológicas já instituídas na UBS e resposta clínica]

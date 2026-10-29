@@ -1,13 +1,13 @@
 // ============================================================================
-// CAMADA DE PERSISTÊNCIA NO DISCO (IndexedDB + Streaming Chunks Anti-Crash)
-// Zero acúmulo de RAM na aba do Chrome: cada pedaço de 3s vai direto pro HD/SSD
+// CAMADA DE PERSISTÊNCIA NO DISCO (IndexedDB + Streaming Chunks + PDFs de Exames)
+// Zero acúmulo de RAM na aba do Chrome: áudio e PDFs ficam seguros no HD/SSD
 // ============================================================================
 
 window.ScribeDB = (function() {
   const DB_NAME = 'UBSMedicalScribeDB';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   let dbInstance = null;
-  let diskFolderHandle = null; // Opcional: Pasta física no Windows/Mac via File System Access API
+  let diskFolderHandle = null;
 
   function openDB() {
     if (dbInstance) return Promise.resolve(dbInstance);
@@ -23,6 +23,10 @@ window.ScribeDB = (function() {
         if (!db.objectStoreNames.contains('audio_chunks')) {
           const chunkStore = db.createObjectStore('audio_chunks', { keyPath: ['consultationId', 'chunkIndex'] });
           chunkStore.createIndex('consultationId', 'consultationId', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('exam_files')) {
+          const examStore = db.createObjectStore('exam_files', { keyPath: 'fileId' });
+          examStore.createIndex('consultationId', 'consultationId', { unique: false });
         }
       };
       req.onsuccess = (e) => {
@@ -99,6 +103,38 @@ window.ScribeDB = (function() {
     });
   }
 
+  // Salva PDF ou imagem de exame complementar vinculado à consulta
+  async function saveExamFile(consultationId, fileObj) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('exam_files', 'readwrite');
+      const record = {
+        fileId: 'exam_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        consultationId,
+        name: fileObj.name || 'Laudo_Exame.pdf',
+        mimeType: fileObj.mimeType || fileObj.type || 'application/pdf',
+        size: fileObj.blob ? fileObj.blob.size : (fileObj.size || 0),
+        blob: fileObj.blob || fileObj,
+        createdAt: Date.now()
+      };
+      tx.objectStore('exam_files').put(record);
+      tx.oncomplete = () => resolve(record);
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  // Busca todos os PDFs/imagens de exames vinculados a uma consulta
+  async function getExamFilesForConsultation(consultationId) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('exam_files', 'readonly');
+      const index = tx.objectStore('exam_files').index('consultationId');
+      const req = index.getAll(IDBKeyRange.only(consultationId));
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
   // Reconstrói o arquivo de áudio completo a partir dos pedaços salvos no disco
   async function assembleAudioBlob(consultationId, fallbackMimeType = 'audio/webm') {
     const db = await openDB();
@@ -121,11 +157,11 @@ window.ScribeDB = (function() {
     });
   }
 
-  // Exclui apenas os chunks de áudio para liberar espaço no HD (mantendo o texto do prontuário)
+  // Exclui apenas os chunks de áudio e PDFs para liberar espaço no HD (mantendo o texto do prontuário)
   async function deleteAudioChunksOnly(consultationId) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(['audio_chunks', 'consultations'], 'readwrite');
+      const tx = db.transaction(['audio_chunks', 'exam_files', 'consultations'], 'readwrite');
       const chunkStore = tx.objectStore('audio_chunks');
       const idx = chunkStore.index('consultationId');
       const req = idx.openKeyCursor(IDBKeyRange.only(consultationId));
@@ -136,6 +172,18 @@ window.ScribeDB = (function() {
           cursor.continue();
         }
       };
+
+      const examStore = tx.objectStore('exam_files');
+      const examIdx = examStore.index('consultationId');
+      const examReq = examIdx.openKeyCursor(IDBKeyRange.only(consultationId));
+      examReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          examStore.delete(cursor.primaryKey);
+          cursor.continue();
+        }
+      };
+
       const consultStore = tx.objectStore('consultations');
       const getReq = consultStore.get(consultationId);
       getReq.onsuccess = () => {
@@ -151,7 +199,7 @@ window.ScribeDB = (function() {
     });
   }
 
-  // Exclui consulta inteira (texto + áudio)
+  // Exclui consulta inteira (texto + áudio + PDFs)
   async function deleteConsultation(consultationId) {
     await deleteAudioChunksOnly(consultationId);
     const db = await openDB();
@@ -163,7 +211,6 @@ window.ScribeDB = (function() {
     });
   }
 
-  // Limpa áudios de consultas já finalizadas com mais de X horas
   async function autoCleanupOldAudio(maxAgeHours = 24) {
     const all = await getAllConsultations();
     const cutoff = Date.now() - maxAgeHours * 3600 * 1000;
@@ -177,19 +224,18 @@ window.ScribeDB = (function() {
     return cleaned;
   }
 
-  // Limpa todo o histórico do turno (quando o médico quiser zerar tudo)
   async function clearAllData() {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(['consultations', 'audio_chunks'], 'readwrite');
+      const tx = db.transaction(['consultations', 'audio_chunks', 'exam_files'], 'readwrite');
       tx.objectStore('consultations').clear();
       tx.objectStore('audio_chunks').clear();
+      tx.objectStore('exam_files').clear();
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);
     });
   }
 
-  // Calcula espaço usado no disco
   async function getStorageStats() {
     const all = await getAllConsultations();
     let totalAudioBytes = 0;
@@ -210,7 +256,6 @@ window.ScribeDB = (function() {
     };
   }
 
-  // Pasta física opcional no Windows/Mac (File System Access API)
   async function selectPhysicalFolder() {
     if (!window.showDirectoryPicker) {
       throw new Error('Seu navegador não suporta seleção direta de pasta. O salvamento automático no disco interno (IndexedDB) já está ativo!');
@@ -245,6 +290,8 @@ window.ScribeDB = (function() {
     getConsultation,
     getAllConsultations,
     saveAudioChunk,
+    saveExamFile,
+    getExamFilesForConsultation,
     assembleAudioBlob,
     deleteAudioChunksOnly,
     deleteConsultation,

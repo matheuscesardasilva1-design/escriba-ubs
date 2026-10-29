@@ -1,20 +1,20 @@
 // ============================================================================
-// MOTOR PRINCIPAL: GRAVAÇÃO ANTI-CRASH, FILA ASSÍNCRONA, CONTROLE DE TOKENS
-// E INTEGRAÇÃO GEMINI API (SOAP + ENCAMINHAMENTO REGULAÇÃO ESTADUAL)
+// MOTOR PRINCIPAL: GRAVAÇÃO ANTI-CRASH, ANEXO DISCRETO DE PDFs DE EXAMES,
+// FILA ASSÍNCRONA, CONTROLE DE TOKENS E INTEGRAÇÃO GEMINI API (SOAP + REGULAÇÃO)
 // ============================================================================
 
 (function() {
-  // --- Estado Global ---
   const state = {
     selectedTemplateId: 'geral',
     templates: {},
-    activeConsultationId: null, // Consulta sendo visualizada na direita
-    recordingConsultationId: null, // Consulta sendo gravada agora
+    activeConsultationId: null,
+    recordingConsultationId: null,
     isRecording: false,
     isPaused: false,
     recordingSeconds: 0,
     silenceSeconds: 0,
     chunkIndex: 0,
+    pendingExamFiles: [], // PDFs/Imagens de exames anexados para a consulta atual
     mediaRecorder: null,
     mediaStream: null,
     audioContext: null,
@@ -28,14 +28,12 @@
     selectedMicDeviceId: localStorage.getItem('ubs_selected_mic') || ''
   };
 
-  // Modelos Gemini em cascata (Fallback automático se um atingir Rate Limit 429/503)
   const GEMINI_MODELS = [
     'gemini-2.5-flash',
     'gemini-2.0-flash',
     'gemini-2.5-flash-lite'
   ];
 
-  // --- Inicialização ---
   document.addEventListener('DOMContentLoaded', async () => {
     loadCustomOrDefaultTemplates();
     loadDailyTokenStats();
@@ -46,16 +44,15 @@
     bindUIEvents();
     updateApiKeyStatusBadge();
     updateStorageStatsUI();
+    renderPendingExamFilesUI();
 
-    // Auto-limpeza de áudios finalizados com mais de 48h (preserva os textos)
     try {
       await window.ScribeDB.autoCleanupOldAudio(48);
     } catch (_) {}
   });
 
-  // --- Carregamento de Modelos (6 padrões + edições do usuário) ---
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v1');
+    const saved = localStorage.getItem('ubs_custom_templates_v2');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -67,10 +64,9 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v1', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v2', JSON.stringify(state.templates));
   }
 
-  // --- Estatísticas de Tokens do Dia ---
   function getTodayKey() {
     return 'ubs_tokens_' + new Date().toISOString().slice(0, 10);
   }
@@ -98,18 +94,18 @@
   }
 
   function updateTokenMonitorUI() {
-    const estCurrentAudioTokens = Math.round(state.recordingSeconds * 32) + (state.isRecording ? 1200 : 0);
+    const examTokens = state.pendingExamFiles.length * 850;
+    const estCurrentAudioTokens = Math.round(state.recordingSeconds * 32) + examTokens + (state.isRecording ? 1200 : 0);
     const elCurrent = document.getElementById('liveTokenEstimate');
     const elDaily = document.getElementById('dailyTokenCounter');
     if (elCurrent) {
       elCurrent.textContent = estCurrentAudioTokens.toLocaleString('pt-BR') + ' tok';
     }
     if (elDaily) {
-      elDaily.textContent = `${state.dailyTokensUsed.toLocaleString('pt-BR')} tok (${state.dailyConsultationsProcessed} cons.)`;
+      elDaily.textContent = `${state.dailyTokensUsed.toLocaleString('pt-BR')} tok (${state.dailyConsultationsProcessed} atend.)`;
     }
   }
 
-  // --- Web Worker em Segundo Plano (Evita Chrome congelar o timer em outra aba) ---
   function initTimerWorker() {
     const workerCode = `
       let interval = null;
@@ -140,16 +136,15 @@
       const mm = String(Math.floor(state.recordingSeconds / 60)).padStart(2, '0');
       const ss = String(state.recordingSeconds % 60).padStart(2, '0');
       document.title = state.isPaused
-        ? `⏸️ ${mm}:${ss} Pausado | Escriba UBS`
-        : `🔴 ${mm}:${ss} Gravando... | Escriba UBS`;
+        ? `⏸️ ${mm}:${ss} | Prontuário APS`
+        : `🔴 ${mm}:${ss} | Prontuário APS`;
     } else if (state.queueRunning) {
-      document.title = `⏳ Processando fila... | Escriba UBS`;
+      document.title = `⏳ Sincronizando... | Prontuário APS`;
     } else {
-      document.title = `Escriba Médico UBS - SOAP & Regulação`;
+      document.title = `Prontuário Clínico APS - Evolução & Regulação`;
     }
   }
 
-  // --- Wake Lock (Impede tela/PC de dormir durante gravação) ---
   async function requestWakeLock() {
     if ('wakeLock' in navigator) {
       try {
@@ -165,14 +160,13 @@
     }
   }
 
-  // --- Listagem e Seleção de Microfones ---
   async function populateMicrophones() {
     const select = document.getElementById('micSelect');
     if (!select || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const mics = devices.filter(d => d.kind === 'audioinput');
-      select.innerHTML = '<option value="">🎤 Microfone Padrão do Sistema</option>';
+      select.innerHTML = '<option value="">🎤 Microfone Padrão</option>';
       mics.forEach((m, idx) => {
         const opt = document.createElement('option');
         opt.value = m.deviceId;
@@ -183,7 +177,6 @@
     } catch (_) {}
   }
 
-  // --- Renderização dos 6 Botões de Modelos da UBS ---
   function renderTemplateSelector() {
     const container = document.getElementById('templateGrid');
     if (!container) return;
@@ -197,7 +190,7 @@
       btn.innerHTML = `
         <div class="tpl-top">
           <span class="tpl-icon">${tpl.icon || '📋'}</span>
-          <span class="tpl-badge">${tpl.badge || 'UBS'}</span>
+          <span class="tpl-badge">${tpl.badge || 'APS'}</span>
         </div>
         <div class="tpl-name">${tpl.name}</div>
       `;
@@ -215,6 +208,72 @@
     const panel = document.getElementById('puericulturaZScoreBox');
     if (!panel) return;
     panel.style.display = state.selectedTemplateId === 'puericultura' ? 'block' : 'none';
+  }
+
+  // --- Gerenciamento Discreto de PDFs e Imagens de Exames Complementares ---
+  function normalizeExamMimeType(file) {
+    const raw = (file.type || '').toLowerCase();
+    const ext = (file.name || '').toLowerCase().split('.').pop();
+    if (raw === 'application/pdf' || ext === 'pdf') return 'application/pdf';
+    if (raw.startsWith('image/')) return raw;
+    if (ext === 'png') return 'image/png';
+    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+    if (ext === 'webp') return 'image/webp';
+    return 'application/pdf';
+  }
+
+  function addExamFilesToCurrentSession(fileList) {
+    if (!fileList || fileList.length === 0) return;
+    let added = 0;
+    Array.from(fileList).forEach(file => {
+      const mime = normalizeExamMimeType(file);
+      state.pendingExamFiles.push({
+        id: 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        name: file.name || `Exame_${state.pendingExamFiles.length + 1}.pdf`,
+        mimeType: mime,
+        size: file.size,
+        blob: file
+      });
+      added++;
+    });
+    if (added > 0) {
+      renderPendingExamFilesUI();
+      updateTokenMonitorUI();
+      showToast(`📎 ${added} laudo(s) anexado(s) para incluir na evolução.`);
+    }
+  }
+
+  function renderPendingExamFilesUI() {
+    const listEl = document.getElementById('pendingExamFilesList');
+    const countEl = document.getElementById('examCountBadge');
+    if (countEl) {
+      countEl.textContent = state.pendingExamFiles.length > 0
+        ? `${state.pendingExamFiles.length} anexo(s)`
+        : 'Nenhum anexo';
+    }
+    if (!listEl) return;
+    if (state.pendingExamFiles.length === 0) {
+      listEl.style.display = 'none';
+      listEl.innerHTML = '';
+      return;
+    }
+    listEl.style.display = 'flex';
+    listEl.innerHTML = '';
+    state.pendingExamFiles.forEach(item => {
+      const chip = document.createElement('div');
+      chip.className = 'exam-chip';
+      const kb = Math.max(1, Math.round(item.size / 1024));
+      chip.innerHTML = `
+        <span>📄 ${escapeHtml(item.name.slice(0, 26))} (${kb} KB)</span>
+        <button type="button" class="exam-chip-del" title="Remover anexo">✕</button>
+      `;
+      chip.querySelector('.exam-chip-del').addEventListener('click', () => {
+        state.pendingExamFiles = state.pendingExamFiles.filter(f => f.id !== item.id);
+        renderPendingExamFilesUI();
+        updateTokenMonitorUI();
+      });
+      listEl.appendChild(chip);
+    });
   }
 
   // --- Gravação Anti-Crash (Streaming de Chunks de 3s direto pro HD/IndexedDB) ---
@@ -250,10 +309,9 @@
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       state.mediaStream = stream;
-      await populateMicrophones(); // Atualiza nomes dos microfones após permissão concedida
+      await populateMicrophones();
 
       const mimeType = getSupportedAudioMimeType();
-      // 24 kbps Opus: voz nítida e 20 min de consulta pesam apenas ~3.5 MB!
       const recorderOptions = mimeType
         ? { mimeType, audioBitsPerSecond: 24000 }
         : { audioBitsPerSecond: 24000 };
@@ -269,15 +327,16 @@
 
       const newConsultation = {
         id: consultId,
-        patientLabel: (patientInput && patientInput.value.trim()) || `Paciente ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+        patientLabel: (patientInput && patientInput.value.trim()) || `Atendimento ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
         templateId: tpl.id,
         templateName: tpl.name,
         templateIcon: tpl.icon,
         createdAt: now,
         updatedAt: now,
-        status: 'recording', // recording -> queued -> uploading -> done | error | interrupted
+        status: 'recording',
         durationSeconds: 0,
         chunkCount: 0,
+        examFileCount: 0,
         audioBytes: 0,
         mimeType: recorder.mimeType || mimeType || 'audio/webm',
         quickNotes: (quickNotesInput && quickNotesInput.value) || '',
@@ -299,7 +358,6 @@
       state.silenceSeconds = 0;
       state.chunkIndex = 0;
 
-      // A cada 3 segundos despeja o chunk no disco (IndexedDB) e limpa a RAM da aba!
       recorder.ondataavailable = async (event) => {
         if (event.data && event.data.size > 0) {
           const idx = state.chunkIndex++;
@@ -312,7 +370,7 @@
             );
             const diskBadge = document.getElementById('diskSaveIndicator');
             if (diskBadge) {
-              diskBadge.textContent = `💾 Salvo no disco (${idx + 1} blocos)`;
+              diskBadge.textContent = `💾 Sincronizado no disco (${idx + 1})`;
               diskBadge.classList.add('pulse-ok');
               setTimeout(() => diskBadge.classList.remove('pulse-ok'), 600);
             }
@@ -322,14 +380,14 @@
         }
       };
 
-      recorder.start(3000); // 3000 ms = 3 segundos por bloco no disco
+      recorder.start(3000);
       state.timerWorker.postMessage('start');
       await requestWakeLock();
       startVUMeterAndSilenceDetector(stream);
       updateRecordingControlsUI();
       await refreshQueueSidebar();
     } catch (err) {
-      alert('Não foi possível acessar o microfone. Verifique se o microfone está conectado e com permissão liberada no Chrome.\n\nDetalhe: ' + err.message);
+      alert('Não foi possível acessar o microfone. Verifique se está conectado e com permissão liberada.\n\nDetalhe: ' + err.message);
     }
   }
 
@@ -347,7 +405,6 @@
     updateDocumentTitle();
   }
 
-  // Finaliza gravação atual, joga para a Fila em Segundo Plano e LIBERA O GRAVADOR NA HORA!
   async function finishRecordingAndQueue() {
     if (!state.isRecording || !state.mediaRecorder) return;
 
@@ -359,8 +416,8 @@
     const currentNotes = quickNotesInput ? quickNotesInput.value : '';
     const currentZScore = getCalculatedZScoreText();
     const currentTpl = state.templates[state.selectedTemplateId];
+    const attachedExams = [...state.pendingExamFiles];
 
-    // Para o MediaRecorder e aguarda o último chunk ser gravado no disco
     await new Promise((resolve) => {
       state.mediaRecorder.onstop = () => resolve();
       try {
@@ -378,11 +435,17 @@
     state.isPaused = false;
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
+    state.pendingExamFiles = [];
+    renderPendingExamFilesUI();
     updateRecordingControlsUI();
     updateRecordingTimerUI();
     updateDocumentTitle();
 
-    // Atualiza os dados finais da consulta e coloca na fila ('queued')
+    // Salva todos os PDFs/imagens de exames anexados durante a consulta
+    for (const examFile of attachedExams) {
+      await window.ScribeDB.saveExamFile(finishingId, examFile);
+    }
+
     const consult = await window.ScribeDB.getConsultation(finishingId);
     if (consult) {
       if (currentLabel) consult.patientLabel = currentLabel;
@@ -390,34 +453,31 @@
       consult.templateName = currentTpl.name;
       consult.templateIcon = currentTpl.icon;
       consult.durationSeconds = finalSeconds;
+      consult.examFileCount = attachedExams.length;
       consult.quickNotes = currentNotes;
       consult.zScoreSummary = currentZScore;
       consult.status = 'queued';
       consult.updatedAt = Date.now();
       await window.ScribeDB.saveConsultation(consult);
 
-      // Se o médico escolheu uma pasta física no PC, salva cópia do arquivo .webm lá também
       if (window.ScribeDB.hasPhysicalFolder()) {
         const fullBlob = await window.ScribeDB.assembleAudioBlob(finishingId, consult.mimeType);
         await window.ScribeDB.saveBackupToPhysicalFolder(consult, fullBlob);
       }
     }
 
-    // Limpa os campos rápidos para o PRÓXIMO paciente imediatamente!
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     clearZScoreInputs();
 
-    showToast('✅ Gravação salva no disco e enviada para a fila! Gravador já está livre para o próximo paciente.');
+    showToast('✅ Registro salvo e enviado para estruturação! Painel livre para o próximo atendimento.');
     await refreshQueueSidebar();
     updateStorageStatsUI();
 
-    // Seleciona a consulta recém-finalizada caso nenhuma esteja aberta
     if (!state.activeConsultationId) {
       await selectConsultationToView(finishingId);
     }
 
-    // Dispara o processador de fila em segundo plano (sem travar nada)
     processQueueInBackground();
   }
 
@@ -440,7 +500,6 @@
     if (silenceAlert) silenceAlert.style.display = 'none';
   }
 
-  // --- Medidor de Voz (VU Meter) + Detector de Microfone Mudo / Silêncio Prolongado ---
   function startVUMeterAndSilenceDetector(stream) {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -481,13 +540,12 @@
             const silenceBanner = document.getElementById('silenceWarningBanner');
             if (silenceBanner) {
               if (state.silenceSeconds >= 180) {
-                // 3 minutos de silêncio -> auto-pausa para economizar tokens!
                 togglePauseRecording();
                 silenceBanner.style.display = 'flex';
-                silenceBanner.innerHTML = `<span>⚠️ <strong>Auto-Pausado por 3 min de silêncio</strong> (economia de tokens). Clique em Retomar quando voltar a falar.</span>`;
+                silenceBanner.innerHTML = `<span>⚠️ <strong>Pausado automaticamente por 3 min de inatividade</strong>. Clique em Retomar quando desejar.</span>`;
               } else if (state.silenceSeconds >= 12) {
                 silenceBanner.style.display = 'flex';
-                silenceBanner.innerHTML = `<span>🔇 Sem som captado há ${state.silenceSeconds}s — verifique se o microfone não está mudo.</span>`;
+                silenceBanner.innerHTML = `<span>🔇 Sem captação de áudio há ${state.silenceSeconds}s — verifique o microfone.</span>`;
               } else {
                 silenceBanner.style.display = 'none';
               }
@@ -501,7 +559,6 @@
     } catch (_) {}
   }
 
-  // --- Normalizador de MimeType para Áudios do WhatsApp (.ogg/.opus) e iPhone 14 (.m4a) ---
   function normalizeAudioMimeType(fileOrBlob, fileName = '') {
     const rawType = (fileOrBlob?.type || '').toLowerCase().split(';')[0].trim();
     const ext = (fileName || '').toLowerCase().split('.').pop();
@@ -524,7 +581,6 @@
     return 'audio/webm';
   }
 
-  // --- Upload de Múltiplos Arquivos de Áudio (WhatsApp .ogg / iPhone 14 .m4a) ---
   async function handleExternalAudioUpload(fileList) {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
@@ -534,6 +590,7 @@
     const baseLabel = patientInput ? patientInput.value.trim() : '';
     const currentNotes = (quickNotesInput && quickNotesInput.value) || '';
     const currentZScore = getCalculatedZScoreText();
+    const attachedExams = [...state.pendingExamFiles];
 
     let lastCreatedId = null;
 
@@ -542,7 +599,7 @@
       const now = Date.now() + i;
       const consultId = 'cons_' + now + '_up' + i;
       const cleanMime = normalizeAudioMimeType(file, file.name);
-      const cleanFileName = file.name.replace(/\.[^.]+$/, '').replace(/WhatsApp Ptt /i, 'Áudio WhatsApp ');
+      const cleanFileName = file.name.replace(/\.[^.]+$/, '').replace(/WhatsApp Ptt /i, 'Visita ');
 
       const label = files.length === 1
         ? (baseLabel || cleanFileName)
@@ -559,6 +616,7 @@
         status: 'queued',
         durationSeconds: Math.max(5, Math.round(file.size / 3000)),
         chunkCount: 1,
+        examFileCount: i === 0 ? attachedExams.length : 0,
         audioBytes: file.size,
         mimeType: cleanMime,
         fileName: file.name,
@@ -574,12 +632,20 @@
 
       await window.ScribeDB.saveConsultation(newConsultation);
       await window.ScribeDB.saveAudioChunk(consultId, 0, file, cleanMime);
+
+      if (i === 0 && attachedExams.length > 0) {
+        for (const exam of attachedExams) {
+          await window.ScribeDB.saveExamFile(consultId, exam);
+        }
+      }
       lastCreatedId = consultId;
     }
 
+    state.pendingExamFiles = [];
+    renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
-    showToast(`📂 ${files.length} áudio(s) do WhatsApp/iPhone importado(s) para a fila!`);
+    showToast(`📂 ${files.length} áudio(s) importado(s) para a fila!`);
     await refreshQueueSidebar();
     if (lastCreatedId) {
       await selectConsultationToView(lastCreatedId);
@@ -587,12 +653,14 @@
     processQueueInBackground();
   }
 
-  // --- Processamento apenas por Notas/Ditado Escrito (Sem Áudio) ---
-  async function handleProcessNotesOnly() {
+  // --- Processar apenas Laudos PDF Anexados e/ou Notas Rápidas (Sem Áudio) ---
+  async function handleProcessNotesOrExamsOnly() {
     const quickNotesInput = document.getElementById('quickNotesInput');
     const notes = quickNotesInput ? quickNotesInput.value.trim() : '';
-    if (!notes) {
-      alert('Digite os dados do caso clínico, sinais vitais ou exame físico no campo de Notas Rápidas para gerar a evolução sem áudio.');
+    const attachedExams = [...state.pendingExamFiles];
+
+    if (!notes && attachedExams.length === 0) {
+      alert('Anexe pelo menos um PDF/imagem de exame ou digite os dados clínicos no campo de Notas Rápidas.');
       return;
     }
 
@@ -603,7 +671,7 @@
 
     const newConsultation = {
       id: consultId,
-      patientLabel: (patientInput && patientInput.value.trim()) || `Paciente ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      patientLabel: (patientInput && patientInput.value.trim()) || `Atendimento ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
       templateId: tpl.id,
       templateName: tpl.name,
       templateIcon: tpl.icon,
@@ -612,6 +680,7 @@
       status: 'queued',
       durationSeconds: 0,
       chunkCount: 0,
+      examFileCount: attachedExams.length,
       audioBytes: 0,
       mimeType: 'text/plain',
       quickNotes: notes,
@@ -625,15 +694,21 @@
     };
 
     await window.ScribeDB.saveConsultation(newConsultation);
+    for (const exam of attachedExams) {
+      await window.ScribeDB.saveExamFile(consultId, exam);
+    }
+
+    state.pendingExamFiles = [];
+    renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
-    showToast('📝 Notas enviadas para a fila de estruturação SOAP!');
+    showToast('📄 Laudos / Notas enviados para a fila de estruturação!');
     await refreshQueueSidebar();
     await selectConsultationToView(consultId);
     processQueueInBackground();
   }
 
-  // --- FILA ASSÍNCRONA EM SEGUNDO PLANO (Com Auto-Retry & Fallback de Modelo) ---
+  // --- FILA ASSÍNCRONA EM SEGUNDO PLANO ---
   async function processQueueInBackground() {
     if (state.queueRunning) return;
     const apiKey = getSavedApiKey();
@@ -648,7 +723,6 @@
     try {
       while (true) {
         const all = await window.ScribeDB.getAllConsultations();
-        // Pega a consulta mais antiga que está 'queued'
         const nextItem = [...all].reverse().find(c => c.status === 'queued');
         if (!nextItem) break;
 
@@ -673,7 +747,7 @@
           await window.ScribeDB.saveConsultation(nextItem);
 
           addDailyTokenUsage(result.tokensUsed || 0);
-          showToast(`✅ Evolução pronta: ${nextItem.patientLabel}`);
+          showToast(`✅ Evolução concluída: ${nextItem.patientLabel}`);
         } catch (err) {
           console.error('Erro ao processar consulta na fila:', err);
           nextItem.status = 'error';
@@ -694,33 +768,50 @@
     }
   }
 
-  // --- Chamada à API do Gemini com Auto-Retry (429/503/Rede) e Cascata de Modelos ---
+  // --- Envio Multimodal (Áudio + PDFs de Exames + Notas) para o Gemini ---
   async function processSingleConsultationWithGemini(consultation, apiKey) {
     const tpl = state.templates[consultation.templateId] || window.DEFAULT_TEMPLATES.geral;
+    const examFiles = await window.ScribeDB.getExamFilesForConsultation(consultation.id);
+
     const promptText = window.buildMedicalEvolutionPrompt(
       tpl,
       consultation.quickNotes,
-      consultation.zScoreSummary
+      consultation.zScoreSummary,
+      examFiles.length > 0
     );
 
-    let audioPart = null;
+    const parts = [];
+
+    // 1. Inclui o Áudio da consulta (se houver)
     if (consultation.chunkCount > 0) {
       const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
       if (audioBlob && audioBlob.size > 0) {
         const cleanMime = normalizeAudioMimeType(audioBlob, consultation.fileName || '');
-        // Se o áudio tiver mais de 15 MB, usa a File API do Gemini; caso contrário inlineData base64
         if (audioBlob.size > 15 * 1024 * 1024) {
-          const fileUri = await uploadLargeAudioToGeminiFileAPI(audioBlob, cleanMime, apiKey);
-          audioPart = { fileData: { mimeType: cleanMime, fileUri } };
+          const fileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
+          parts.push({ fileData: { mimeType: cleanMime, fileUri } });
         } else {
           const base64Audio = await blobToBase64(audioBlob);
-          audioPart = { inlineData: { mimeType: cleanMime, data: base64Audio } };
+          parts.push({ inlineData: { mimeType: cleanMime, data: base64Audio } });
         }
       }
     }
 
-    const parts = [];
-    if (audioPart) parts.push(audioPart);
+    // 2. Inclui todos os PDFs / Imagens de Exames Complementares anexados
+    for (const exam of examFiles) {
+      if (exam.blob && exam.blob.size > 0) {
+        const mime = exam.mimeType || 'application/pdf';
+        if (exam.blob.size > 15 * 1024 * 1024) {
+          const fileUri = await uploadLargeFileToGeminiFileAPI(exam.blob, mime, apiKey);
+          parts.push({ fileData: { mimeType: mime, fileUri } });
+        } else {
+          const base64Doc = await blobToBase64(exam.blob);
+          parts.push({ inlineData: { mimeType: mime, data: base64Doc } });
+        }
+      }
+    }
+
+    // 3. Inclui as instruções clínicas e a máscara exata
     parts.push({ text: promptText });
 
     const requestBody = {
@@ -743,7 +834,6 @@
     try {
       parsed = JSON.parse(rawText);
     } catch (_) {
-      // Caso o modelo retorne blocos ```json ... ```
       const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
       try {
         parsed = JSON.parse(cleaned);
@@ -757,6 +847,7 @@
       soapParts: {
         subjetivo: parsed.resumo_subjetivo || '',
         objetivo: parsed.resumo_objetivo || '',
+        exames: parsed.resumo_exames || '',
         avaliacao: parsed.resumo_avaliacao || '',
         conduta: parsed.resumo_conduta || ''
       },
@@ -777,7 +868,7 @@
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           if (onStatusUpdate) {
-            onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${model})...` : `⚡ Processando (${model})...`);
+            onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt}...` : `⚡ Estruturando prontuário...`);
           }
 
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -795,43 +886,39 @@
           const errData = await res.json().catch(() => ({}));
           const errMsg = errData?.error?.message || `HTTP ${res.status}`;
 
-          // Se a chave for inválida (400 API_KEY_INVALID ou 403), interrompe na hora
           if (res.status === 400 && errMsg.toLowerCase().includes('api key')) {
-            throw new Error('Chave da API do Gemini inválida. Clique em "Chave API" no topo para conferir.');
+            throw new Error('Credencial de API inválida. Clique em "Credencial API" no topo para verificar.');
           }
 
-          // Se for Rate Limit (429) ou Servidor Ocupado (503), aguarda ou tenta próximo modelo da cascata
           if (res.status === 429 || res.status === 503) {
-            lastError = new Error(`Limite temporário da API (${res.status}): ${errMsg}`);
+            lastError = new Error(`Limite temporário (${res.status}): ${errMsg}`);
             if (attempt < maxAttempts) {
               const waitSec = 10 * attempt;
-              if (onStatusUpdate) onStatusUpdate(`⏳ Cota por minuto cheia, aguardando ${waitSec}s...`);
+              if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando fila (${waitSec}s)...`);
               await sleep(waitSec * 1000);
               continue;
             }
-            break; // Tenta o próximo modelo da lista GEMINI_MODELS
+            break;
           }
 
           throw new Error(errMsg);
         } catch (networkErr) {
           lastError = networkErr;
-          if (networkErr.message && networkErr.message.includes('Chave da API')) {
+          if (networkErr.message && networkErr.message.includes('Credencial de API')) {
             throw networkErr;
           }
-          // Se a internet da UBS oscilou, espera 6 segundos e tenta de novo
           if (attempt < maxAttempts) {
-            if (onStatusUpdate) onStatusUpdate(`🌐 Oscilação de rede, reconectando em 6s...`);
+            if (onStatusUpdate) onStatusUpdate(`🌐 Reconectando em 6s...`);
             await sleep(6000);
           }
         }
       }
     }
 
-    throw lastError || new Error('Não foi possível conectar à API do Gemini. O áudio permanece salvo com segurança no disco para reprocessar.');
+    throw lastError || new Error('Falha de conexão. Os arquivos permanecem salvos no disco para reprocessar.');
   }
 
-  // Upload resumível para áudios muito grandes (> 15 MB) via Gemini File API
-  async function uploadLargeAudioToGeminiFileAPI(blob, mimeType, apiKey) {
+  async function uploadLargeFileToGeminiFileAPI(blob, mimeType, apiKey) {
     const startUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`;
     const startRes = await fetch(startUrl, {
       method: 'POST',
@@ -842,10 +929,10 @@
         'X-Goog-Upload-Header-Content-Type': mimeType,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ file: { display_name: 'consulta_ubs_' + Date.now() } })
+      body: JSON.stringify({ file: { display_name: 'ubs_file_' + Date.now() } })
     });
     const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
-    if (!uploadUrl) throw new Error('Falha ao iniciar upload de arquivo grande na File API.');
+    if (!uploadUrl) throw new Error('Falha ao iniciar upload de arquivo grande.');
 
     const uploadRes = await fetch(uploadUrl, {
       method: 'POST',
@@ -860,10 +947,9 @@
     return fileInfo?.file?.uri;
   }
 
-  // --- Gerador de Encaminhamento (Regulação Estadual) para Qualquer dos 6 Modelos ---
   async function generateStateReferral() {
     if (!state.activeConsultationId) {
-      alert('Selecione ou gere uma consulta primeiro para criar o encaminhamento.');
+      alert('Selecione um atendimento primeiro para gerar o encaminhamento.');
       return;
     }
     const apiKey = getSavedApiKey();
@@ -878,7 +964,7 @@
     const evolutionTextarea = document.getElementById('mainEvolutionEditor');
     const currentEvolutionText = (evolutionTextarea && evolutionTextarea.value.trim()) || consult.evolutionText;
     if (!currentEvolutionText) {
-      alert('A evolução clínica ainda está vazia. Aguarde o processamento ou digite os dados clínicos.');
+      alert('A evolução clínica ainda está vazia.');
       return;
     }
 
@@ -896,7 +982,7 @@
 
     if (btnGenerate) {
       btnGenerate.disabled = true;
-      btnGenerate.textContent = '⏳ Gerando Encaminhamento no Padrão Regulação Estadual...';
+      btnGenerate.textContent = '⏳ Formatando protocolo de Regulação Estadual...';
     }
 
     try {
@@ -928,7 +1014,7 @@
       const refBox = document.getElementById('referralOutputContainer');
       if (refEditor) refEditor.value = consult.referralText;
       if (refBox) refBox.style.display = 'block';
-      showToast('🏥 Encaminhamento para Regulação Estadual gerado com sucesso!');
+      showToast('🏛️ Documento de Regulação Estadual gerado!');
     } catch (err) {
       alert('Erro ao gerar encaminhamento: ' + err.message);
     } finally {
@@ -939,16 +1025,15 @@
     }
   }
 
-  // --- Recuperação Automática de Crash (Se o Chrome fechou durante uma consulta) ---
   async function checkCrashRecoveryAndLoadHistory() {
     const all = await window.ScribeDB.getAllConsultations();
     let recoveredCount = 0;
 
     for (const c of all) {
       if (c.status === 'recording' || c.status === 'uploading') {
-        if (c.chunkCount > 0 || (c.quickNotes && c.quickNotes.trim())) {
-          c.status = 'queued'; // Coloca automaticamente na fila para não perder nada!
-          c.errorMessage = 'Recuperado automaticamente após fechamento da aba';
+        if (c.chunkCount > 0 || c.examFileCount > 0 || (c.quickNotes && c.quickNotes.trim())) {
+          c.status = 'queued';
+          c.errorMessage = 'Recuperado automaticamente do disco local';
           await window.ScribeDB.saveConsultation(c);
           recoveredCount++;
         } else {
@@ -965,7 +1050,7 @@
     }
 
     if (recoveredCount > 0) {
-      showToast(`🛡️ Recuperação Automática: ${recoveredCount} gravação(ões) interrompida(s) foram recuperadas do disco!`);
+      showToast(`🛡️ ${recoveredCount} atendimento(s) recuperado(s) automaticamente do disco!`);
       if (getSavedApiKey()) {
         processQueueInBackground();
       }
@@ -974,7 +1059,6 @@
     }
   }
 
-  // --- Renderização da Fila Lateral e Histórico do Dia ---
   async function refreshQueueSidebar() {
     const listContainer = document.getElementById('consultationQueueList');
     if (!listContainer) return;
@@ -986,8 +1070,8 @@
     if (all.length === 0) {
       listContainer.innerHTML = `
         <div class="empty-queue">
-          <p>Nenhum atendimento gravado hoje.</p>
-          <small>Selecione o modelo ao lado e clique em <strong>Iniciar Gravação</strong>.</small>
+          <p>Nenhum atendimento registrado na sessão.</p>
+          <small>Selecione o modelo acima para iniciar o registro ou anexar laudos.</small>
         </div>
       `;
       return;
@@ -1001,18 +1085,18 @@
       const timeStr = new Date(item.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       const durMin = Math.floor((item.durationSeconds || 0) / 60);
       const durSec = (item.durationSeconds || 0) % 60;
-      const durLabel = item.durationSeconds ? `${durMin}m${String(durSec).padStart(2, '0')}s` : 'Notas';
-      const mbSize = item.audioBytes ? (item.audioBytes / (1024 * 1024)).toFixed(1) + ' MB' : '';
+      const durLabel = item.durationSeconds ? `${durMin}m${String(durSec).padStart(2, '0')}s` : 'Laudos/Notas';
+      const examLabel = item.examFileCount ? `• 📄 ${item.examFileCount} PDF` : '';
 
       let statusHTML = '';
       if (item.status === 'recording') {
-        statusHTML = `<span class="q-status st-rec" id="qstatus_${item.id}">🔴 Gravando agora...</span>`;
+        statusHTML = `<span class="q-status st-rec" id="qstatus_${item.id}">🔴 Em andamento...</span>`;
       } else if (item.status === 'queued') {
-        statusHTML = `<span class="q-status st-queue" id="qstatus_${item.id}">⏳ Na fila p/ enviar</span>`;
+        statusHTML = `<span class="q-status st-queue" id="qstatus_${item.id}">⏳ Na fila</span>`;
       } else if (item.status === 'uploading') {
-        statusHTML = `<span class="q-status st-up" id="qstatus_${item.id}">⚡ Subindo e gerando SOAP...</span>`;
+        statusHTML = `<span class="q-status st-up" id="qstatus_${item.id}">⚡ Estruturando...</span>`;
       } else if (item.status === 'done') {
-        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ Pronto (${item.tokensUsed || 0} tok)</span>`;
+        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ Concluído</span>`;
       } else if (item.status === 'error') {
         statusHTML = `<span class="q-status st-err" id="qstatus_${item.id}">⚠️ Pendente (clique p/ reprocessar)</span>`;
       }
@@ -1024,7 +1108,7 @@
         </div>
         <div class="q-meta">
           <span>${item.templateIcon || '🩺'} ${escapeHtml(item.templateName)}</span>
-          <span>${durLabel} ${mbSize ? '• ' + mbSize : ''}</span>
+          <span>${durLabel} ${examLabel}</span>
         </div>
         <div class="q-footer">
           ${statusHTML}
@@ -1060,33 +1144,29 @@
     document.getElementById('viewPatientTitle').textContent = consult.patientLabel;
     document.getElementById('viewTemplateBadge').textContent = `${consult.templateIcon || '🩺'} ${consult.templateName}`;
 
-    // Banner de Erro com botão de Reprocessar se houver falha de internet/cota
     const errBanner = document.getElementById('viewErrorBanner');
     if (consult.status === 'error') {
       errBanner.style.display = 'flex';
-      document.getElementById('viewErrorText').textContent = `Áudio salvo com segurança no disco! Motivo da pausa: ${consult.errorMessage}`;
+      document.getElementById('viewErrorText').textContent = `Registro salvo no disco local. Detalhe: ${consult.errorMessage}`;
     } else {
       errBanner.style.display = 'none';
     }
 
-    // Alertas de auditoria (campos que não foram falados no áudio)
     const auditBox = document.getElementById('auditAlertsBox');
     if (consult.auditAlerts && consult.auditAlerts.length > 0) {
       auditBox.style.display = 'block';
-      auditBox.innerHTML = `<strong>🔎 Conferência Rápida (Resguardo Jurídico):</strong> Verifique/preencha se necessário: ${consult.auditAlerts.map(a => `<span class="audit-tag">${escapeHtml(a)}</span>`).join(' ')}`;
+      auditBox.innerHTML = `<strong>🔎 Revisão de Campos:</strong> ${consult.auditAlerts.map(a => `<span class="audit-tag">${escapeHtml(a)}</span>`).join(' ')}`;
     } else {
       auditBox.style.display = 'none';
     }
 
-    // Editor principal da evolução
     const editor = document.getElementById('mainEvolutionEditor');
     if (consult.status === 'uploading' || consult.status === 'queued') {
-      editor.value = '⏳ Processando áudio da consulta em segundo plano...\n\nVocê já pode gravar o próximo paciente normalmente no painel à esquerda!';
+      editor.value = '⏳ Estruturando evolução clínica e laudos anexados em segundo plano...\n\nO painel à esquerda já está livre para o próximo atendimento.';
     } else {
       editor.value = consult.evolutionText || '';
     }
 
-    // Pré-seleciona especialidade sugerida se a IA detectou encaminhamento na fala
     if (consult.suggestedSpecialty) {
       const customSpec = document.getElementById('referralCustomSpecialty');
       if (customSpec && !customSpec.value) {
@@ -1094,7 +1174,6 @@
       }
     }
 
-    // Se já gerou encaminhamento para esta consulta, mostra
     const refBox = document.getElementById('referralOutputContainer');
     const refEditor = document.getElementById('referralResultEditor');
     if (consult.referralText) {
@@ -1105,7 +1184,6 @@
       refEditor.value = '';
     }
 
-    // Player de áudio local salvo no disco
     const audioPlayer = document.getElementById('savedAudioPlayer');
     const btnDownloadAudio = document.getElementById('btnDownloadAudio');
     if (consult.chunkCount > 0 && !consult.audioDeleted) {
@@ -1128,7 +1206,6 @@
     }
   }
 
-  // --- Calculadora de Z-Score (Puericultura) ---
   function getCalculatedZScoreText() {
     if (state.selectedTemplateId !== 'puericultura') return '';
     const sex = document.getElementById('zSex')?.value || 'M';
@@ -1163,7 +1240,6 @@
     updateZScoreLivePreview();
   }
 
-  // --- Gerenciamento da Chave API Gemini (Isolada por Usuário do Windows/Mac) ---
   function getSavedApiKey() {
     return localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '';
   }
@@ -1173,11 +1249,10 @@
     const btn = document.getElementById('btnOpenApiKeyModal');
     if (!btn) return;
     if (key) {
-      const masked = key.slice(0, 6) + '...' + key.slice(-4);
-      btn.innerHTML = `🔑 Chave Ativa (${masked})`;
+      btn.innerHTML = `🔒 Credencial Ativa`;
       btn.classList.add('key-ok');
     } else {
-      btn.innerHTML = `🔑 Configurar Chave Gemini (Grátis)`;
+      btn.innerHTML = `🔑 Credencial API`;
       btn.classList.remove('key-ok');
     }
   }
@@ -1189,20 +1264,56 @@
     if (modal) modal.style.display = 'flex';
   }
 
-  // --- Eventos da Interface ---
   function bindUIEvents() {
-    // Botões de Gravação
     document.getElementById('btnStartRec')?.addEventListener('click', startRecording);
     document.getElementById('btnPauseRec')?.addEventListener('click', togglePauseRecording);
     document.getElementById('btnStopRec')?.addEventListener('click', finishRecordingAndQueue);
 
-    // Seletor de Microfone
     document.getElementById('micSelect')?.addEventListener('change', (e) => {
       state.selectedMicDeviceId = e.target.value;
       localStorage.setItem('ubs_selected_mic', state.selectedMicDeviceId);
     });
 
-    // Upload de Áudio (Múltiplos arquivos do WhatsApp / iPhone 14 + Drag & Drop) e Processar Só Notas
+    // Anexo Discreto de PDFs / Imagens de Exames (Botão, Drag-and-Drop e Ctrl+V global!)
+    document.getElementById('examFilesInput')?.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        addExamFilesToCurrentSession(e.target.files);
+        e.target.value = '';
+      }
+    });
+
+    const examDropZone = document.getElementById('examDropZone');
+    if (examDropZone) {
+      examDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        examDropZone.classList.add('drag-active');
+      });
+      examDropZone.addEventListener('dragleave', () => {
+        examDropZone.classList.remove('drag-active');
+      });
+      examDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        examDropZone.classList.remove('drag-active');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          addExamFilesToCurrentSession(e.dataTransfer.files);
+        }
+      });
+    }
+
+    // Ctrl+V em qualquer lugar da tela para colar print ou PDF de exame discretamente!
+    document.addEventListener('paste', (e) => {
+      if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+        const files = Array.from(e.clipboardData.files).filter(f =>
+          f.type === 'application/pdf' || f.type.startsWith('image/') || /\.pdf$/i.test(f.name)
+        );
+        if (files.length > 0) {
+          e.preventDefault();
+          addExamFilesToCurrentSession(files);
+        }
+      }
+    });
+
+    // Upload de Áudio (WhatsApp / iPhone 14)
     document.getElementById('audioFileInput')?.addEventListener('change', (e) => {
       if (e.target.files && e.target.files.length > 0) {
         handleExternalAudioUpload(e.target.files);
@@ -1223,19 +1334,21 @@
         e.preventDefault();
         dropZone.classList.remove('drag-active');
         if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          handleExternalAudioUpload(e.dataTransfer.files);
+          const allFiles = Array.from(e.dataTransfer.files);
+          const examDocs = allFiles.filter(f => f.type === 'application/pdf' || f.type.startsWith('image/') || /\.pdf$/i.test(f.name));
+          const audioDocs = allFiles.filter(f => !examDocs.includes(f));
+          if (examDocs.length > 0) addExamFilesToCurrentSession(examDocs);
+          if (audioDocs.length > 0) handleExternalAudioUpload(audioDocs);
         }
       });
     }
 
-    document.getElementById('btnProcessNotesOnly')?.addEventListener('click', handleProcessNotesOnly);
+    document.getElementById('btnProcessNotesOnly')?.addEventListener('click', handleProcessNotesOrExamsOnly);
 
-    // Calculadora Z-Score em tempo real
     ['zSex', 'zMonths', 'zWeight', 'zHeight', 'zHC'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', updateZScoreLivePreview);
     });
 
-    // Salvar edições manuais feitas no editor de evolução
     document.getElementById('mainEvolutionEditor')?.addEventListener('input', async (e) => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
@@ -1245,10 +1358,9 @@
       }
     });
 
-    // Botões de Copiar (Evolução Completa ou Blocos Separados S / O / A / P)
     document.getElementById('btnCopyFullEvolution')?.addEventListener('click', () => {
       const text = document.getElementById('mainEvolutionEditor')?.value || '';
-      copyToClipboard(text, '📋 Evolução completa copiada para colar no PEC / e-SUS!');
+      copyToClipboard(text, '📋 Evolução completa copiada para o PEC / e-SUS!');
     });
 
     document.querySelectorAll('.btn-copy-section').forEach(btn => {
@@ -1260,7 +1372,6 @@
       });
     });
 
-    // Reprocessar consulta
     document.getElementById('btnReprocessConsultation')?.addEventListener('click', async () => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
@@ -1273,10 +1384,9 @@
       }
     });
 
-    // Excluir consulta individual
     document.getElementById('btnDeleteConsultation')?.addEventListener('click', async () => {
       if (!state.activeConsultationId) return;
-      if (!confirm('Deseja excluir esta consulta e seu áudio do disco?')) return;
+      if (!confirm('Deseja excluir este registro do disco?')) return;
       await window.ScribeDB.deleteConsultation(state.activeConsultationId);
       state.activeConsultationId = null;
       await refreshQueueSidebar();
@@ -1284,14 +1394,12 @@
       updateStorageStatsUI();
     });
 
-    // Gerador de Encaminhamento Estadual
     document.getElementById('btnGenerateReferral')?.addEventListener('click', generateStateReferral);
     document.getElementById('btnCopyReferral')?.addEventListener('click', () => {
       const text = document.getElementById('referralResultEditor')?.value || '';
-      copyToClipboard(text, '🏛️ Encaminhamento copiado! Pronto para colar no sistema de regulação do Estado.');
+      copyToClipboard(text, '🏛️ Encaminhamento copiado para a Regulação Estadual!');
     });
 
-    // Modal Chave API Gemini
     document.getElementById('btnOpenApiKeyModal')?.addEventListener('click', openApiKeyModal);
     document.getElementById('btnCloseApiKeyModal')?.addEventListener('click', () => {
       document.getElementById('apiKeyModal').style.display = 'none';
@@ -1311,11 +1419,10 @@
       }
       updateApiKeyStatusBadge();
       document.getElementById('apiKeyModal').style.display = 'none';
-      showToast('🔑 Configuração de Chave API salva no seu usuário!');
+      showToast('🔒 Credencial salva com sucesso!');
       processQueueInBackground();
     });
 
-    // Modal Editor de Modelos (Máscaras)
     document.getElementById('btnOpenTemplatesModal')?.addEventListener('click', openTemplateEditorModal);
     document.getElementById('btnCloseTemplatesModal')?.addEventListener('click', () => {
       document.getElementById('templatesModal').style.display = 'none';
@@ -1329,38 +1436,37 @@
       if (state.templates[id]) {
         state.templates[id].templateText = document.getElementById('tplEditorTextarea').value;
         saveTemplatesToLocal();
-        showToast('✅ Modelo atualizado com sucesso!');
+        showToast('✅ Modelo atualizado!');
         document.getElementById('templatesModal').style.display = 'none';
       }
     });
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
-      if (confirm('Restaurar todos os 6 modelos para o texto original padrão?')) {
-        localStorage.removeItem('ubs_custom_templates_v1');
+      if (confirm('Restaurar todos os 7 modelos para o texto original padrão?')) {
+        localStorage.removeItem('ubs_custom_templates_v2');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();
         showToast('🔄 Modelos originais restaurados!');
       }
     });
 
-    // Selecionar Pasta Física no Windows/Mac & Limpeza de Disco
     document.getElementById('btnSelectDiskFolder')?.addEventListener('click', async () => {
       try {
         const folderName = await window.ScribeDB.selectPhysicalFolder();
-        document.getElementById('btnSelectDiskFolder').textContent = `📁 Pasta Ativa: ${folderName}`;
-        showToast(`📁 Gravações também serão salvas na pasta "${folderName}"!`);
+        document.getElementById('btnSelectDiskFolder').textContent = `📁 Pasta: ${folderName}`;
+        showToast(`📁 Backup ativado na pasta "${folderName}"!`);
       } catch (err) {
         if (err.name !== 'AbortError') alert(err.message);
       }
     });
 
     document.getElementById('btnClearOldAudios')?.addEventListener('click', async () => {
-      if (!confirm('Deseja limpar todos os atendimentos e áudios salvos neste navegador?')) return;
+      if (!confirm('Deseja limpar todos os registros salvos neste navegador?')) return;
       await window.ScribeDB.clearAllData();
       state.activeConsultationId = null;
       await refreshQueueSidebar();
       await renderActiveConsultationView(null);
       updateStorageStatsUI();
-      showToast('🧹 Histórico e áudios locais apagados com sucesso!');
+      showToast('🧹 Registros locais limpos!');
     });
   }
 
@@ -1380,11 +1486,11 @@
     modal.style.display = 'flex';
   }
 
-  // --- Extrator Inteligente de Blocos (Subjetivo / Objetivo / Avaliação / Conduta) para o PEC ---
   function extractSectionFromText(fullText, sectionKey) {
     const mapHeaders = {
       subjetivo: /(?:4\.\s*)?SUBJETIVO\s*\n([\s\S]*?)(?=\n(?:5\.|6\.|\s*OBJETIVO)|\s*$)/i,
-      objetivo: /(?:6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*\n([\s\S]*?)(?=\n(?:7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
+      objetivo: /(?:6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*\n([\s\S]*?)(?=\n(?:EXAMES COMPLEMENTARES|7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
+      exames: /EXAMES COMPLEMENTARES\s*\n([\s\S]*?)(?=\n(?:7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
       avaliacao: /(?:9\.\s*)?AVALIAÇÃO[^\n]*\n([\s\S]*?)(?=\n(?:10\.|\s*CONDUTA)|\s*$)/i,
       conduta: /(?:10\.\s*)?CONDUTA\s*\n([\s\S]*?)$/i
     };
@@ -1394,7 +1500,6 @@
     return match && match[1] ? match[1].trim() : fullText;
   }
 
-  // --- Utilitários de UI ---
   function updateRecordingControlsUI() {
     const btnStart = document.getElementById('btnStartRec');
     const btnPause = document.getElementById('btnPauseRec');
@@ -1406,17 +1511,17 @@
       btnStart.style.display = 'none';
       btnPause.style.display = 'inline-flex';
       btnStop.style.display = 'inline-flex';
-      btnPause.textContent = state.isPaused ? '▶️ Retomar Gravação' : '⏸️ Pausar';
+      btnPause.textContent = state.isPaused ? '▶️ Retomar' : '⏸️ Pausar';
       statusDot.className = state.isPaused ? 'rec-dot paused' : 'rec-dot active';
       statusLabel.textContent = state.isPaused
-        ? 'Gravação Pausada (blocos salvos no disco)'
-        : 'Gravando consulta (salvando no disco a cada 3s)...';
+        ? 'Pausado (salvo no disco)'
+        : 'Captando atendimento (salvo a cada 3s)...';
     } else {
       btnStart.style.display = 'inline-flex';
       btnPause.style.display = 'none';
       btnStop.style.display = 'none';
       statusDot.className = 'rec-dot';
-      statusLabel.textContent = 'Pronto para gravar';
+      statusLabel.textContent = 'Pronto para iniciar registro';
     }
   }
 
@@ -1432,7 +1537,7 @@
     const stats = await window.ScribeDB.getStorageStats();
     const el = document.getElementById('diskUsageBadge');
     if (el) {
-      el.textContent = `💽 Disco: ${stats.totalAudioMB} MB (${stats.consultationCount} atend.)`;
+      el.textContent = `💽 ${stats.totalAudioMB} MB (${stats.consultationCount})`;
     }
   }
 
