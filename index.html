@@ -8,29 +8,27 @@
 </head>
 <body>
 
-  <!-- BARRA SUPERIOR DISCRETA (VISUAL INSTITUCIONAL DE PRONTUÁRIO MÉDICO) -->
+  <!-- BARRA SUPERIOR CLEAN COM AS 2 TELAS PRINCIPAIS ("NOVO ATENDIMENTO" & "MEU HISTÓRICO") -->
   <header class="topbar">
     <div class="brand">
-      <span class="brand-logo">🏥</span>
-      <div>
-        <h1>Prontuário Clínico APS • Módulo de Evolução e Regulação</h1>
-        <small>Registro Clínico Estruturado (SOAP) • Integração de Laudos • Regulação Estadual</small>
-      </div>
+      <div class="brand-icon">⚕</div>
+      <span class="brand-title">Prontuário APS</span>
     </div>
 
-    <div class="topbar-metrics">
-      <span class="metric-pill" title="Status da folha atual">
-        ⏱️ Status: <strong id="liveTokenEstimate">Pronto</strong>
-      </span>
-      <span class="metric-pill" title="Cota diária estimada da chave gratuita (~60 atendimentos completos por dia)">
-        🔋 Cota Diária: <strong id="dailyTokenCounter">100% livre (~60 consultas restantes hoje)</strong>
-      </span>
-      <span class="metric-pill" id="diskUsageBadge" title="Armazenamento local de segurança">
-        💽 0.0 MB
-      </span>
-      <button type="button" class="btn-top" id="btnSelectDiskFolder" title="Opcional: Salvar cópia em pasta local do computador">
-        📁 Pasta Local
+    <nav class="nav-tabs">
+      <button type="button" class="nav-tab active" id="tabBtnRecord" data-target="pageRecord">
+        Novo Atendimento
       </button>
+      <button type="button" class="nav-tab" id="tabBtnHistory" data-target="pageHistory">
+        Meu Histórico
+        <span class="tab-badge" id="queueTotalBadge">0</span>
+      </button>
+    </nav>
+
+    <div class="topbar-right">
+      <span class="quota-pill" title="Cota diária estimada da chave gratuita">
+        🔋 <strong id="dailyTokenCounter">100% livre (~60 restantes)</strong>
+      </span>
       <button type="button" class="btn-top" id="btnOpenTemplatesModal">
         📝 Máscaras (7)
       </button>
@@ -40,393 +38,416 @@
     </div>
   </header>
 
-  <!-- ÁREA DE TRABALHO PRINCIPAL -->
-  <main class="workspace">
+  <!-- ========================================================================
+       PÁGINA 1: NOVO ATENDIMENTO (TELA LIMPA E CENTRALIZADA)
+       ======================================================================== -->
+  <main class="page-container" id="pageRecord">
+    <div class="center-header">
+      <h2>Qual atendimento você vai realizar?</h2>
+      <p>Escolha o modelo abaixo. As evoluções processadas ficam salvas automaticamente em <strong>Meu Histórico</strong> por 30 dias.</p>
+    </div>
 
-    <!-- COLUNA ESQUERDA: MODELO, CAPTURA, LAUDOS PDF E FILA -->
-    <section class="left-column">
+    <!-- GRADE LIMPA DOS 7 MODELOS (ESTILO DR. ASSISTENTE) -->
+    <div class="template-grid" id="templateGrid"></div>
 
-      <!-- 1. ESCOLHA DO MODELO DE ATENDIMENTO -->
-      <div class="card">
-        <div class="card-title">
-          <span>1. Protocolo / Máscara de Atendimento</span>
-          <span style="font-size: 11px; font-weight: 500;">7 modelos APS</span>
-        </div>
-        <div class="template-grid" id="templateGrid"></div>
+    <!-- PAINEL ESPECÍFICO 1: PUERICULTURA (Z-SCORE + ALEITAMENTO / FÓRMULA) -->
+    <div class="zscore-box" id="puericulturaZScoreBox">
+      <div style="font-weight: 700; font-size: 13px; color: #166534;">
+        👶 Dados da Puericultura: Antropometria (Z-Score OMS) & Aleitamento
       </div>
-
-      <!-- 2A. PAINEL DE PUERICULTURA: Z-SCORE + ALEITAMENTO / FÓRMULA -->
-      <div class="zscore-box" id="puericulturaZScoreBox">
-        <div style="font-weight: 700; font-size: 12.5px; color: #166534;">
-          👶 Dados da Puericultura: Antropometria (Z-Score OMS) & Aleitamento
-        </div>
-        <div class="zscore-grid">
-          <div>
-            <label>Sexo</label>
-            <select id="zSex" class="select-box" style="padding: 5px;">
-              <option value="M">Masc</option>
-              <option value="F">Fem</option>
-            </select>
-          </div>
-          <div>
-            <label>Idade (meses)</label>
-            <input type="number" id="zMonths" class="input-text" style="padding: 5px;" placeholder="Ex: 6" step="0.5" />
-          </div>
-          <div>
-            <label>Peso (kg ou g)</label>
-            <input type="number" id="zWeight" class="input-text" style="padding: 5px;" placeholder="7.8 ou 7800" step="0.01" />
-          </div>
-          <div>
-            <label>Estatura (cm)</label>
-            <input type="number" id="zHeight" class="input-text" style="padding: 5px;" placeholder="Ex: 67.5" step="0.1" />
-          </div>
-          <div>
-            <label>PC (cm)</label>
-            <input type="number" id="zHC" class="input-text" style="padding: 5px;" placeholder="Ex: 43.2" step="0.1" />
-          </div>
-        </div>
-
-        <!-- Campos de Aleitamento / Fórmula Infantil -->
-        <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 6px; margin-top: 7px;">
-          <div>
-            <label style="font-size: 11px; font-weight: 600; color: #166534; display: block; margin-bottom: 2px;">Tipo de Aleitamento / Dieta</label>
-            <select id="pueriFeedingType" class="select-box" style="padding: 5px; font-size: 12px;">
-              <option value="">-- Selecionar (ou falar no áudio) --</option>
-              <option value="Aleitamento Materno Exclusivo (SME) em livre demanda">SME (Materno Exclusivo - livre demanda)</option>
-              <option value="Aleitamento Materno Complementado">AM Complementado (LM + Introdução Alimentar)</option>
-              <option value="Aleitamento Misto (Leite Materno + Fórmula Infantil)">Aleitamento Misto (LM + Fórmula)</option>
-              <option value="Fórmula Infantil Exclusiva">Fórmula Infantil Exclusiva</option>
-              <option value="Alimentação da família">Alimentação da Família</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size: 11px; font-weight: 600; color: #166534; display: block; margin-bottom: 2px;">Qual Fórmula, Quantidade (ml/medidas) e Intervalo</label>
-            <input type="text" id="pueriFormulaDetails" class="input-text" style="padding: 5px; font-size: 12px;" placeholder="Ex: NAN 1, 120ml (4 med) de 3/3h + frutas" />
-          </div>
-        </div>
-
-        <div class="zscore-preview" id="zScorePreviewResult">
-          Preencha idade (meses), medidas e aleitamento acima para incluir automaticamente na evolução.
-        </div>
-      </div>
-
-      <!-- 2B. PAINEL DE PRÉ-NATAL: DADOS OBJETIVOS OBSTÉTRICOS (IG, PA, PESO, AU, BCF, MF, EDEMA) -->
-      <div class="prenatal-box" id="prenatalObjectiveBox" style="display: none;">
-        <div style="font-weight: 700; font-size: 12.5px; color: #9d174d; margin-bottom: 6px;">
-          🤰 Dados Objetivos do Pré-Natal (Preenche o Objetivo automaticamente)
-        </div>
-        <div class="prenatal-grid">
-          <div>
-            <label>IG Atual</label>
-            <input type="text" id="pnIG" class="input-text" style="padding: 5px;" placeholder="Ex: 28s 4d" />
-          </div>
-          <div>
-            <label>PA (mmHg)</label>
-            <input type="text" id="pnPA" class="input-text" style="padding: 5px;" placeholder="110x70" />
-          </div>
-          <div>
-            <label>Peso (kg)</label>
-            <input type="text" id="pnWeight" class="input-text" style="padding: 5px;" placeholder="68.5" />
-          </div>
-          <div>
-            <label>AU (cm)</label>
-            <input type="text" id="pnAU" class="input-text" style="padding: 5px;" placeholder="Ex: 27" />
-          </div>
-          <div>
-            <label>BCF (bpm)</label>
-            <input type="text" id="pnBCF" class="input-text" style="padding: 5px;" placeholder="Ex: 144" />
-          </div>
-          <div>
-            <label>Mov. Fetais (MF)</label>
-            <select id="pnMF" class="select-box" style="padding: 5px;">
-              <option value="Presentes">Presentes (+)</option>
-              <option value="Ausentes">Ausentes (-)</option>
-              <option value="Não percebidos (IG precoce)">IG precoce</option>
-            </select>
-          </div>
-          <div>
-            <label>Edema MMII</label>
-            <select id="pnEdema" class="select-box" style="padding: 5px;">
-              <option value="Ausente">Ausente</option>
-              <option value="+/4+">+/4+</option>
-              <option value="++/4+">++/4+</option>
-              <option value="+++/4+">+++/4+</option>
-              <option value="++++/4+">++++/4+</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- 3. CABEÇALHO DE ATENDIMENTO DISCRETO (CAMUFLADO COMO PRONTUÁRIO PEC) -->
-      <div class="card">
-        <div class="card-title">
-          <span>2. Dados do Atendimento Atual</span>
-          <span id="diskSaveIndicator" style="font-size: 11px; color: #64748b;">Sincronizado</span>
-        </div>
-
-        <div class="patient-row" style="grid-template-columns: 1fr;">
-          <input type="text" id="patientIdentifier" class="input-text" placeholder="Nome / Iniciais / CNS ou Prontuário do Paciente" />
-        </div>
-
-        <div class="recorder-box">
-          <div class="rec-header">
-            <div class="rec-status-wrap">
-              <span class="rec-dot" id="recStatusDot"></span>
-              <span id="recStatusLabel">Aguardando abertura de folha</span>
-            </div>
-            <div class="rec-timer" id="recTimerDisplay" title="Tempo de atendimento (Atalho: Alt+R)">00:00</div>
-          </div>
-
-          <!-- Indicador de linha sutil (não dança na tela para não chamar atenção) -->
-          <div class="vu-meter-bar">
-            <div class="vu-meter-fill" id="vuMeterFill"></div>
-          </div>
-
-          <div class="silence-banner" id="silenceWarningBanner"></div>
-
-          <div class="rec-buttons">
-            <button type="button" class="btn btn-open-sheet" id="btnStartRec" title="Atalho rápido: Alt + R">
-              ➕ Abrir Folha de Atendimento
-            </button>
-            <button type="button" class="btn btn-pause" id="btnPauseRec" style="display: none;">
-              Aguardar / Pausar
-            </button>
-            <button type="button" class="btn btn-finish" id="btnStopRec" style="display: none;" title="Atalho rápido: Alt + R">
-              ✔️ Salvar e Fechar Folha
-            </button>
-            <button type="button" class="btn btn-secondary" id="btnCancelRec" style="display: none; color: #b91c1c;" title="Descartar folha atual">
-              ✕ Cancelar
-            </button>
-          </div>
-        </div>
-
-        <!-- ÁREA DISCRETA PARA ANEXAR PDFs / IMAGENS DE EXAMES -->
-        <div id="examDropZone" class="exam-attach-box">
-          <div class="exam-attach-header">
-            <div>
-              <strong>📎 Documentos / Resultados (PDF):</strong>
-              <span class="exam-count-tag" id="examCountBadge">0</span>
-            </div>
-            <label class="btn btn-secondary" style="cursor: pointer; padding: 4px 9px; font-size: 11.5px;">
-              + Anexar Arquivo
-              <input type="file" id="examFilesInput" accept="application/pdf,image/*,.pdf,.png,.jpg,.jpeg" multiple style="display: none;" />
-            </label>
-          </div>
-          <div id="pendingExamFilesList" class="exam-chips-wrap" style="display: none;"></div>
-        </div>
-
-        <!-- Campo de Notas Rápidas / Sinais Vitais -->
-        <div style="margin-bottom: 8px;">
-          <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px;">
-            ✍️ Anotações Clínicas / Triagem / Sinais Vitais:
-          </label>
-          <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, AU, BCF, HGT ou anotações livres..."></textarea>
-        </div>
-
-        <div style="display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap;">
-          <label class="btn btn-secondary" style="cursor: pointer; flex: 1;">
-            📂 Importar Registro Externo (VD)
-            <input type="file" id="audioFileInput" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" multiple style="display: none;" />
-          </label>
-          <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly">
-            ⚡ Gerar das Anotações / PDF
-          </button>
-        </div>
-
-        <div id="whatsappDropZone" class="drop-zone" style="margin-top: 6px; padding: 6px; font-size: 11px;">
-          Arraste arquivos de Visita Domiciliar ou PDFs para cá (ou pressione Ctrl+V)
-        </div>
-      </div>
-
-      <!-- 4. FILA ASSÍNCRONA & HISTÓRICO DOS ÚLTIMOS 30 DIAS -->
-      <div class="card">
-        <div class="card-title">
-          <span>3. Atendimentos Salvos — Últimos 30 Dias (<span id="queueTotalBadge">0</span>)</span>
-          <button type="button" class="btn-secondary" id="btnClearOldAudios" style="padding: 3px 8px; font-size: 11px; border-radius: 5px; border: none; cursor: pointer;">
-            🧹 Limpar Tudo
-          </button>
-        </div>
-        <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-          <input type="text" id="historySearchInput" class="input-text" style="padding: 5px 8px; font-size: 12px;" placeholder="🔍 Buscar paciente ou data..." />
-          <select id="historyFilterSelect" class="select-box" style="width: 155px; padding: 5px; font-size: 11.5px;">
-            <option value="all">Todos (30 dias)</option>
-            <option value="pending_pec">📌 Falta Evoluir</option>
-            <option value="done_pec">☑️ Já Evoluídos</option>
+      <div class="zscore-grid">
+        <div>
+          <label>Sexo</label>
+          <select id="zSex" class="select-box" style="padding: 6px;">
+            <option value="M">Masc</option>
+            <option value="F">Fem</option>
           </select>
         </div>
-        <div class="queue-list" id="consultationQueueList"></div>
-      </div>
-
-    </section>
-
-    <!-- COLUNA DIREITA: PRONTUÁRIO SOAP ESTRUTURADO + GERADOR DE ENCAMINHAMENTO ESTADUAL -->
-    <section class="right-column">
-      <div class="card" style="flex: 1;">
-
-        <!-- Estado Vazio -->
-        <div class="viewer-empty" id="viewerEmptyState">
-          <div style="font-size: 40px; margin-bottom: 10px;">📋</div>
-          <h3 style="font-size: 16px; color: var(--text-main); margin-bottom: 6px;">
-            Módulo de Evolução Clínica e Regulação APS
-          </h3>
-          <p style="max-width: 480px;">
-            Selecione o protocolo de atendimento à esquerda, anexe laudos em PDF se houver e inicie o registro. A fila em segundo plano permite iniciar o próximo paciente imediatamente.
-          </p>
+        <div>
+          <label>Idade (meses)</label>
+          <input type="number" id="zMonths" class="input-text" style="padding: 6px;" placeholder="Ex: 6" step="0.5" />
         </div>
-
-        <!-- Conteúdo da Consulta Selecionada -->
-        <div id="viewerContentState" style="display: none;">
-          <div class="viewer-header">
-            <div class="viewer-title-group">
-              <h2 id="viewPatientTitle">Paciente</h2>
-              <span class="badge-model" id="viewTemplateBadge">Protocolo</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <button type="button" class="btn btn-secondary" id="btnToggleEvolvedPEC" title="Marcar se você já colou/evoluiu este paciente no PEC">
-                📌 Marcar como Evoluído no PEC
-              </button>
-              <audio id="savedAudioPlayer" controls style="height: 30px; display: none;"></audio>
-              <button type="button" class="btn btn-secondary" id="btnDownloadAudio" style="display: none;">
-                ⬇️ Áudio
-              </button>
-              <button type="button" class="btn btn-secondary" id="btnReprocessConsultation" title="Reprocessar registro">
-                🔄 Atualizar
-              </button>
-              <button type="button" class="btn btn-secondary" id="btnDeleteConsultation" style="color: var(--danger);">
-                🗑️ Excluir
-              </button>
-            </div>
-          </div>
-
-          <!-- Banner de Erro / Reprocessamento -->
-          <div class="error-banner" id="viewErrorBanner">
-            <span id="viewErrorText"></span>
-            <button type="button" class="btn btn-primary" onclick="document.getElementById('btnReprocessConsultation').click()">
-              🔄 Processar Agora
-            </button>
-          </div>
-
-          <!-- Alertas de Auditoria / Campos em Branco -->
-          <div class="audit-box" id="auditAlertsBox"></div>
-
-          <!-- Barra de Botões de Cópia Rápida para o PEC / e-SUS -->
-          <div class="copy-toolbar">
-            <button type="button" class="btn btn-primary" id="btnCopyFullEvolution">
-              📋 Copiar Evolução Completa
-            </button>
-            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="subjetivo">
-              Copiar Subjetivo
-            </button>
-            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="objetivo">
-              Copiar Objetivo
-            </button>
-            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="exames">
-              Copiar Exames
-            </button>
-            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="avaliacao">
-              Copiar Avaliação
-            </button>
-            <button type="button" class="btn btn-secondary btn-copy-section" data-sec="conduta">
-              Copiar Conduta
-            </button>
-          </div>
-
-          <!-- Editor da Evolução (Preenchido na sua máscara exata + Exames Complementares) -->
-          <textarea id="mainEvolutionEditor" class="evolution-editor" placeholder="A evolução estruturada aparecerá aqui..."></textarea>
-
-          <!-- Transcrição Literal do Áudio (Oculta em gaveta discreta para conferência) -->
-          <details id="rawTranscriptBox" style="margin-top: 8px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 7px; padding: 7px 11px; font-size: 12px; color: #475569;">
-            <summary style="cursor: pointer; font-weight: 700;">🔎 Conferir Transcrição Bruta do Áudio (O que foi ouvido na consulta)</summary>
-            <div id="rawTranscriptText" style="margin-top: 6px; white-space: pre-wrap; font-family: inherit;"></div>
-          </details>
-
-          <!-- GERADOR DE ENCAMINHAMENTO PARA REGULAÇÃO ESTADUAL (TODOS OS 7 MODELOS) -->
-          <div class="referral-section">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
-              <div style="font-weight: 800; font-size: 14px; color: #5b21b6;">
-                🏛️ Referência / Encaminhamento — Regulação Estadual (SISREG / CROSS / GERCON)
-              </div>
-              <span style="font-size: 11.5px; color: #6b21a8; font-weight: 600;">
-                Integra quadro clínico, exame físico e exames complementares automaticamente
-              </span>
-            </div>
-
-            <div class="referral-grid">
-              <div>
-                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-                  Especialidade Solicitada (SUS):
-                </label>
-                <select id="referralSpecialtySelect" class="select-box">
-                  <option value="Cardiologia">Cardiologia</option>
-                  <option value="Pré-Natal de Alto Risco (PNAR)">Pré-Natal de Alto Risco (PNAR)</option>
-                  <option value="Endocrinologia e Metabologia">Endocrinologia e Metabologia</option>
-                  <option value="Ambulatório Trans / Processo Transexualizador">Ambulatório Trans / Processo Transexualizador</option>
-                  <option value="Ortopedia e Traumatologia">Ortopedia e Traumatologia</option>
-                  <option value="Neuropediatria / Neurologia Infantil">Neuropediatria / Neurologia Infantil</option>
-                  <option value="Pediatria / Especialidade Pediátrica">Pediatria / Especialidade Pediátrica</option>
-                  <option value="Neurologia Adulto">Neurologia Adulto</option>
-                  <option value="Ginecologia / Mastologia">Ginecologia / Mastologia</option>
-                  <option value="Oftalmologia">Oftalmologia</option>
-                  <option value="Otorrinolaringologia">Otorrinolaringologia</option>
-                  <option value="Cirurgia Geral / Ambulatorial">Cirurgia Geral / Ambulatorial</option>
-                  <option value="Urologia">Urologia</option>
-                  <option value="Gastroenterologia / Hepatologia">Gastroenterologia / Hepatologia</option>
-                  <option value="Pneumologia">Pneumologia</option>
-                  <option value="Reumatologia">Reumatologia</option>
-                  <option value="Nefrologia">Nefrologia</option>
-                  <option value="Vascular / Angiologia">Vascular / Angiologia</option>
-                  <option value="Psiquiatria / Saúde Mental">Psiquiatria / Saúde Mental</option>
-                  <option value="Dermatologia">Dermatologia</option>
-                  <option value="Fonoaudiologia / Reabilitação">Fonoaudiologia / Reabilitação</option>
-                </select>
-              </div>
-
-              <div>
-                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-                  Ou especifique outro serviço/exame:
-                </label>
-                <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." />
-              </div>
-
-              <div>
-                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-                  Classificação de Prioridade:
-                </label>
-                <select id="referralPrioritySelect" class="select-box">
-                  <option value="Prioritário / P1 (Amarelo)">Prioritário / P1 (Amarelo)</option>
-                  <option value="Urgência Eletiva / P0 (Vermelho)">Urgência Eletiva / P0 (Vermelho)</option>
-                  <option value="Rotina / Eletivo / P2 (Verde/Azul)">Rotina / Eletivo / P2 (Verde/Azul)</option>
-                </select>
-              </div>
-            </div>
-
-            <div style="margin-bottom: 8px;">
-              <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-                📋 Dados Complementares / Tratamentos Prévios na APS (opcional):
-              </label>
-              <input type="text" id="referralExtraDataInput" class="input-text" placeholder="Ex: Tratamento otimizado na APS há 6 meses sem controle; exames prévios adicionais..." />
-            </div>
-
-            <button type="button" class="btn btn-purple" id="btnGenerateReferral" style="width: 100%;">
-              🏛️ Gerar Texto de Encaminhamento (Sistema Estadual)
-            </button>
-
-            <div id="referralOutputContainer" style="display: none; margin-top: 10px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <strong style="font-size: 12.5px; color: #4c1d95;">Documento Formatado para Regulação:</strong>
-                <button type="button" class="btn btn-primary" id="btnCopyReferral">
-                  📋 Copiar p/ Regulação Estadual
-                </button>
-              </div>
-              <textarea id="referralResultEditor" class="referral-editor"></textarea>
-            </div>
-          </div>
-
+        <div>
+          <label>Peso (kg ou g)</label>
+          <input type="number" id="zWeight" class="input-text" style="padding: 6px;" placeholder="7.8 ou 7800" step="0.01" />
+        </div>
+        <div>
+          <label>Estatura (cm)</label>
+          <input type="number" id="zHeight" class="input-text" style="padding: 6px;" placeholder="Ex: 67.5" step="0.1" />
+        </div>
+        <div>
+          <label>PC (cm)</label>
+          <input type="number" id="zHC" class="input-text" style="padding: 6px;" placeholder="Ex: 43.2" step="0.1" />
         </div>
       </div>
-    </section>
 
+      <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; margin-top: 8px;">
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: #166534; display: block; margin-bottom: 3px;">Tipo de Aleitamento / Dieta</label>
+          <select id="pueriFeedingType" class="select-box" style="padding: 6px; font-size: 12.5px;">
+            <option value="">-- Selecionar (ou falar durante a consulta) --</option>
+            <option value="Aleitamento Materno Exclusivo (SME) em livre demanda">SME (Materno Exclusivo - livre demanda)</option>
+            <option value="Aleitamento Materno Complementado">AM Complementado (LM + Introdução Alimentar)</option>
+            <option value="Aleitamento Misto (Leite Materno + Fórmula Infantil)">Aleitamento Misto (LM + Fórmula)</option>
+            <option value="Fórmula Infantil Exclusiva">Fórmula Infantil Exclusiva</option>
+            <option value="Alimentação da família">Alimentação da Família</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size: 11px; font-weight: 700; color: #166534; display: block; margin-bottom: 3px;">Qual Fórmula, Quantidade (ml/medidas) e Intervalo</label>
+          <input type="text" id="pueriFormulaDetails" class="input-text" style="padding: 6px; font-size: 12.5px;" placeholder="Ex: NAN 1, 120ml (4 med) de 3/3h + frutas" />
+        </div>
+      </div>
+
+      <div class="zscore-preview" id="zScorePreviewResult">
+        Preencha idade (meses), medidas e aleitamento acima para incluir automaticamente na evolução.
+      </div>
+    </div>
+
+    <!-- PAINEL ESPECÍFICO 2: PRÉ-NATAL (DADOS OBJETIVOS OBSTÉTRICOS) -->
+    <div class="prenatal-box" id="prenatalObjectiveBox">
+      <div style="font-weight: 700; font-size: 13px; color: #9d174d; margin-bottom: 8px;">
+        🤰 Dados Objetivos do Pré-Natal (Preenche o Objetivo automaticamente)
+      </div>
+      <div class="prenatal-grid">
+        <div>
+          <label>IG Atual</label>
+          <input type="text" id="pnIG" class="input-text" style="padding: 6px;" placeholder="Ex: 28s 4d" />
+        </div>
+        <div>
+          <label>PA (mmHg)</label>
+          <input type="text" id="pnPA" class="input-text" style="padding: 6px;" placeholder="110x70" />
+        </div>
+        <div>
+          <label>Peso (kg)</label>
+          <input type="text" id="pnWeight" class="input-text" style="padding: 6px;" placeholder="68.5" />
+        </div>
+        <div>
+          <label>AU (cm)</label>
+          <input type="text" id="pnAU" class="input-text" style="padding: 6px;" placeholder="Ex: 27" />
+        </div>
+        <div>
+          <label>BCF (bpm)</label>
+          <input type="text" id="pnBCF" class="input-text" style="padding: 6px;" placeholder="Ex: 144" />
+        </div>
+        <div>
+          <label>Mov. Fetais (MF)</label>
+          <select id="pnMF" class="select-box" style="padding: 6px;">
+            <option value="Presentes">Presentes (+)</option>
+            <option value="Ausentes">Ausentes (-)</option>
+            <option value="Não percebidos (IG precoce)">IG precoce</option>
+          </select>
+        </div>
+        <div>
+          <label>Edema MMII</label>
+          <select id="pnEdema" class="select-box" style="padding: 6px;">
+            <option value="Ausente">Ausente</option>
+            <option value="+/4+">+/4+</option>
+            <option value="++/4+">++/4+</option>
+            <option value="+++/4+">+++/4+</option>
+            <option value="++++/4+">++++/4+</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- CARTÃO CENTRAL LIMPO E DISCRETO DE ABERTURA DE FOLHA -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <label style="font-weight: 700; font-size: 13.5px;">Identificação do Paciente</label>
+        <span id="diskSaveIndicator" style="font-size: 11.5px; color: #64748b;">Sincronizado no disco</span>
+      </div>
+
+      <input type="text" id="patientIdentifier" class="input-text" placeholder="Digite o nome ou iniciais do paciente (ex: CRISTIANE, TANIA MARIA...)" />
+
+      <div class="recorder-box">
+        <div class="rec-header">
+          <div class="rec-status-wrap">
+            <span class="rec-dot" id="recStatusDot"></span>
+            <span id="recStatusLabel">Aguardando abertura de folha</span>
+          </div>
+          <div class="rec-timer" id="recTimerDisplay" title="Tempo de sessão (Atalho: Alt+R)">00:00</div>
+        </div>
+
+        <div class="vu-meter-bar">
+          <div class="vu-meter-fill" id="vuMeterFill"></div>
+        </div>
+
+        <div class="silence-banner" id="silenceWarningBanner"></div>
+
+        <div class="rec-buttons">
+          <button type="button" class="btn btn-open-sheet" id="btnStartRec" title="Atalho rápido: Alt + R">
+            ➕ Abrir Folha de Atendimento
+          </button>
+          <button type="button" class="btn btn-pause" id="btnPauseRec" style="display: none;">
+            Aguardar / Pausar
+          </button>
+          <button type="button" class="btn btn-finish" id="btnStopRec" style="display: none;" title="Atalho rápido: Alt + R">
+            ✔️ Salvar e Fechar Folha
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnCancelRec" style="display: none; color: #b91c1c;" title="Descartar folha atual">
+            ✕ Cancelar
+          </button>
+        </div>
+      </div>
+
+      <!-- ANEXO DISCRETO DE LAUDOS PDF -->
+      <div id="examDropZone" class="exam-attach-box">
+        <div class="exam-attach-header">
+          <div>
+            <strong>📎 Exames Complementares (PDF / Imagem):</strong>
+            <span class="exam-count-tag" id="examCountBadge">0</span>
+          </div>
+          <label class="btn btn-secondary" style="cursor: pointer; padding: 5px 10px; font-size: 12px;">
+            + Anexar PDF
+            <input type="file" id="examFilesInput" accept="application/pdf,image/*,.pdf,.png,.jpg,.jpeg" multiple style="display: none;" />
+          </label>
+        </div>
+        <div id="pendingExamFilesList" class="exam-chips-wrap" style="display: none;"></div>
+      </div>
+
+      <!-- ANOTAÇÕES RÁPIDAS -->
+      <div style="margin-bottom: 12px;">
+        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px;">
+          ✍️ Anotações Rápidas / Sinais Vitais (opcional):
+        </label>
+        <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, HGT ou anotações livres..."></textarea>
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap;">
+        <label class="btn btn-secondary" style="cursor: pointer; flex: 1;">
+          📂 Importar Registro Externo (VD / WhatsApp)
+          <input type="file" id="audioFileInput" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" multiple style="display: none;" />
+        </label>
+        <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly">
+          ⚡ Gerar Só das Anotações / PDF
+        </button>
+      </div>
+
+      <div id="whatsappDropZone" class="drop-zone" style="margin-top: 8px;">
+        Arraste arquivos de Visita Domiciliar ou PDFs para cá (ou pressione Ctrl+V)
+      </div>
+    </div>
   </main>
+
+  <!-- ========================================================================
+       PÁGINA 2: MEU HISTÓRICO (AGRUPADO POR DATA + FILTROS COMPLETOS)
+       ======================================================================== -->
+  <main class="page-container" id="pageHistory" style="display: none;">
+    <div class="history-header-bar">
+      <h2>Meu Histórico</h2>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span style="font-size: 12px; color: var(--text-muted);" id="diskUsageBadge">💽 0.0 MB</span>
+        <button type="button" class="btn btn-secondary" id="btnSelectDiskFolder" style="padding: 6px 10px; font-size: 12px;">
+          📁 Pasta Backup
+        </button>
+        <button type="button" class="btn btn-secondary" id="btnClearOldAudios" style="padding: 6px 10px; font-size: 12px; color: var(--danger);">
+          🧹 Limpar Histórico
+        </button>
+      </div>
+    </div>
+
+    <!-- BARRA DE FILTROS COMPLETA (NOME, TIPO DE ATENDIMENTO, DATA E STATUS PEC) -->
+    <div class="history-filters-grid">
+      <div>
+        <label class="filter-label">Buscar Paciente</label>
+        <input type="text" id="historySearchInput" class="input-text" style="padding: 8px 10px;" placeholder="🔍 Nome do paciente..." />
+      </div>
+
+      <div>
+        <label class="filter-label">Tipo de Atendimento</label>
+        <select id="historyTemplateFilter" class="select-box" style="padding: 8px 10px;">
+          <option value="all">Todos os Modelos (7)</option>
+          <option value="geral">🩺 Consulta Geral (SOAP)</option>
+          <option value="prenatal">🤰 Consulta de Pré-Natal</option>
+          <option value="puericultura">👶 Puericultura (c/ Z-Score)</option>
+          <option value="visita_domiciliar">🏠 Visita Domiciliar (VD)</option>
+          <option value="interconsulta">🤝 Interconsulta Enfermagem</option>
+          <option value="lgbt_primeira">🏳️‍⚧️ LGBTQIAP+ (1ª Consulta)</option>
+          <option value="lgbt_seguimento">🏳️‍🌈 LGBTQIAP+ (Seguimento)</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="filter-label">Filtrar por Data</label>
+        <input type="date" id="historyDateFilter" class="input-text" style="padding: 7px 10px;" />
+      </div>
+
+      <div>
+        <label class="filter-label">Status no PEC</label>
+        <select id="historyFilterSelect" class="select-box" style="padding: 8px 10px;">
+          <option value="all">Todos (30 dias)</option>
+          <option value="pending_pec">📌 Falta Evoluir</option>
+          <option value="done_pec">☑️ Já Evoluídos</option>
+        </select>
+      </div>
+
+      <div>
+        <button type="button" class="btn btn-secondary" id="btnResetHistoryFilters" style="padding: 9px 12px;" title="Limpar filtros">
+          Limpar
+        </button>
+      </div>
+    </div>
+
+    <!-- LISTA AGRUPADA POR DATA (EX: 28 DE OUTUBRO DE 2026) -->
+    <div id="consultationQueueList"></div>
+  </main>
+
+  <!-- ========================================================================
+       MODAL / JANELA DE DETALHE DO PACIENTE (COM BOTÃO "✕ FECHAR" NO TOPO!)
+       Não sai da lista do Histórico e não perde seus filtros!
+       ======================================================================== -->
+  <div class="patient-modal-backdrop" id="patientDetailModal">
+    <div class="patient-modal-sheet">
+      <div class="sheet-top-bar">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <h2 id="viewPatientTitle" style="font-size: 20px; font-weight: 800; text-transform: uppercase;">PACIENTE</h2>
+          <span class="h-tpl-tag" id="viewTemplateBadge" style="font-size: 12px; padding: 4px 10px;">Modelo</span>
+          <span id="viewDateLabel" style="font-size: 12.5px; color: var(--text-muted); font-weight: 600;"></span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary" id="btnToggleEvolvedPEC">
+            📌 Marcar como Evoluído no PEC
+          </button>
+          <audio id="savedAudioPlayer" controls style="display: none;"></audio>
+          <button type="button" class="btn btn-secondary" id="btnDownloadAudio" style="display: none;">
+            ⬇️ Arquivo
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnReprocessConsultation" title="Reprocessar">
+            🔄 Atualizar
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnDeleteConsultation" style="color: var(--danger);">
+            🗑️ Excluir
+          </button>
+          <button type="button" class="btn-close-x" id="btnClosePatientModal" title="Fechar e voltar para a lista (Atalho: Tecla ESC)">
+            ✕ Fechar
+          </button>
+        </div>
+      </div>
+
+      <!-- Banner de Erro / Reprocessamento -->
+      <div class="error-banner" id="viewErrorBanner">
+        <span id="viewErrorText"></span>
+        <button type="button" class="btn btn-primary" onclick="document.getElementById('btnReprocessConsultation').click()">
+          🔄 Processar Agora
+        </button>
+      </div>
+
+      <!-- Alertas de Auditoria -->
+      <div class="audit-box" id="auditAlertsBox"></div>
+
+      <!-- Barra de Botões de Cópia Rápida para o PEC / e-SUS -->
+      <div class="copy-toolbar">
+        <button type="button" class="btn btn-primary" id="btnCopyFullEvolution">
+          📋 Copiar Evolução Completa
+        </button>
+        <button type="button" class="btn btn-secondary btn-copy-section" data-sec="subjetivo">
+          Copiar Subjetivo
+        </button>
+        <button type="button" class="btn btn-secondary btn-copy-section" data-sec="objetivo">
+          Copiar Objetivo
+        </button>
+        <button type="button" class="btn btn-secondary btn-copy-section" data-sec="exames">
+          Copiar Exames
+        </button>
+        <button type="button" class="btn btn-secondary btn-copy-section" data-sec="avaliacao">
+          Copiar Avaliação
+        </button>
+        <button type="button" class="btn btn-secondary btn-copy-section" data-sec="conduta">
+          Copiar Conduta
+        </button>
+      </div>
+
+      <!-- Editor da Evolução (Direto no formato da sua máscara, sem "Resumo por IA" inútil!) -->
+      <textarea id="mainEvolutionEditor" class="evolution-editor" placeholder="A evolução estruturada aparecerá aqui..."></textarea>
+
+      <!-- Transcrição Literal do Áudio (Oculta em gaveta discreta se quiser conferir) -->
+      <details id="rawTranscriptBox" style="margin-top: 8px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #475569;">
+        <summary style="cursor: pointer; font-weight: 700;">🔎 Conferir Transcrição Literal do Áudio</summary>
+        <div id="rawTranscriptText" style="margin-top: 6px; white-space: pre-wrap;"></div>
+      </details>
+
+      <!-- GERADOR DE ENCAMINHAMENTO PARA REGULAÇÃO ESTADUAL -->
+      <div class="referral-section">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
+          <div style="font-weight: 800; font-size: 14px; color: #5b21b6;">
+            🏛️ Referência / Encaminhamento — Regulação Estadual (SISREG / CROSS / GERCON)
+          </div>
+        </div>
+
+        <div class="referral-grid">
+          <div>
+            <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+              Especialidade Solicitada (SUS):
+            </label>
+            <select id="referralSpecialtySelect" class="select-box">
+              <option value="Cardiologia">Cardiologia</option>
+              <option value="Pré-Natal de Alto Risco (PNAR)">Pré-Natal de Alto Risco (PNAR)</option>
+              <option value="Endocrinologia e Metabologia">Endocrinologia e Metabologia</option>
+              <option value="Ambulatório Trans / Processo Transexualizador">Ambulatório Trans / Processo Transexualizador</option>
+              <option value="Ortopedia e Traumatologia">Ortopedia e Traumatologia</option>
+              <option value="Neuropediatria / Neurologia Infantil">Neuropediatria / Neurologia Infantil</option>
+              <option value="Pediatria / Especialidade Pediátrica">Pediatria / Especialidade Pediátrica</option>
+              <option value="Neurologia Adulto">Neurologia Adulto</option>
+              <option value="Ginecologia / Mastologia">Ginecologia / Mastologia</option>
+              <option value="Oftalmologia">Oftalmologia</option>
+              <option value="Otorrinolaringologia">Otorrinolaringologia</option>
+              <option value="Cirurgia Geral / Ambulatorial">Cirurgia Geral / Ambulatorial</option>
+              <option value="Urologia">Urologia</option>
+              <option value="Gastroenterologia / Hepatologia">Gastroenterologia / Hepatologia</option>
+              <option value="Pneumologia">Pneumologia</option>
+              <option value="Reumatologia">Reumatologia</option>
+              <option value="Nefrologia">Nefrologia</option>
+              <option value="Vascular / Angiologia">Vascular / Angiologia</option>
+              <option value="Psiquiatria / Saúde Mental">Psiquiatria / Saúde Mental</option>
+              <option value="Dermatologia">Dermatologia</option>
+              <option value="Fonoaudiologia / Reabilitação">Fonoaudiologia / Reabilitação</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+              Ou especifique outro serviço/exame:
+            </label>
+            <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." />
+          </div>
+
+          <div>
+            <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+              Classificação de Prioridade:
+            </label>
+            <select id="referralPrioritySelect" class="select-box">
+              <option value="Prioritário / P1 (Amarelo)">Prioritário / P1 (Amarelo)</option>
+              <option value="Urgência Eletiva / P0 (Vermelho)">Urgência Eletiva / P0 (Vermelho)</option>
+              <option value="Rotina / Eletivo / P2 (Verde/Azul)">Rotina / Eletivo / P2 (Verde/Azul)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 10px;">
+          <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+            📋 Dados Complementares / Tratamentos Prévios na APS (opcional):
+          </label>
+          <input type="text" id="referralExtraDataInput" class="input-text" placeholder="Ex: Tratamento otimizado na APS há 6 meses sem controle; exames prévios adicionais..." />
+        </div>
+
+        <button type="button" class="btn btn-primary" id="btnGenerateReferral" style="width: 100%; background: #7c3aed;">
+          🏛️ Gerar Texto de Encaminhamento (Sistema Estadual)
+        </button>
+
+        <div id="referralOutputContainer" style="display: none; margin-top: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 12.5px; color: #4c1d95;">Documento Formatado para Regulação:</strong>
+            <button type="button" class="btn btn-primary" id="btnCopyReferral">
+              📋 Copiar p/ Regulação Estadual
+            </button>
+          </div>
+          <textarea id="referralResultEditor" class="referral-editor"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL: CONFIGURAÇÃO DA CREDENCIAL API -->
   <div class="modal-backdrop" id="apiKeyModal">

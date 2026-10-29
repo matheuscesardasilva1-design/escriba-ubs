@@ -242,11 +242,14 @@
       btn.type = 'button';
       btn.className = `template-card ${isSelected ? 'active' : ''}`;
       btn.innerHTML = `
-        <div class="tpl-top">
-          <span class="tpl-icon">${tpl.icon || '📋'}</span>
-          <span class="tpl-badge">${tpl.badge || 'APS'}</span>
+        <div class="tpl-left">
+          <div class="tpl-icon-box">${tpl.icon || '📋'}</div>
+          <div>
+            <div class="tpl-name">${tpl.name}</div>
+            <div class="tpl-sub">${tpl.badge || 'APS'}</div>
+          </div>
         </div>
-        <div class="tpl-name">${tpl.name}</div>
+        <span class="tpl-arrow">›</span>
       `;
       btn.addEventListener('click', () => {
         state.selectedTemplateId = tpl.id;
@@ -587,13 +590,9 @@
     if (quickNotesInput) quickNotesInput.value = '';
     clearZScoreInputs();
 
-    showToast('✅ Registro salvo e enviado para estruturação! Painel livre para o próximo atendimento.');
+    showToast('✅ Atendimento salvo e enviado para o Histórico! Tela pronta para o próximo paciente.');
     await refreshQueueSidebar();
     updateStorageStatsUI();
-
-    if (!state.activeConsultationId) {
-      await selectConsultationToView(finishingId);
-    }
 
     processQueueInBackground();
   }
@@ -1178,19 +1177,41 @@
 
     await refreshQueueSidebar();
 
-    const updatedList = await window.ScribeDB.getAllConsultations();
-    if (updatedList.length > 0) {
-      await selectConsultationToView(updatedList[0].id);
-    }
-
     if (recoveredCount > 0) {
       showToast(`🛡️ ${recoveredCount} atendimento(s) recuperado(s) automaticamente do disco!`);
       if (getSavedApiKey()) {
         processQueueInBackground();
       }
-    } else if (updatedList.some(c => c.status === 'queued') && getSavedApiKey()) {
+    } else if ((await window.ScribeDB.getAllConsultations()).some(c => c.status === 'queued') && getSavedApiKey()) {
       processQueueInBackground();
     }
+  }
+
+  // --- Navegação entre as 2 Telas ("Novo Atendimento" e "Meu Histórico") ---
+  function switchMainPage(targetPageId) {
+    const pageRec = document.getElementById('pageRecord');
+    const pageHist = document.getElementById('pageHistory');
+    const btnRec = document.getElementById('tabBtnRecord');
+    const btnHist = document.getElementById('tabBtnHistory');
+
+    if (targetPageId === 'pageHistory') {
+      if (pageRec) pageRec.style.display = 'none';
+      if (pageHist) pageHist.style.display = 'block';
+      btnRec?.classList.remove('active');
+      btnHist?.classList.add('active');
+      refreshQueueSidebar();
+    } else {
+      if (pageRec) pageRec.style.display = 'block';
+      if (pageHist) pageHist.style.display = 'none';
+      btnRec?.classList.add('active');
+      btnHist?.classList.remove('active');
+    }
+  }
+
+  function closePatientDetailModal() {
+    state.activeConsultationId = null;
+    const modal = document.getElementById('patientDetailModal');
+    if (modal) modal.style.display = 'none';
   }
 
   async function refreshQueueSidebar() {
@@ -1203,13 +1224,23 @@
 
     const searchQuery = (document.getElementById('historySearchInput')?.value || '').toLowerCase().trim();
     const filterMode = document.getElementById('historyFilterSelect')?.value || 'all';
+    const templateFilter = document.getElementById('historyTemplateFilter')?.value || 'all';
+    const dateFilter = document.getElementById('historyDateFilter')?.value || ''; // YYYY-MM-DD
 
     const filtered = all.filter(item => {
       if (filterMode === 'pending_pec' && item.evolvedInPEC) return false;
       if (filterMode === 'done_pec' && !item.evolvedInPEC) return false;
+      if (templateFilter !== 'all' && item.templateId !== templateFilter) return false;
+      if (dateFilter) {
+        const dt = new Date(item.createdAt);
+        const yyyy = dt.getFullYear();
+        const mm = String(dt.getMonth() + 1).padStart(2, '0');
+        const dd = String(dt.getDate()).padStart(2, '0');
+        if (`${yyyy}-${mm}-${dd}` !== dateFilter) return false;
+      }
       if (searchQuery) {
-        const dateStr = new Date(item.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-        const hay = `${item.patientLabel} ${item.templateName} ${dateStr}`.toLowerCase();
+        const dateStr = new Date(item.createdAt).toLocaleDateString('pt-BR');
+        const hay = `${item.patientLabel} ${item.templateName} ${dateStr} ${item.evolutionText || ''}`.toLowerCase();
         if (!hay.includes(searchQuery)) return false;
       }
       return true;
@@ -1217,56 +1248,86 @@
 
     if (filtered.length === 0) {
       listContainer.innerHTML = `
-        <div class="empty-queue">
-          <p>Nenhum atendimento encontrado para este filtro.</p>
-          <small>As evoluções ficam salvas automaticamente por 30 dias.</small>
+        <div class="card" style="text-align: center; padding: 36px 20px; color: var(--text-muted);">
+          <p style="font-size: 15px; font-weight: 700; margin-bottom: 4px;">Nenhum atendimento encontrado para este filtro.</p>
+          <small>As evoluções ficam salvas automaticamente por 30 dias em Meu Histórico.</small>
         </div>
       `;
       return;
     }
 
     listContainer.innerHTML = '';
-    filtered.forEach(item => {
-      const card = document.createElement('div');
-      card.className = `queue-item ${item.id === state.activeConsultationId ? 'selected' : ''}`;
+    let lastDateHeader = '';
 
+    filtered.forEach(item => {
       const dt = new Date(item.createdAt);
-      const dateStr = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const dateHeaderStr = dt.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }).toUpperCase();
+
+      if (dateHeaderStr !== lastDateHeader) {
+        lastDateHeader = dateHeaderStr;
+        const headerEl = document.createElement('div');
+        headerEl.className = 'date-group-header';
+        headerEl.textContent = dateHeaderStr;
+        listContainer.appendChild(headerEl);
+      }
+
       const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const durMin = Math.floor((item.durationSeconds || 0) / 60);
-      const durSec = (item.durationSeconds || 0) % 60;
-      const durLabel = item.durationSeconds ? `${durMin}m${String(durSec).padStart(2, '0')}s` : 'Laudos/Notas';
-      const examLabel = item.examFileCount ? `• 📄 ${item.examFileCount} PDF` : '';
+
+      // Cria um resumo de 2 linhas da Avaliação/Conduta ou Subjetivo para exibir no card (igual ao print 2)
+      let snippet = '';
+      if (item.status === 'done' && item.evolutionText) {
+        const cleanEvo = item.evolutionText
+          .replace(/^#.*$/gm, '')
+          .replace(/\n+/g, ' • ')
+          .trim();
+        snippet = cleanEvo.slice(0, 240);
+      } else if (item.status === 'uploading' || item.status === 'queued') {
+        snippet = 'Processando evolução clínica em segundo plano...';
+      } else if (item.status === 'error') {
+        snippet = 'Pendente de processamento — clique para abrir e atualizar.';
+      } else {
+        snippet = 'Atendimento em andamento...';
+      }
 
       let statusHTML = '';
       if (item.status === 'recording') {
-        statusHTML = `<span class="q-status st-rec" id="qstatus_${item.id}">🔴 Em andamento...</span>`;
+        statusHTML = `<span class="q-status st-rec" id="qstatus_${item.id}">Em andamento</span>`;
       } else if (item.status === 'queued') {
         statusHTML = `<span class="q-status st-queue" id="qstatus_${item.id}">⏳ Na fila</span>`;
       } else if (item.status === 'uploading') {
         statusHTML = `<span class="q-status st-up" id="qstatus_${item.id}">⚡ Estruturando...</span>`;
       } else if (item.status === 'done') {
-        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ Prontuário Pronto</span>`;
+        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ Pronto</span>`;
       } else if (item.status === 'error') {
-        statusHTML = `<span class="q-status st-err" id="qstatus_${item.id}">⚠️ Pendente (clique p/ reprocessar)</span>`;
+        statusHTML = `<span class="q-status st-err" id="qstatus_${item.id}">⚠️ Atualizar</span>`;
       }
 
       const pecBadge = item.evolvedInPEC
         ? `<span class="q-status st-done" style="background:#dcfce7;color:#166534;">☑️ Evoluído no PEC</span>`
         : `<span class="q-status" style="background:#f1f5f9;color:#475569;">📌 Falta Evoluir</span>`;
 
+      const card = document.createElement('div');
+      card.className = 'history-card';
       card.innerHTML = `
-        <div class="q-header">
-          <span class="q-patient">${escapeHtml(item.patientLabel)}</span>
-          <span class="q-time">${dateStr} • ${timeStr}</span>
+        <div class="h-card-left">
+          <div class="h-doc-icon">${item.templateIcon || '📄'}</div>
+          <div class="h-card-body">
+            <div class="h-patient-row">
+              <span class="h-patient-name">${escapeHtml(item.patientLabel)}</span>
+              <span class="h-tpl-tag">${escapeHtml(item.templateName)}</span>
+              ${statusHTML}
+              ${pecBadge}
+            </div>
+            <div class="h-snippet">${escapeHtml(snippet)}</div>
+          </div>
         </div>
-        <div class="q-meta">
-          <span>${item.templateIcon || '🩺'} ${escapeHtml(item.templateName)}</span>
-          <span>${durLabel} ${examLabel}</span>
-        </div>
-        <div class="q-footer" style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
-          ${statusHTML}
-          ${pecBadge}
+        <div class="h-card-right">
+          <span class="h-time">${timeStr}</span>
+          <span style="color:#94a3b8;font-size:18px;font-weight:700;">›</span>
         </div>
       `;
 
@@ -1279,25 +1340,27 @@
 
   async function selectConsultationToView(id) {
     state.activeConsultationId = id;
-    await refreshQueueSidebar();
     const consult = await window.ScribeDB.getConsultation(id);
     await renderActiveConsultationView(consult);
   }
 
   async function renderActiveConsultationView(consult) {
-    const emptyState = document.getElementById('viewerEmptyState');
-    const contentState = document.getElementById('viewerContentState');
+    const modal = document.getElementById('patientDetailModal');
     if (!consult) {
-      if (emptyState) emptyState.style.display = 'flex';
-      if (contentState) contentState.style.display = 'none';
+      if (modal) modal.style.display = 'none';
       return;
     }
 
-    if (emptyState) emptyState.style.display = 'none';
-    if (contentState) contentState.style.display = 'block';
+    if (modal) modal.style.display = 'flex';
+
+    const dt = new Date(consult.createdAt);
+    const fullDateStr = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }) +
+      ', ' + dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
     document.getElementById('viewPatientTitle').textContent = consult.patientLabel;
     document.getElementById('viewTemplateBadge').textContent = `${consult.templateIcon || '🩺'} ${consult.templateName}`;
+    const viewDateEl = document.getElementById('viewDateLabel');
+    if (viewDateEl) viewDateEl.textContent = fullDateStr;
 
     const btnPec = document.getElementById('btnToggleEvolvedPEC');
     if (btnPec) {
@@ -1487,8 +1550,26 @@
     document.getElementById('btnStopRec')?.addEventListener('click', finishRecordingAndQueue);
     document.getElementById('btnCancelRec')?.addEventListener('click', cancelCurrentRecording);
 
-    // Atalho discreto de teclado (Alt + R) para abrir ou salvar a folha sem precisar clicar no botão
+    // Navegação entre as 2 Telas ("Novo Atendimento" e "Meu Histórico")
+    document.getElementById('tabBtnRecord')?.addEventListener('click', () => switchMainPage('pageRecord'));
+    document.getElementById('tabBtnHistory')?.addEventListener('click', () => switchMainPage('pageHistory'));
+
+    // Botão [ ✕ Fechar ] da Evolução do Paciente + clique fora do cartão + tecla ESC
+    document.getElementById('btnClosePatientModal')?.addEventListener('click', closePatientDetailModal);
+    document.getElementById('patientDetailModal')?.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'patientDetailModal') {
+        closePatientDetailModal();
+      }
+    });
+
+    // Atalho discreto de teclado (Alt + R) e Tecla ESC para fechar evolução
     document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const pModal = document.getElementById('patientDetailModal');
+        if (pModal && pModal.style.display === 'flex') {
+          closePatientDetailModal();
+        }
+      }
       if (e.altKey && (e.key === 'r' || e.key === 'R')) {
         e.preventDefault();
         if (state.isRecording) {
@@ -1580,9 +1661,22 @@
       document.getElementById(id)?.addEventListener('change', updateZScoreLivePreview);
     });
 
-    // Busca e Filtro dos Últimos 30 Dias
+    // Busca e Filtros dos Últimos 30 Dias (Nome, Tipo de Atendimento, Data e Status PEC)
     document.getElementById('historySearchInput')?.addEventListener('input', refreshQueueSidebar);
     document.getElementById('historyFilterSelect')?.addEventListener('change', refreshQueueSidebar);
+    document.getElementById('historyTemplateFilter')?.addEventListener('change', refreshQueueSidebar);
+    document.getElementById('historyDateFilter')?.addEventListener('change', refreshQueueSidebar);
+    document.getElementById('btnResetHistoryFilters')?.addEventListener('click', () => {
+      const s = document.getElementById('historySearchInput');
+      const f = document.getElementById('historyFilterSelect');
+      const t = document.getElementById('historyTemplateFilter');
+      const d = document.getElementById('historyDateFilter');
+      if (s) s.value = '';
+      if (f) f.value = 'all';
+      if (t) t.value = 'all';
+      if (d) d.value = '';
+      refreshQueueSidebar();
+    });
 
     // Marcar / Desmarcar como Evoluído no PEC
     document.getElementById('btnToggleEvolvedPEC')?.addEventListener('click', async () => {
