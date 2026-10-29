@@ -429,26 +429,40 @@
       state.recordingSeconds = 0;
       state.silenceSeconds = 0;
       state.chunkIndex = 0;
+      state.lastChunkSavePromise = Promise.resolve();
 
-      recorder.ondataavailable = async (event) => {
+      // Alerta caso o cabo do microfone desconecte no meio da consulta
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.onended = () => {
+          if (state.isRecording) {
+            const silenceBanner = document.getElementById('silenceWarningBanner');
+            if (silenceBanner) {
+              silenceBanner.style.display = 'flex';
+              silenceBanner.innerHTML = `<span>⚠️ Microfone desconectado! Reconecte ou salve a folha atual.</span>`;
+            }
+          }
+        };
+      }
+
+      recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           const idx = state.chunkIndex++;
-          try {
-            await window.ScribeDB.saveAudioChunk(
-              consultId,
-              idx,
-              event.data,
-              recorder.mimeType || mimeType || 'audio/webm'
-            );
-            const diskBadge = document.getElementById('diskSaveIndicator');
-            if (diskBadge) {
-              diskBadge.textContent = `💾 Sincronizado no disco (${idx + 1})`;
-              diskBadge.classList.add('pulse-ok');
-              setTimeout(() => diskBadge.classList.remove('pulse-ok'), 600);
+          const blobChunk = event.data;
+          const chunkMime = recorder.mimeType || mimeType || 'audio/webm';
+          state.lastChunkSavePromise = state.lastChunkSavePromise.then(async () => {
+            try {
+              await window.ScribeDB.saveAudioChunk(consultId, idx, blobChunk, chunkMime);
+              const diskBadge = document.getElementById('diskSaveIndicator');
+              if (diskBadge) {
+                diskBadge.textContent = `💾 Sincronizado no disco (${idx + 1})`;
+                diskBadge.classList.add('pulse-ok');
+                setTimeout(() => diskBadge.classList.remove('pulse-ok'), 600);
+              }
+            } catch (err) {
+              console.error('Erro ao salvar chunk no disco:', err);
             }
-          } catch (err) {
-            console.error('Erro ao salvar chunk no disco:', err);
-          }
+          });
         }
       };
 
@@ -510,6 +524,9 @@
         resolve();
       }
     });
+    if (state.lastChunkSavePromise) {
+      try { await state.lastChunkSavePromise; } catch (_) {}
+    }
 
     stopStreamAndMeters();
     state.timerWorker.postMessage('stop');
@@ -556,6 +573,9 @@
         resolve();
       }
     });
+    if (state.lastChunkSavePromise) {
+      try { await state.lastChunkSavePromise; } catch (_) {}
+    }
 
     stopStreamAndMeters();
     state.timerWorker.postMessage('stop');
@@ -666,13 +686,10 @@
             }
             const silenceBanner = document.getElementById('silenceWarningBanner');
             if (silenceBanner) {
-              if (state.silenceSeconds >= 180) {
-                togglePauseRecording();
+              // NUNCA pausa sozinho para não correr risco de perder a fala final do médico (ex.: prescrição)!
+              if (state.silenceSeconds >= 20) {
                 silenceBanner.style.display = 'flex';
-                silenceBanner.innerHTML = `<span> Sessão em espera por inatividade (3 min).</span>`;
-              } else if (state.silenceSeconds >= 15) {
-                silenceBanner.style.display = 'flex';
-                silenceBanner.innerHTML = `<span>⚠️ Verifique o dispositivo de entrada nas configurações.</span>`;
+                silenceBanner.innerHTML = `<span>⚠️ Sinal de áudio muito baixo — verifique se o microfone não está no mudo.</span>`;
               } else {
                 silenceBanner.style.display = 'none';
               }
@@ -960,10 +977,12 @@
 
     const parts = [];
 
-    // 1. Inclui o Áudio da consulta (se houver)
-    if (consultation.chunkCount > 0) {
+    // 1. Inclui o Áudio da consulta (se houver no disco) ou usa a transcrição literal já salva (caso reprocessado dias depois)
+    let hasAudioAttached = false;
+    if (consultation.chunkCount > 0 && !consultation.audioDeleted) {
       const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
       if (audioBlob && audioBlob.size > 0) {
+        hasAudioAttached = true;
         const cleanMime = normalizeAudioMimeType(audioBlob, consultation.fileName || '');
         if (audioBlob.size > 15 * 1024 * 1024) {
           const fileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
@@ -973,6 +992,9 @@
           parts.push({ inlineData: { mimeType: cleanMime, data: base64Audio } });
         }
       }
+    }
+    if (!hasAudioAttached && consultation.rawTranscript) {
+      parts.push({ text: `=== TRANSCRIÇÃO LITERAL DO ÁUDIO SALVA ANTERIORMENTE ===\n${consultation.rawTranscript}` });
     }
 
     // 2. Inclui todos os PDFs / Imagens de Exames Complementares anexados
@@ -2056,7 +2078,7 @@
       refreshQueueSidebar();
     });
 
-    // Marcar / Desmarcar como Evoluído no PEC (exclui automaticamente em 15 dias e já limpa o áudio pesado na hora!)
+    // Marcar / Desmarcar como Evoluído no PEC (exclui tudo em 15 dias; o áudio bruto fica disponível por 24h caso precise reprocessar no dia)
     document.getElementById('btnToggleEvolvedPEC')?.addEventListener('click', async () => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
@@ -2064,15 +2086,10 @@
         c.evolvedInPEC = !c.evolvedInPEC;
         c.evolvedAt = c.evolvedInPEC ? Date.now() : null;
         await window.ScribeDB.saveConsultation(c);
-        if (c.evolvedInPEC && c.status === 'done' && !c.audioDeleted) {
-          await window.ScribeDB.deleteAudioChunksOnly(c.id);
-          c.audioDeleted = true;
-          c.audioBytes = 0;
-        }
         await renderActiveConsultationView(c);
         await refreshQueueSidebar();
         updateStorageStatsUI();
-        showToast(c.evolvedInPEC ? '☑️ Evoluído no PEC (áudio pesado limpo, texto salvo por 15 dias)!' : '📌 Marcado como Pendente de Evoluir no PEC (retido por 30 dias).');
+        showToast(c.evolvedInPEC ? '☑️ Evoluído no PEC (exclusão automática em 15 dias)!' : '📌 Marcado como Pendente de Evoluir no PEC (retido por 30 dias).');
       }
     });
 
@@ -2087,18 +2104,13 @@
 
     document.getElementById('btnCopyFullEvolution')?.addEventListener('click', async () => {
       const text = document.getElementById('mainEvolutionEditor')?.value || '';
-      copyToClipboard(text, '📋 Evolução copiada (áudio limpo do disco, texto salvo por 15 dias)!');
+      copyToClipboard(text, '📋 Evolução completa copiada e marcada como Evoluída no PEC!');
       if (state.activeConsultationId) {
         const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
         if (c && !c.evolvedInPEC) {
           c.evolvedInPEC = true;
           c.evolvedAt = Date.now();
           await window.ScribeDB.saveConsultation(c);
-          if (c.status === 'done' && !c.audioDeleted) {
-            await window.ScribeDB.deleteAudioChunksOnly(c.id);
-            c.audioDeleted = true;
-            c.audioBytes = 0;
-          }
           await renderActiveConsultationView(c);
           await refreshQueueSidebar();
           updateStorageStatsUI();
@@ -2111,7 +2123,11 @@
         const sec = btn.getAttribute('data-sec');
         const fullText = document.getElementById('mainEvolutionEditor')?.value || '';
         const extracted = extractSectionFromText(fullText, sec);
-        copyToClipboard(extracted || fullText, `📋 Bloco ${sec.toUpperCase()} copiado!`);
+        if (!extracted) {
+          showToast(`ℹ️ Nenhum bloco de ${sec.toUpperCase()} presente nesta evolução.`);
+          return;
+        }
+        copyToClipboard(extracted, `📋 Bloco ${sec.toUpperCase()} copiado!`);
       });
     });
 
@@ -2200,10 +2216,18 @@
     });
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
       if (confirm('Restaurar todos os 7 modelos para o texto original padrão?')) {
-        localStorage.removeItem('ubs_custom_templates_v2');
+        localStorage.removeItem('ubs_custom_templates_v6');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();
         showToast('🔄 Modelos originais restaurados!');
+      }
+    });
+
+    // Proteção contra fechamento acidental da aba enquanto uma folha de atendimento estiver aberta
+    window.addEventListener('beforeunload', (e) => {
+      if (state.isRecording) {
+        e.preventDefault();
+        e.returnValue = '';
       }
     });
 
@@ -2246,7 +2270,7 @@
 
   function extractSectionFromText(fullText, sectionKey) {
     const mapHeaders = {
-      subjetivo: /(?:4\.\s*)?SUBJETIVO\s*\n([\s\S]*?)(?=\n(?:5\.|6\.|\s*OBJETIVO)|\s*$)/i,
+      subjetivo: /^([\s\S]*?(?:4\.\s*)?SUBJETIVO\s*\n[\s\S]*?)(?=\n(?:5\.|6\.|\s*OBJETIVO)|\s*$)/i,
       objetivo: /(?:6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*\n([\s\S]*?)(?=\n(?:EXAMES COMPLEMENTARES|7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
       exames: /EXAMES COMPLEMENTARES\s*\n([\s\S]*?)(?=\n(?:7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
       avaliacao: /(?:9\.\s*)?AVALIAÇÃO[^\n]*\n([\s\S]*?)(?=\n(?:10\.|\s*CONDUTA)|\s*$)/i,
@@ -2255,7 +2279,7 @@
     const regex = mapHeaders[sectionKey];
     if (!regex) return fullText;
     const match = fullText.match(regex);
-    return match && match[1] ? match[1].trim() : fullText;
+    return match && match[1] ? match[1].trim() : '';
   }
 
   function updateRecordingControlsUI() {

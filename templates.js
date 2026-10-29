@@ -404,15 +404,17 @@ Data de referência de hoje: ${todayStr}.
    - É TERMINANTEMENTE PROIBIDO colocar códigos CID-10 ou CIAP-2 dentro do texto da evolução!
    - Os códigos CID-10 e CIAP-2 correspondentes devem ser informados SEPARADAMENTE apenas no campo JSON "codigos_cid_ciap" (ex.: ["CIAP-2: K86 | CID-10: I10 — Hipertensão essencial"]).
 
-5. REGRA ESTRITA DA CONDUTA (SEM TRAÇOS "-" NO INÍCIO DAS LINHAS + SINAIS DE ALARME SEM DUPLICAR!):
-   - NÃO coloque traços ("- ") no início das linhas da CONDUTA! Escreva cada conduta diretamente em uma linha limpa.
+5. REGRA ESTRITA DA CONDUTA — TRANSCREVA 100% DAS MEDICAÇÕES E TODAS AS ORIENTAÇÕES DE USO (SEM TRAÇOS "-" NO INÍCIO DAS LINHAS!):
+   - NÃO coloque traços ("- ") no início das linhas da CONDUTA! Escreva cada item diretamente em uma linha limpa.
    - É TERMINANTEMENTE PROIBIDO escrever frases genéricas como "Prescrição medicamentosa conforme avaliação médica" ou "Ajuste terapêutico".
-   - Você DEVE escrever explicitamente o nome de cada medicação, concentração, dose/posologia e ação tomada que o médico falou no áudio:
-     * Se prescreveu medicação nova: "Prescrevo [Nome do remédio + mg + posologia + dias, conforme falado]"
-     * Se alterou ou ajustou dose: "Altero / Ajusto dose de [Nome do remédio] de [...] para [...]"
+   - TRANSCRIÇÃO INTEGRAL DO USO DOS REMÉDIOS E ORIENTAÇÕES: Você DEVE transcrever absolutamente TUDO o que o médico falou e orientou sobre cada medicação e sobre o tratamento:
+     * Nome de cada medicamento prescrito, concentração (mg, mcg, ml, UI, %), forma farmacêutica (comprimido, cápsula, gotas, xarope, pomada, creme, spray nasal, injetável), via de administração (VO, IM, IV, tópico, inalatório), dose exata, intervalo/frequência (ex.: de 8/8h, de 12/12h, 1x ao dia, em jejum, após o almoço, à noite) e duração do tratamento (por X dias ou uso contínuo).
+     * Se o médico orientou COMO tomar ou usar o remédio (ex.: "tomar só se tiver dor ou febre", "tomar com bastante água", "aplicar uma camada fina 2x ao dia após o banho", "fazer lavagem nasal com soro fisiológico antes", "tomar 30 minutos antes do café"), INCLUA TODAS ESSAS ORIENTAÇÕES DE USO detalhadamente na linha da medicação!
+     * AUTOCORREÇÃO DO MÉDICO NA FALA: Se o médico falar uma posologia/dose e em seguida corrigir na mesma fala (ex.: "de 8 em 8 horas... de 12 em 12"), registre a ÚLTIMA posologia definida pelo médico!
+     * Se alterou ou ajustou dose: "Altero / Ajusto dose de [Nome do remédio] de [...] para [...] + orientações de uso"
      * Se suspendeu medicação: "Suspendo o uso de [Nome do remédio] devido a [...]"
-     * Se renovou/manteve receita: "Renovo / Mantenho prescrição de [Nome dos remédios]"
-     * Se solicitou exames ou encaminhou: liste exatamente quais exames foram solicitados e para qual especialidade encaminhou.
+     * Se renovou/manteve receita: "Renovo / Mantenho prescrição de [Nome dos remédios e doses]"
+     * Inclua também todas as medidas não-farmacológicas orientadas pelo médico (repouso, elevação de membro, compressas, hidratação, alimentação, cuidados locais, prazo de retorno) e todos os exames solicitados ou encaminhamentos feitos.
    - SINAIS DE ALARME (PROIBIDO DUPLICAR!):
      * Se o médico orientou sinais de alarme no áudio (ou se houver sinais de alarme específicos citados), descreva-os na própria linha de sinais de alarme (ex.: "Oriento sinais de alarme ([descrever os sinais orientados]) e na presença procurar emergência. Ciente.") e REMOVA a frase genérica "Oriento sinais de alarme e na presença emergência. Ciente." para não ficar repetido!
      * Se o médico não especificou quais sinais de alarme, mantenha apenas a frase padrão "Oriento sinais de alarme e na presença emergência. Ciente.".
