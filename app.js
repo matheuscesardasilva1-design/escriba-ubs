@@ -1953,7 +1953,7 @@
       refreshQueueSidebar();
     });
 
-    // Marcar / Desmarcar como Evoluído no PEC (exclui automaticamente em 15 dias)
+    // Marcar / Desmarcar como Evoluído no PEC (exclui automaticamente em 15 dias e já limpa o áudio pesado na hora!)
     document.getElementById('btnToggleEvolvedPEC')?.addEventListener('click', async () => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
@@ -1961,9 +1961,15 @@
         c.evolvedInPEC = !c.evolvedInPEC;
         c.evolvedAt = c.evolvedInPEC ? Date.now() : null;
         await window.ScribeDB.saveConsultation(c);
+        if (c.evolvedInPEC && c.status === 'done' && !c.audioDeleted) {
+          await window.ScribeDB.deleteAudioChunksOnly(c.id);
+          c.audioDeleted = true;
+          c.audioBytes = 0;
+        }
         await renderActiveConsultationView(c);
         await refreshQueueSidebar();
-        showToast(c.evolvedInPEC ? '☑️ Marcado como Evoluído no PEC (será excluído automaticamente em 15 dias)!' : '📌 Marcado como Pendente de Evoluir no PEC (retido por 30 dias).');
+        updateStorageStatsUI();
+        showToast(c.evolvedInPEC ? '☑️ Evoluído no PEC (áudio pesado limpo, texto salvo por 15 dias)!' : '📌 Marcado como Pendente de Evoluir no PEC (retido por 30 dias).');
       }
     });
 
@@ -1978,15 +1984,21 @@
 
     document.getElementById('btnCopyFullEvolution')?.addEventListener('click', async () => {
       const text = document.getElementById('mainEvolutionEditor')?.value || '';
-      copyToClipboard(text, '📋 Evolução completa copiada e marcada como Evoluída no PEC!');
+      copyToClipboard(text, '📋 Evolução copiada (áudio limpo do disco, texto salvo por 15 dias)!');
       if (state.activeConsultationId) {
         const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
         if (c && !c.evolvedInPEC) {
           c.evolvedInPEC = true;
           c.evolvedAt = Date.now();
           await window.ScribeDB.saveConsultation(c);
+          if (c.status === 'done' && !c.audioDeleted) {
+            await window.ScribeDB.deleteAudioChunksOnly(c.id);
+            c.audioDeleted = true;
+            c.audioBytes = 0;
+          }
           await renderActiveConsultationView(c);
           await refreshQueueSidebar();
+          updateStorageStatsUI();
         }
       }
     });

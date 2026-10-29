@@ -211,26 +211,31 @@ window.ScribeDB = (function() {
     });
   }
 
-  // Retenção automática configurada:
+  // Retenção automática configurada (Zero Peso no Navegador):
   // 1) Marcados como "Evoluído no PEC" (evolvedInPEC = true): exclui tudo automaticamente após 15 dias!
   // 2) Não marcados ("Falta Evoluir"): exclui tudo automaticamente após 30 dias!
+  // 3) Consultas JÁ TRANSCRITAS (status === 'done'): limpa o áudio/PDF bruto pesado após 3 dias (ou na hora em que marcar Evoluído no PEC), mantendo apenas o texto levíssimo (3 KB) pelos 15/30 dias!
   async function autoCleanupOldAudio(maxAgeDays = 30, evolvedMaxAgeDays = 15) {
     const all = await getAllConsultations();
     const now = Date.now();
     const cutoff30Days = now - maxAgeDays * 24 * 3600 * 1000;
     const cutoff15DaysEvolved = now - evolvedMaxAgeDays * 24 * 3600 * 1000;
+    const cutoff3DaysAudio = now - 3 * 24 * 3600 * 1000;
     let deletedConsultations = 0;
 
     for (const c of all) {
       const refTimeForEvolved = c.evolvedAt || c.createdAt;
       if (c.evolvedInPEC && refTimeForEvolved < cutoff15DaysEvolved) {
-        // Marcado como "Evoluído no PEC" há mais de 15 dias -> exclui tudo automaticamente (áudio + PDF + evolução)
+        // Marcado como "Evoluído no PEC" há mais de 15 dias -> exclui tudo automaticamente
         await deleteConsultation(c.id);
         deletedConsultations++;
       } else if (c.createdAt < cutoff30Days) {
         // Qualquer atendimento com mais de 30 dias -> exclui tudo automaticamente
         await deleteConsultation(c.id);
         deletedConsultations++;
+      } else if (c.status === 'done' && !c.audioDeleted && (c.evolvedInPEC || c.createdAt < cutoff3DaysAudio)) {
+        // Já foi transcrito com sucesso: apaga o áudio/PDF pesado do disco e mantém só o texto levíssimo (~3 KB) pelos 15/30 dias!
+        await deleteAudioChunksOnly(c.id);
       }
     }
     return deletedConsultations;
