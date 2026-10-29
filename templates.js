@@ -366,7 +366,7 @@ Ciente, concordante e sem dúvidas`
 // ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext) {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText) {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
 Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS:
@@ -441,7 +441,24 @@ Data de referência de hoje: ${todayStr}.
    - No SUBJETIVO: registre APENAS as queixas, sintomas, história da doença atual e respostas fornecidas pelo PACIENTE (ou seu acompanhante).
    - PROIBIDO NO SUBJETIVO: Quando o [MÉDICO] estiver explicando alterações de exames complementares ou achados clínicos para o paciente (ex.: médico dizendo "olha, seu exame mostrou colesterol alto / glicose alterada / infecção de urina / gordura no fígado"), JAMAIS escreva no SUBJETIVO que "Paciente refere alteração em exame / refere colesterol alto"! Quem falou isso foi o médico explicando o resultado!
    - Tudo o que o [MÉDICO] ler ou explicar sobre resultados de exames deve ir para "EXAMES COMPLEMENTARES" e "AVALIAÇÃO", e as explicações/condutas do médico devem ir para "CONDUTA".
-${previousEvolutionContext ? `\n9. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - O médico já havia gravado e transcrito a primeira parte desta consulta e agora gravou uma continuação para o MESMO paciente.\n   - Integre perfeitamente as novas informações faladas neste áudio (novas queixas, exame físico, exames ou condutas/prescrições finais) com a evolução já iniciada abaixo, mantendo uma única evolução completa, coesa e atualizada:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}
+${previousConsultationText ? `
+9. COMPARAÇÃO EVOLUTIVA COM A ÚLTIMA CONSULTA / EVOLUÇÃO PRÉVIA (VALE PARA TODOS OS 7 MODELOS!):
+   - O médico colou abaixo a ÚLTIMA EVOLUÇÃO (evolução prévia) deste paciente. Você DEVE cruzar a evolução prévia com o áudio/dados da consulta de hoje seguindo RIGOROSAMENTE estas 4 regras:
+   a) ATUALIZAR AS "#" (COMORBIDADES / PROBLEMAS ATIVOS NO CABEÇALHO):
+      * Mantenha nas linhas "#" do topo todas as comorbidades/condições crônicas que já estavam nas "#" da última evolução, E PUXE DA "AVALIAÇÃO" DA ÚLTIMA CONSULTA (e da consulta de hoje) os diagnósticos novos/crônicos firmados para que passem a constar nas "#" do cabeçalho atual!
+   b) ATUALIZAR A "# MUC:" (MEDICAÇÕES EM USO CONTÍNUO):
+      * Atualize a linha "# MUC:" (ou "Medicações em uso:") comparando a lista anterior com o que foi feito na CONDUTA da última consulta e o que o paciente relata hoje:
+      * Se uma medicação foi SUSPENSA na última consulta (e o paciente parou de tomar) ou foi suspensa hoje -> EXCLUA essa medicação da "# MUC:"!
+      * Se uma medicação foi INICIADA ou teve DOSE ALTERADA na última consulta (ou hoje) -> ATUALIZE a "# MUC:" com o medicamento/dose atualizados!
+   c) CHECAGEM DE ADESÃO E MEDICAÇÃO SUSPENSA NO "SUBJETIVO":
+      * Verifique se na CONDUTA da última evolução alguma medicação havia sido suspensa, trocada ou ajustada.
+      * Se no áudio de hoje o paciente relatar que CONTINUA TOMANDO uma medicação que já havia sido suspensa/retirada na consulta anterior (ou se tomou na dose errada / não iniciou o que foi prescrito), você DEVE REGISTRAR ISSO EXPLICITAMENTE NO SUBJETIVO (ex.: "Paciente refere manter o uso de [Nome da medicação], apesar da suspensão orientada na última consulta" ou "Paciente refere não ter ajustado/iniciado [Nome da medicação] conforme conduta prévia").
+   d) DADOS PERMANENTES DO CABEÇALHO:
+      * Aproveite da evolução prévia os dados permanentes já preenchidos (# Tabagista, # Alergias, # G P V PC A / TS / Sorologias no Pré-Natal, # Histórico do parto / Triagem neonatal na Puericultura, ou Identificação/Documentação no modelo LGBT), atualizando tudo o que mudou na consulta de hoje!
+
+=== ÚLTIMA EVOLUÇÃO / CONSULTA ANTERIOR DO PACIENTE (PARA COMPARAÇÃO E ATUALIZAÇÃO) ===
+${previousConsultationText}
+` : ''}${previousEvolutionContext ? `\n10. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - O médico já havia gravado e transcrito a primeira parte desta consulta e agora gravou uma continuação para o MESMO paciente.\n   - Integre perfeitamente as novas informações faladas neste áudio (novas queixas, exame físico, exames ou condutas/prescrições finais) com a evolução já iniciada abaixo, mantendo uma única evolução completa, coesa e atualizada:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===\n' + zScoreSummary : ''}

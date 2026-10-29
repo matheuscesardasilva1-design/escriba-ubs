@@ -425,6 +425,7 @@
 
       const patientInput = document.getElementById('patientIdentifier');
       const quickNotesInput = document.getElementById('quickNotesInput');
+      const prevConsultInput = document.getElementById('previousConsultationInput');
       const tpl = state.templates[state.selectedTemplateId];
       const now = Date.now();
 
@@ -436,6 +437,9 @@
         if (existing) {
           existing.previousEvolutionText = existing.evolutionText || existing.previousEvolutionText || '';
           existing.previousRawTranscript = existing.rawTranscript || existing.previousRawTranscript || '';
+          if (prevConsultInput && prevConsultInput.value.trim()) {
+            existing.previousConsultationText = prevConsultInput.value.trim();
+          }
           await window.ScribeDB.deleteAudioChunksOnly(consultId);
           existing.status = 'recording';
           existing.chunkCount = 0;
@@ -461,6 +465,7 @@
           audioBytes: 0,
           mimeType: recorder.mimeType || mimeType || 'audio/webm',
           quickNotes: (quickNotesInput && quickNotesInput.value) || '',
+          previousConsultationText: (prevConsultInput && prevConsultInput.value.trim()) || '',
           zScoreSummary: getCalculatedZScoreText(),
           evolutionText: '',
           soapParts: null,
@@ -625,8 +630,10 @@
     const finalSeconds = state.recordingSeconds;
     const patientInput = document.getElementById('patientIdentifier');
     const quickNotesInput = document.getElementById('quickNotesInput');
+    const prevConsultInput = document.getElementById('previousConsultationInput');
     const currentLabel = patientInput ? patientInput.value.trim() : '';
     const currentNotes = quickNotesInput ? quickNotesInput.value : '';
+    const currentPrevConsult = prevConsultInput ? prevConsultInput.value.trim() : '';
     const currentZScore = getCalculatedZScoreText();
     const currentTpl = state.templates[state.selectedTemplateId];
     const attachedExams = [...state.pendingExamFiles];
@@ -674,6 +681,7 @@
       consult.durationSeconds = finalSeconds;
       consult.examFileCount = attachedExams.length;
       consult.quickNotes = currentNotes;
+      if (currentPrevConsult) consult.previousConsultationText = currentPrevConsult;
       consult.zScoreSummary = currentZScore;
       consult.status = 'queued';
       consult.updatedAt = Date.now();
@@ -687,6 +695,7 @@
 
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
+    if (prevConsultInput) prevConsultInput.value = '';
     clearZScoreInputs();
 
     showToast('✅ Atendimento salvo e enviado para o Histórico! Tela pronta para o próximo paciente.');
@@ -799,9 +808,11 @@
     const files = Array.from(fileList);
     const patientInput = document.getElementById('patientIdentifier');
     const quickNotesInput = document.getElementById('quickNotesInput');
+    const prevConsultInput = document.getElementById('previousConsultationInput');
     const tpl = state.templates[state.selectedTemplateId];
     const baseLabel = patientInput ? patientInput.value.trim() : '';
     const currentNotes = (quickNotesInput && quickNotesInput.value) || '';
+    const currentPrevConsult = (prevConsultInput && prevConsultInput.value.trim()) || '';
     const currentZScore = getCalculatedZScoreText();
     const attachedExams = [...state.pendingExamFiles];
 
@@ -834,6 +845,7 @@
         mimeType: cleanMime,
         fileName: file.name,
         quickNotes: currentNotes,
+        previousConsultationText: currentPrevConsult,
         zScoreSummary: currentZScore,
         evolutionText: '',
         soapParts: null,
@@ -858,6 +870,7 @@
     renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
+    if (prevConsultInput) prevConsultInput.value = '';
     showToast(`📂 ${files.length} áudio(s) importado(s) para a fila!`);
     await refreshQueueSidebar();
     if (lastCreatedId) {
@@ -869,10 +882,12 @@
   // --- Processar apenas Laudos PDF Anexados e/ou Notas Rápidas (Sem Áudio) ---
   async function handleProcessNotesOrExamsOnly() {
     const quickNotesInput = document.getElementById('quickNotesInput');
+    const prevConsultInput = document.getElementById('previousConsultationInput');
     const notes = quickNotesInput ? quickNotesInput.value.trim() : '';
+    const prevConsultText = prevConsultInput ? prevConsultInput.value.trim() : '';
     const attachedExams = [...state.pendingExamFiles];
 
-    if (!notes && attachedExams.length === 0) {
+    if (!notes && attachedExams.length === 0 && !prevConsultText) {
       alert('Anexe pelo menos um PDF/imagem de exame ou digite os dados clínicos no campo de Notas Rápidas.');
       return;
     }
@@ -897,6 +912,7 @@
       audioBytes: 0,
       mimeType: 'text/plain',
       quickNotes: notes,
+      previousConsultationText: prevConsultText,
       zScoreSummary: getCalculatedZScoreText(),
       evolutionText: '',
       soapParts: null,
@@ -915,6 +931,7 @@
     renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
+    if (prevConsultInput) prevConsultInput.value = '';
     showToast('📄 Laudos / Notas enviados para a fila de estruturação!');
     await refreshQueueSidebar();
     await selectConsultationToView(consultId);
@@ -1046,7 +1063,8 @@
       consultation.quickNotes,
       consultation.zScoreSummary,
       examFiles.length > 0,
-      consultation.previousEvolutionText || ''
+      consultation.previousEvolutionText || '',
+      consultation.previousConsultationText || ''
     );
 
     const parts = [];
@@ -2158,6 +2176,11 @@
 
     document.getElementById('btnProcessNotesOnly')?.addEventListener('click', handleProcessNotesOrExamsOnly);
 
+    document.getElementById('btnClearPrevEvolution')?.addEventListener('click', () => {
+      const prevInput = document.getElementById('previousConsultationInput');
+      if (prevInput) prevInput.value = '';
+    });
+
     ['zSex', 'zMonths', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', updateZScoreLivePreview);
       document.getElementById(id)?.addEventListener('change', updateZScoreLivePreview);
@@ -2200,8 +2223,10 @@
 
       const patientInput = document.getElementById('patientIdentifier');
       const quickNotesInput = document.getElementById('quickNotesInput');
+      const prevConsultInput = document.getElementById('previousConsultationInput');
       if (patientInput) patientInput.value = c.patientLabel || '';
       if (quickNotesInput) quickNotesInput.value = c.quickNotes || '';
+      if (prevConsultInput) prevConsultInput.value = c.previousConsultationText || '';
 
       renderTemplateSelector();
       await startRecording();

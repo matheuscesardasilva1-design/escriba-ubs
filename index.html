@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
-  <link rel="stylesheet" href="styles.css?v=20261028_14" />
+  <link rel="stylesheet" href="styles.css?v=20261028_15" />
 </head>
 <body>
 
@@ -228,10 +228,23 @@
         <div id="pendingExamFilesList" class="exam-chips-wrap" style="display: none;"></div>
       </div>
 
+      <!-- EVOLUÇÃO PRÉVIA / ÚLTIMA CONSULTA (PARA ATUALIZAR #, MUC E COMPARAR CONDUTAS NOS 7 MODELOS) -->
+      <div style="margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <label style="font-size: 12.5px; font-weight: 700; color: #1e40af;">
+            🔄 Evolução Prévia / Última Consulta (opcional — atualiza #, MUC e compara condutas):
+          </label>
+          <button type="button" class="btn btn-secondary" id="btnClearPrevEvolution" style="padding: 2px 8px; font-size: 11px;">
+            Limpar
+          </button>
+        </div>
+        <textarea id="previousConsultationInput" class="textarea-box" rows="3" placeholder="Cole aqui a última evolução do PEC (o sistema puxará os diagnósticos da Avaliação anterior para as #, atualizará a # MUC tirando remédios suspensos e verificará no Subjetivo se o paciente manteve uso de medicação suspensa)..."></textarea>
+      </div>
+
       <!-- ANOTAÇÕES RÁPIDAS -->
       <div style="margin-bottom: 12px;">
         <label style="font-size: 12.5px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px;">
-          ✍️ Anotações Rápidas / Sinais Vitais (opcional):
+          ✍️ Anotações Rápidas / Sinais Vitais de Hoje (opcional):
         </label>
         <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, HGT ou anotações livres..."></textarea>
       </div>
@@ -586,9 +599,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261028_14"></script>
-  <script src="zscore.js?v=20261028_14"></script>
-  <script src="db.js?v=20261028_14"></script>
-  <script src="app.js?v=20261028_14"></script>
+  <script src="templates.js?v=20261028_15"></script>
+  <script src="zscore.js?v=20261028_15"></script>
+  <script src="db.js?v=20261028_15"></script>
+  <script src="app.js?v=20261028_15"></script>
 </body>
 </html>
