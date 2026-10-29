@@ -1357,6 +1357,8 @@
   async function checkCrashRecoveryAndLoadHistory() {
     const all = await window.ScribeDB.getAllConsultations();
     let recoveredCount = 0;
+    let nextDayAutoQueuedCount = 0;
+    const todayStr = new Date().toDateString();
 
     for (const c of all) {
       if (c.status === 'recording' || c.status === 'uploading') {
@@ -1368,17 +1370,47 @@
         } else {
           await window.ScribeDB.deleteConsultation(c.id);
         }
+      } else if (c.status === 'error') {
+        // Se ficou pendente por limite/cota em um dia anterior, reenvia sozinho ao abrir no outro dia!
+        const lastAttemptDay = new Date(c.updatedAt || c.createdAt).toDateString();
+        if (lastAttemptDay !== todayStr) {
+          c.status = 'queued';
+          c.errorMessage = '';
+          c.updatedAt = Date.now();
+          await window.ScribeDB.saveConsultation(c);
+          nextDayAutoQueuedCount++;
+        }
       }
     }
 
     await refreshQueueSidebar();
 
-    if (recoveredCount > 0) {
-      showToast(`🛡️ ${recoveredCount} atendimento(s) recuperado(s) automaticamente do disco!`);
+    if (recoveredCount > 0 || nextDayAutoQueuedCount > 0) {
+      const total = recoveredCount + nextDayAutoQueuedCount;
+      showToast(`🔄 ${total} gravação(ões) pendente(s) entrou(aram) na fila automática de envio!`);
       if (getSavedApiKey()) {
         processQueueInBackground();
       }
     } else if ((await window.ScribeDB.getAllConsultations()).some(c => c.status === 'queued') && getSavedApiKey()) {
+      processQueueInBackground();
+    }
+  }
+
+  async function retryAllPendingConsultations() {
+    const all = await window.ScribeDB.getAllConsultations();
+    let count = 0;
+    for (const c of all) {
+      if (c.status === 'error') {
+        c.status = 'queued';
+        c.errorMessage = '';
+        c.updatedAt = Date.now();
+        await window.ScribeDB.saveConsultation(c);
+        count++;
+      }
+    }
+    await refreshQueueSidebar();
+    if (count > 0) {
+      showToast(`🔄 Reenviando ${count} gravação(ões) pendente(s)...`);
       processQueueInBackground();
     }
   }
@@ -1417,6 +1449,17 @@
     const all = await window.ScribeDB.getAllConsultations();
     const countBadge = document.getElementById('queueTotalBadge');
     if (countBadge) countBadge.textContent = String(all.length);
+
+    const errorCount = all.filter(c => c.status === 'error').length;
+    const btnRetryAll = document.getElementById('btnRetryAllPending');
+    if (btnRetryAll) {
+      if (errorCount > 0) {
+        btnRetryAll.style.display = 'inline-flex';
+        btnRetryAll.textContent = `🔄 Enviar Pendentes (${errorCount})`;
+      } else {
+        btnRetryAll.style.display = 'none';
+      }
+    }
 
     const searchQuery = (document.getElementById('historySearchInput')?.value || '').toLowerCase().trim();
     const filterMode = document.getElementById('historyFilterSelect')?.value || 'all';
@@ -1973,8 +2016,11 @@
       updateApiKeyStatusBadge();
       document.getElementById('apiKeyModal').style.display = 'none';
       showToast('🔒 Credencial salva com sucesso!');
+      retryAllPendingConsultations();
       processQueueInBackground();
     });
+
+    document.getElementById('btnRetryAllPending')?.addEventListener('click', retryAllPendingConsultations);
 
     document.getElementById('btnOpenTemplatesModal')?.addEventListener('click', openTemplateEditorModal);
     document.getElementById('btnCloseTemplatesModal')?.addEventListener('click', () => {

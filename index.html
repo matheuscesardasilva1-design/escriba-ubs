@@ -244,7 +244,10 @@
   <main class="page-container" id="pageHistory" style="display: none;">
     <div class="history-header-bar">
       <h2>Meu Histórico</h2>
-      <div style="display: flex; gap: 8px; align-items: center;">
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <button type="button" class="btn btn-primary" id="btnRetryAllPending" style="display: none; padding: 6px 12px; font-size: 12px;">
+          🔄 Enviar Pendentes Agora
+        </button>
         <span style="font-size: 12px; color: var(--text-muted);" id="diskUsageBadge">💽 0.0 MB</span>
         <button type="button" class="btn btn-secondary" id="btnSelectDiskFolder" style="padding: 6px 10px; font-size: 12px;">
           📁 Pasta Backup
