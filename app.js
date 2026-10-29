@@ -837,10 +837,16 @@
     state.queueRunning = true;
     updateDocumentTitle();
 
+    const banner = document.getElementById('liveProcessingBanner');
+    const bannerText = document.getElementById('liveProcessingText');
+    let elapsedSec = 0;
+    let procInterval = null;
+
     try {
       while (true) {
         const all = await window.ScribeDB.getAllConsultations();
-        const nextItem = [...all].reverse().find(c => c.status === 'queued');
+        const queuedItems = [...all].reverse().filter(c => c.status === 'queued');
+        const nextItem = queuedItems[0];
         if (!nextItem) break;
 
         nextItem.status = 'uploading';
@@ -851,8 +857,32 @@
           await renderActiveConsultationView(nextItem);
         }
 
+        elapsedSec = 0;
+        if (banner && bannerText) {
+          banner.style.display = 'block';
+          banner.style.background = '#eef2ff';
+          banner.style.color = '#3730a3';
+          bannerText.textContent = `⏳ Transcrevendo e estruturando prontuário: "${nextItem.patientLabel}" (0s)...`;
+        }
+        if (procInterval) clearInterval(procInterval);
+        procInterval = setInterval(() => {
+          elapsedSec++;
+          if (bannerText) {
+            const extraQueue = queuedItems.length > 1 ? ` (+${queuedItems.length - 1} na fila)` : '';
+            bannerText.textContent = `⏳ Transcrevendo e estruturando prontuário: "${nextItem.patientLabel}" (${elapsedSec}s)...${extraQueue}`;
+          }
+          if (state.activeConsultationId === nextItem.id) {
+            const editor = document.getElementById('mainEvolutionEditor');
+            if (editor && (nextItem.status === 'uploading' || nextItem.status === 'queued')) {
+              editor.value = `⏳ Transcrevendo áudio e estruturando evolução clínica... (${elapsedSec}s decorridos)\n\nAguarde alguns instantes — o texto aparecerá nesta tela automaticamente assim que concluir (não precisa clicar em Atualizar).`;
+            }
+          }
+        }, 1000);
+
         try {
           const result = await processSingleConsultationWithGemini(nextItem, apiKey);
+          if (procInterval) clearInterval(procInterval);
+
           nextItem.status = 'done';
           nextItem.evolutionText = result.evolutionText;
           nextItem.rawTranscript = result.rawTranscript || '';
@@ -865,13 +895,31 @@
           await window.ScribeDB.saveConsultation(nextItem);
 
           addDailyTokenUsage(result.tokensUsed || 0);
-          showToast(`✅ Evolução concluída: ${nextItem.patientLabel}`);
+          showToast(`✅ Evolução pronta: ${nextItem.patientLabel}`);
+
+          if (banner && bannerText) {
+            banner.style.background = '#dcfce7';
+            banner.style.color = '#166534';
+            bannerText.innerHTML = `✅ Prontuário de <strong>${escapeHtml(nextItem.patientLabel)}</strong> concluído em ${elapsedSec}s! <button type="button" id="btnBannerOpenFinished" style="margin-left:10px;padding:3px 10px;border-radius:6px;border:1px solid #166534;background:#fff;color:#166534;font-weight:700;cursor:pointer;">Abrir Evolução Agora</button>`;
+            document.getElementById('btnBannerOpenFinished')?.addEventListener('click', () => {
+              selectConsultationToView(nextItem.id);
+            });
+            setTimeout(() => {
+              if (!state.queueRunning && banner) banner.style.display = 'none';
+            }, 8000);
+          }
         } catch (err) {
+          if (procInterval) clearInterval(procInterval);
           console.error('Erro ao processar consulta na fila:', err);
           nextItem.status = 'error';
           nextItem.errorMessage = err.message || 'Falha na conexão ou limite da API';
           nextItem.updatedAt = Date.now();
           await window.ScribeDB.saveConsultation(nextItem);
+          if (banner && bannerText) {
+            banner.style.background = '#fee2e2';
+            banner.style.color = '#991b1b';
+            bannerText.textContent = `⚠️ Pausa no envio de "${nextItem.patientLabel}": ${nextItem.errorMessage}`;
+          }
         }
 
         await refreshQueueSidebar();
@@ -881,6 +929,7 @@
         }
       }
     } finally {
+      if (procInterval) clearInterval(procInterval);
       state.queueRunning = false;
       updateDocumentTitle();
     }
@@ -1393,7 +1442,7 @@
 
     const editor = document.getElementById('mainEvolutionEditor');
     if (consult.status === 'uploading' || consult.status === 'queued') {
-      editor.value = '⏳ Estruturando evolução clínica e laudos anexados em segundo plano...\n\nO painel à esquerda já está livre para o próximo atendimento.';
+      editor.value = '⏳ Transcrevendo áudio e estruturando evolução clínica...\n\nAguarde alguns instantes — o texto aparecerá nesta tela automaticamente assim que concluir (não é necessário clicar em Atualizar).';
     } else {
       editor.value = consult.evolutionText || '';
     }

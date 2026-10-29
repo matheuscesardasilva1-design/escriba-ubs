@@ -38,6 +38,14 @@
     </div>
   </header>
 
+  <!-- BARRA DE PROGRESSO DE TRANSCRIÇÃO EM TEMPO REAL (VISÍVEL EM QUALQUER TELA) -->
+  <div id="liveProcessingBanner" class="live-processing-banner" style="display: none;">
+    <div class="live-proc-inner">
+      <span class="spinner-ring"></span>
+      <span id="liveProcessingText">Estruturando prontuário em segundo plano...</span>
+    </div>
+  </div>
+
   <!-- ========================================================================
        PÁGINA 1: NOVO ATENDIMENTO (TELA LIMPA E CENTRALIZADA)
        ======================================================================== -->
@@ -53,7 +61,7 @@
     <!-- PAINEL ESPECÍFICO 1: PUERICULTURA (Z-SCORE + ALEITAMENTO / FÓRMULA) -->
     <div class="zscore-box" id="puericulturaZScoreBox">
       <div style="font-weight: 700; font-size: 13px; color: #166534;">
-        👶 Dados da Puericultura: Antropometria (Z-Score OMS) & Aleitamento
+        👶 Dados da Puericultura (Opcional — se você falar no áudio, o sistema já puxa automático!)
       </div>
       <div class="zscore-grid">
         <div>
@@ -107,7 +115,7 @@
     <!-- PAINEL ESPECÍFICO 2: PRÉ-NATAL (DADOS OBJETIVOS OBSTÉTRICOS) -->
     <div class="prenatal-box" id="prenatalObjectiveBox">
       <div style="font-weight: 700; font-size: 13px; color: #9d174d; margin-bottom: 8px;">
-        🤰 Dados Objetivos do Pré-Natal (Preenche o Objetivo automaticamente)
+        🤰 Dados Objetivos do Pré-Natal (Opcional — se você falar no áudio, o sistema já puxa automático!)
       </div>
       <div class="prenatal-grid">
         <div>
@@ -158,7 +166,7 @@
         <span id="diskSaveIndicator" style="font-size: 11.5px; color: #64748b;">Sincronizado no disco</span>
       </div>
 
-      <input type="text" id="patientIdentifier" class="input-text" placeholder="Digite o nome ou iniciais do paciente (ex: CRISTIANE, TANIA MARIA...)" />
+      <input type="text" id="patientIdentifier" class="input-text" placeholder="Identificação, iniciais ou número do prontuário" />
 
       <div class="recorder-box">
         <div class="rec-header">

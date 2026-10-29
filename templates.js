@@ -416,9 +416,11 @@ Data de referência de hoje: ${todayStr}.
      * Se mencionou plano para a próxima consulta: "- Plano para próxima consulta: [...]"
    - Ao final da CONDUTA, mantenha sempre as frases de orientação de sinais de alarme e concordância do modelo.
 
-5. REGRAS ESPECÍFICAS DE PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
-   - Na PUERICULTURA: détailhe o Aleitamento/Alimentação (SME, complementado, misto ou fórmula infantil com nome da fórmula, volume em ml, medidas e horários).
-   - Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
+5. REGRAS ESPECÍFICAS DE PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR (EXTRAÇÃO AUTOMÁTICA DO ÁUDIO!):
+   - ATENÇÃO MÁXIMA: O médico pode optar por NÃO digitar nada nos campos da tela e apenas FALAR os dados no áudio! Portanto, se os campos da tela estiverem vazios, você DEVE extrair diretamente da fala do médico no áudio:
+     * Na PUERICULTURA: extraia do áudio a idade da criança, Peso, Altura/Comprimento, Perímetro Cefálico (PC), calcule o IMC e estime/classifique os Z-Scores (OMS: Peso/Idade, Estatura/Idade, PC/Idade e IMC/Idade) preenchendo as linhas do OBJETIVO! Extraia também do áudio os Marcos do Desenvolvimento, Ortolani, Barlow, Otoscopia/Oroscopia (se falados) e todos os detalhes do Aleitamento/Alimentação (se SME, complementado, misto ou fórmula infantil — especificando qual fórmula, quantidade em ml, medidas e horários).
+     * No PRÉ-NATAL: extraia diretamente do áudio todos os dados do cabeçalho (# G P V PC A, # IG, # TS, # TOXO, # SOROLOGIAS, # VACINAS) e todos os dados do OBJETIVO falados pelo médico (AU em cm, BCF em bpm, MF presentes/ausentes, Edema em MMII, Peso em kg e PA em mmHg), além de qualquer exame físico adicional falado!
+     * Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
