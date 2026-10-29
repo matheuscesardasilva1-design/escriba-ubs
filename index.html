@@ -376,82 +376,108 @@
         <div id="rawTranscriptText" style="margin-top: 6px; white-space: pre-wrap;"></div>
       </details>
 
-      <!-- GERADOR DE ENCAMINHAMENTO PARA REGULAÇÃO ESTADUAL -->
+      <!-- GERADOR DE ENCAMINHAMENTO MINIMIZÁVEL + MÚLTIPLAS ESPECIALIDADES SALVAS -->
       <div class="referral-section">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 6px;">
-          <div style="font-weight: 800; font-size: 14px; color: #5b21b6;">
-            🏛️ Referência / Encaminhamento — Regulação Estadual (SISREG / CROSS / GERCON)
+        <div class="referral-header-toggle" id="btnToggleReferralDrawer" title="Clique para abrir ou minimizar a área de encaminhamentos">
+          <div style="font-weight: 800; font-size: 14px; color: #5b21b6; display: flex; align-items: center; gap: 8px;">
+            <span>🏛️ Encaminhamentos — Regulação Estadual</span>
+            <span class="tab-badge" id="savedReferralsCountBadge" style="background: #ede9fe; color: #5b21b6;">0 salvos</span>
           </div>
+          <button type="button" class="btn btn-secondary" id="referralDrawerToggleBtn" style="padding: 4px 10px; font-size: 12px;">
+            ▼ Abrir Encaminhamentos
+          </button>
         </div>
 
-        <div class="referral-grid">
-          <div>
-            <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-              Especialidade Solicitada (SUS):
-            </label>
-            <select id="referralSpecialtySelect" class="select-box">
-              <option value="Cardiologia">Cardiologia</option>
-              <option value="Pré-Natal de Alto Risco (PNAR)">Pré-Natal de Alto Risco (PNAR)</option>
-              <option value="Endocrinologia e Metabologia">Endocrinologia e Metabologia</option>
-              <option value="Ambulatório Trans / Processo Transexualizador">Ambulatório Trans / Processo Transexualizador</option>
-              <option value="Ortopedia e Traumatologia">Ortopedia e Traumatologia</option>
-              <option value="Neuropediatria / Neurologia Infantil">Neuropediatria / Neurologia Infantil</option>
-              <option value="Pediatria / Especialidade Pediátrica">Pediatria / Especialidade Pediátrica</option>
-              <option value="Neurologia Adulto">Neurologia Adulto</option>
-              <option value="Ginecologia / Mastologia">Ginecologia / Mastologia</option>
-              <option value="Oftalmologia">Oftalmologia</option>
-              <option value="Otorrinolaringologia">Otorrinolaringologia</option>
-              <option value="Cirurgia Geral / Ambulatorial">Cirurgia Geral / Ambulatorial</option>
-              <option value="Urologia">Urologia</option>
-              <option value="Gastroenterologia / Hepatologia">Gastroenterologia / Hepatologia</option>
-              <option value="Pneumologia">Pneumologia</option>
-              <option value="Reumatologia">Reumatologia</option>
-              <option value="Nefrologia">Nefrologia</option>
-              <option value="Vascular / Angiologia">Vascular / Angiologia</option>
-              <option value="Psiquiatria / Saúde Mental">Psiquiatria / Saúde Mental</option>
-              <option value="Dermatologia">Dermatologia</option>
-              <option value="Fonoaudiologia / Reabilitação">Fonoaudiologia / Reabilitação</option>
-            </select>
+        <div id="referralDrawerBody" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e9d5ff;">
+          <!-- LISTA DE ENCAMINHAMENTOS JÁ GERADOS PARA ESTE PACIENTE (1. Cardio, 2. Pneumo...) -->
+          <div id="savedReferralsListContainer" style="margin-bottom: 14px; display: none;">
+            <div style="font-size: 12px; font-weight: 700; color: #4c1d95; margin-bottom: 6px;">
+              📑 Especialidades Geradas para este Paciente (clique para abrir, copiar ou fechar):
+            </div>
+            <div id="savedReferralsList" style="display: flex; flex-direction: column; gap: 8px;"></div>
           </div>
 
-          <div>
-            <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-              Ou especifique outro serviço/exame:
-            </label>
-            <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." />
-          </div>
+          <!-- FORMULÁRIO PARA GERAR NOVO ENCAMINHAMENTO -->
+          <div style="background: #ffffff; border: 1px solid #d8b4fe; border-radius: 10px; padding: 12px;">
+            <div style="font-size: 12px; font-weight: 800; color: #5b21b6; margin-bottom: 8px;">
+              ➕ Adicionar Novo Encaminhamento para Especialidade:
+            </div>
+            <div class="referral-grid">
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Especialidade Solicitada (SUS):
+                </label>
+                <select id="referralSpecialtySelect" class="select-box">
+                  <option value="Cardiologia">Cardiologia</option>
+                  <option value="Pneumologia">Pneumologia</option>
+                  <option value="Pré-Natal de Alto Risco (PNAR)">Pré-Natal de Alto Risco (PNAR)</option>
+                  <option value="Endocrinologia e Metabologia">Endocrinologia e Metabologia</option>
+                  <option value="Ambulatório Trans / Processo Transexualizador">Ambulatório Trans / Processo Transexualizador</option>
+                  <option value="Ortopedia e Traumatologia">Ortopedia e Traumatologia</option>
+                  <option value="Neuropediatria / Neurologia Infantil">Neuropediatria / Neurologia Infantil</option>
+                  <option value="Pediatria / Especialidade Pediátrica">Pediatria / Especialidade Pediátrica</option>
+                  <option value="Neurologia Adulto">Neurologia Adulto</option>
+                  <option value="Ginecologia / Mastologia">Ginecologia / Mastologia</option>
+                  <option value="Oftalmologia">Oftalmologia</option>
+                  <option value="Otorrinolaringologia">Otorrinolaringologia</option>
+                  <option value="Cirurgia Geral / Ambulatorial">Cirurgia Geral / Ambulatorial</option>
+                  <option value="Urologia">Urologia</option>
+                  <option value="Gastroenterologia / Hepatologia">Gastroenterologia / Hepatologia</option>
+                  <option value="Reumatologia">Reumatologia</option>
+                  <option value="Nefrologia">Nefrologia</option>
+                  <option value="Vascular / Angiologia">Vascular / Angiologia</option>
+                  <option value="Psiquiatria / Saúde Mental">Psiquiatria / Saúde Mental</option>
+                  <option value="Dermatologia">Dermatologia</option>
+                  <option value="Fonoaudiologia / Reabilitação">Fonoaudiologia / Reabilitação</option>
+                </select>
+              </div>
 
-          <div>
-            <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-              Classificação de Prioridade:
-            </label>
-            <select id="referralPrioritySelect" class="select-box">
-              <option value="Prioritário / P1 (Amarelo)">Prioritário / P1 (Amarelo)</option>
-              <option value="Urgência Eletiva / P0 (Vermelho)">Urgência Eletiva / P0 (Vermelho)</option>
-              <option value="Rotina / Eletivo / P2 (Verde/Azul)">Rotina / Eletivo / P2 (Verde/Azul)</option>
-            </select>
-          </div>
-        </div>
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Ou digite outra especialidade/exame:
+                </label>
+                <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." />
+              </div>
 
-        <div style="margin-bottom: 10px;">
-          <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-            📋 Dados Complementares / Tratamentos Prévios na APS (opcional):
-          </label>
-          <input type="text" id="referralExtraDataInput" class="input-text" placeholder="Ex: Tratamento otimizado na APS há 6 meses sem controle; exames prévios adicionais..." />
-        </div>
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Classificação de Prioridade:
+                </label>
+                <select id="referralPrioritySelect" class="select-box">
+                  <option value="Prioritário / P1 (Amarelo)">Prioritário / P1 (Amarelo)</option>
+                  <option value="Urgência Eletiva / P0 (Vermelho)">Urgência Eletiva / P0 (Vermelho)</option>
+                  <option value="Rotina / Eletivo / P2 (Verde/Azul)">Rotina / Eletivo / P2 (Verde/Azul)</option>
+                </select>
+              </div>
+            </div>
 
-        <button type="button" class="btn btn-primary" id="btnGenerateReferral" style="width: 100%; background: #7c3aed;">
-          🏛️ Gerar Texto de Encaminhamento (Sistema Estadual)
-        </button>
+            <div style="margin-bottom: 10px;">
+              <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                📋 Dados Complementares / Tratamentos Prévios na APS (opcional):
+              </label>
+              <input type="text" id="referralExtraDataInput" class="input-text" placeholder="Ex: Tratamento otimizado na APS há 6 meses sem controle; exames prévios adicionais..." />
+            </div>
 
-        <div id="referralOutputContainer" style="display: none; margin-top: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <strong style="font-size: 12.5px; color: #4c1d95;">Documento Formatado para Regulação:</strong>
-            <button type="button" class="btn btn-primary" id="btnCopyReferral">
-              📋 Copiar p/ Regulação Estadual
+            <button type="button" class="btn btn-primary" id="btnGenerateReferral" style="width: 100%; background: #7c3aed;">
+              🏛️ Gerar e Salvar Encaminhamento para esta Especialidade
             </button>
           </div>
-          <textarea id="referralResultEditor" class="referral-editor"></textarea>
+
+          <!-- VISUALIZADOR DO ENCAMINHAMENTO SELECIONADO (COM BOTÃO DE FECHAR) -->
+          <div id="referralOutputContainer" style="display: none; margin-top: 12px; background: #fff; border: 1.5px solid #a855f7; border-radius: 10px; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+              <strong style="font-size: 13px; color: #4c1d95;" id="activeReferralTitleLabel">Encaminhamento Selecionado:</strong>
+              <div style="display: flex; gap: 6px;">
+                <button type="button" class="btn btn-primary" id="btnCopyReferral" style="padding: 6px 12px; font-size: 12px;">
+                  📋 Copiar Texto p/ Regulação
+                </button>
+                <button type="button" class="btn btn-secondary" id="btnCloseActiveReferralView" style="padding: 6px 10px; font-size: 12px;">
+                  ✕ Fechar Texto
+                </button>
+              </div>
+            </div>
+            <textarea id="referralResultEditor" class="referral-editor"></textarea>
+          </div>
         </div>
       </div>
     </div>

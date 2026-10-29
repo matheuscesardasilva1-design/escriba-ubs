@@ -840,8 +840,32 @@ body {
   background: #faf5ff;
   border: 1.5px solid #d8b4fe;
   border-radius: 12px;
-  padding: 16px;
+  padding: 14px 16px;
   margin-top: 16px;
+}
+
+.referral-header-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+.saved-ref-item {
+  background: #ffffff;
+  border: 1px solid #d8b4fe;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.saved-ref-item.active {
+  border-color: #7c3aed;
+  background: #f3e8ff;
 }
 
 .referral-grid {

@@ -397,13 +397,16 @@ Data de referência de hoje: ${todayStr}.
      * Se o médico falou de otoscopia, oroscopia, extremidades, pele, neurológico, osteomuscular -> descreva tecnicamente apenas o que foi examinado!
      * Se o médico NÃO falou nada sobre aparelho respiratório, cardiovascular ou abdome, NÃO coloque AP, AC ou ABD no Objetivo!
 
-3. REGRA ESTRITA DE EXAMES COMPLEMENTARES — SÓ INCLUA SE HOUVER EXAMES:
-   - ${hasExamFiles ? 'Há PDFs/imagens de exames anexados! Crie o bloco "EXAMES COMPLEMENTARES" logo após o OBJETIVO e antes da AVALIAÇÃO e transcreva todos os exames.' : 'Se NÃO houver PDF de exame anexado E o médico NÃO tiver falado nenhum resultado de exame complementar no áudio/notas, NÃO CRIE e NÃO ESCREVA o título "EXAMES COMPLEMENTARES" na evolução!'}
-   - Quando houver exames complementares (por PDF anexado ou ditados no áudio/notas), coloque o bloco "EXAMES COMPLEMENTARES" entre OBJETIVO e AVALIAÇÃO seguindo este padrão exato:
-     * LABORATORIAIS (em linha única separada por " | "):
-       - LABS DD/MM/AAAA: Hb ... | Ht ... | Leuco ... | Plaq ... | GJ ... | HbA1c ... | Creat ... | Ureia ... | Sódio ... | K ... | CT ... | HDL ... | LDL ... | TAG ... | TSH ... | T4L ... | EQU: ...
-     * EXAMES DE IMAGEM (em texto corrido conciso):
-       - NOME DO EXAME DD/MM/AAAA: Descrição em texto corrido dos achados e conclusão.
+3. REGRA ESTRITA DE EXAMES COMPLEMENTARES (ZERO OMISSÃO E PROIBIDO "N/R"):
+   - ${hasExamFiles ? 'Há PDFs/imagens de exames anexados! Crie o bloco "EXAMES COMPLEMENTARES" logo após o OBJETIVO e antes da AVALIAÇÃO e transcreva TODOS os exames presentes nos arquivos.' : 'Se NÃO houver PDF de exame anexado E o médico NÃO tiver falado nenhum resultado de exame complementar no áudio/notas, NÃO CRIE e NÃO ESCREVA o título "EXAMES COMPLEMENTARES" na evolução!'}
+   - Quando houver exames complementares (por PDF anexado ou ditados no áudio/notas), siga RIGOROSAMENTE estas 3 regras:
+     a) TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF: Varra todas as páginas do documento e inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma/enzimas hepáticas, perfil lipídico, tireoide, hormônios, vitaminas, cinética de ferro, marcadores inflamatórios, sorologias, urina/EQU, urocultura, parasitológico, fezes, etc.). NUNCA omita exames extras que foram realizados no laudo!
+     b) PROIBIDO ESCREVER "N/R", "Não realizado" OU EXAMES QUE NÃO CONSTAM NO LAUDO: Se um exame (por exemplo, T4L, Ferritina, etc.) NÃO estiver presente no PDF, NÃO escreva "T4L N/R" — simplesmente NÃO inclua esse exame na linha! Só escreva exames que efetivamente possuem resultado no documento.
+     c) FORMATO EXATO:
+        * LABORATORIAIS (todos os exames da mesma data na mesma linha, separados por " | ", usando abreviações médicas limpas + valor):
+          Exemplo: - LABS 17/08/2026: Hb 15,3 | Ht 43,7 | Leuco 6.990 | Plaq 303.000 | GJ 90,9 | HbA1c 4,4% | Creat 0,97 | Ureia 22,2 | Sódio 140 | K 4,6 | Ác. Úrico 5,4 | TGO 18 | TGP 18 | GGT 35,1 | FA 68 | BT 0,7 | CT 195,1 | HDL 33,8 | LDL 143,6 | TAG 74 | TSH 0,81 | Vit B12 390 | Vit D 31,2 | Testo Total 842 | Testo Livre 23,07 | EQU: pH 6,0, Densidade 1.020, Leucócitos 25/uL, Flora Bacteriana Moderada
+        * EXAMES DE IMAGEM E MÉTODOS GRÁFICOS (em texto corrido conciso, sem tópicos soltos):
+          Exemplo: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.
 
 4. REGRA ESTRITA DA CONDUTA — DETALHE CADA MEDICAÇÃO (PROIBIDO FRASE GENÉRICA!):
    - É TERMINANTEMENTE PROIBIDO escrever frases genéricas como "Prescrição medicamentosa conforme avaliação médica" ou "Ajuste terapêutico".

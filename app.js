@@ -25,6 +25,8 @@
     queueRunning: false,
     dailyTokensUsed: 0,
     dailyConsultationsProcessed: 0,
+    recentApiCallsTimestamps: [], // Monitora o limite real de Requisições Por Minuto (RPM) da API
+    activeReferralId: null,
     selectedMicDeviceId: localStorage.getItem('ubs_selected_mic') || ''
   };
 
@@ -135,6 +137,7 @@
   function addDailyTokenUsage(tokensAdded) {
     state.dailyTokensUsed += (tokensAdded || 0);
     state.dailyConsultationsProcessed += 1;
+    state.recentApiCallsTimestamps.push(Date.now());
     localStorage.setItem(getTodayKey(), JSON.stringify({
       tokens: state.dailyTokensUsed,
       count: state.dailyConsultationsProcessed
@@ -143,22 +146,26 @@
   }
 
   function updateTokenMonitorUI() {
-    // Limite diário de referência no plano gratuito (~60 consultas / ~1.500.000 tokens/dia)
-    const DAILY_MAX_CONSULTATIONS = 60;
-    const usedConsults = state.dailyConsultationsProcessed || 0;
-    const remainingConsults = Math.max(0, DAILY_MAX_CONSULTATIONS - usedConsults);
-    const freePercent = Math.max(0, Math.min(100, Math.round((remainingConsults / DAILY_MAX_CONSULTATIONS) * 100)));
+    // Limpa chamadas com mais de 60 segundos para calcular o RPM real do último minuto
+    const now = Date.now();
+    state.recentApiCallsTimestamps = (state.recentApiCallsTimestamps || []).filter(ts => now - ts < 60000);
+    const rpmLastMinute = state.recentApiCallsTimestamps.length;
 
-    const elCurrent = document.getElementById('liveTokenEstimate');
+    // Na API gratuita do Google AI Studio:
+    // - Limite por Minuto (RPM): ~15 requisições/minuto e 250k~1M tokens/minuto
+    // - Uso do Dia: mostramos exatamente quantas requisições (consultas + PDFs + encaminhamentos) e tokens reais a API processou hoje!
+    const usedCalls = state.dailyConsultationsProcessed || 0;
+    const usedTokensK = (state.dailyTokensUsed / 1000).toFixed(1);
+
     const elDaily = document.getElementById('dailyTokenCounter');
-
-    if (elCurrent) {
-      const minRec = Math.floor(state.recordingSeconds / 60);
-      elCurrent.textContent = state.isRecording ? `Ativo (${minRec} min)` : 'Pronto';
-    }
     if (elDaily) {
-      elDaily.textContent = `${freePercent}% livre (~${remainingConsults} consultas restantes hoje)`;
-      elDaily.style.color = freePercent > 30 ? '#34d399' : (freePercent > 10 ? '#fbbf24' : '#f87171');
+      if (rpmLastMinute >= 10) {
+        elDaily.textContent = `⚠️ ${rpmLastMinute}/15 envios no último min • Hoje: ${usedCalls} envios (${usedTokensK}k tok)`;
+        elDaily.style.color = '#d97706';
+      } else {
+        elDaily.textContent = `Hoje: ${usedCalls} envios (${usedTokensK}k tok) • Minuto: livre (${rpmLastMinute}/15)`;
+        elDaily.style.color = '#059669';
+      }
     }
   }
 
@@ -1184,27 +1191,173 @@
       };
 
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
-      const refText = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const refText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
       const tokens = responseJson?.usageMetadata?.totalTokenCount || 800;
 
-      consult.referralText = refText.trim();
+      if (!Array.isArray(consult.referrals)) {
+        consult.referrals = [];
+        if (consult.referralText) {
+          consult.referrals.push({
+            id: 'ref_legacy',
+            specialty: consult.referralSpecialty || 'Especialidade',
+            priority: 'Prioritário',
+            text: consult.referralText,
+            createdAt: consult.updatedAt || Date.now()
+          });
+        }
+      }
+
+      const newRefItem = {
+        id: 'ref_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        specialty: especialidade,
+        priority: prioridade,
+        text: refText,
+        createdAt: Date.now()
+      };
+
+      consult.referrals.push(newRefItem);
+      consult.referralText = refText;
       consult.referralSpecialty = especialidade;
       await window.ScribeDB.saveConsultation(consult);
       addDailyTokenUsage(tokens);
 
-      const refEditor = document.getElementById('referralResultEditor');
-      const refBox = document.getElementById('referralOutputContainer');
-      if (refEditor) refEditor.value = consult.referralText;
-      if (refBox) refBox.style.display = 'block';
-      showToast('🏛️ Documento de Regulação Estadual gerado!');
+      // Limpa campo customizado para facilitar gerar a próxima especialidade sem travar!
+      if (customSpecialty) customSpecialty.value = '';
+
+      state.activeReferralId = newRefItem.id;
+      renderSavedReferralsForConsultation(consult);
+      openSpecificReferralInEditor(consult, newRefItem.id);
+      showToast(`🏛️ Encaminhamento #${consult.referrals.length} (${especialidade}) salvo!`);
     } catch (err) {
       alert('Erro ao gerar encaminhamento: ' + err.message);
     } finally {
       if (btnGenerate) {
         btnGenerate.disabled = false;
-        btnGenerate.textContent = '🏛️ Gerar Texto de Encaminhamento (Sistema Estadual)';
+        btnGenerate.textContent = '🏛️ Gerar e Salvar Encaminhamento para esta Especialidade';
       }
     }
+  }
+
+  function toggleReferralDrawer(forceOpen) {
+    const body = document.getElementById('referralDrawerBody');
+    const btn = document.getElementById('referralDrawerToggleBtn');
+    if (!body) return;
+    const isHidden = body.style.display === 'none';
+    const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : isHidden;
+    body.style.display = shouldOpen ? 'block' : 'none';
+    if (btn) {
+      btn.textContent = shouldOpen ? '▲ Minimizar' : '▼ Abrir Encaminhamentos';
+    }
+  }
+
+  function renderSavedReferralsForConsultation(consult) {
+    const listWrap = document.getElementById('savedReferralsListContainer');
+    const listEl = document.getElementById('savedReferralsList');
+    const countBadge = document.getElementById('savedReferralsCountBadge');
+    const outBox = document.getElementById('referralOutputContainer');
+
+    let refs = Array.isArray(consult?.referrals) ? consult.referrals : [];
+    if (refs.length === 0 && consult?.referralText) {
+      refs = [{
+        id: 'ref_legacy',
+        specialty: consult.referralSpecialty || 'Especialidade',
+        priority: 'Prioritário',
+        text: consult.referralText,
+        createdAt: consult.updatedAt || Date.now()
+      }];
+    }
+
+    if (countBadge) {
+      countBadge.textContent = `${refs.length} salvo(s)`;
+    }
+
+    if (!listWrap || !listEl) return;
+
+    if (refs.length === 0) {
+      listWrap.style.display = 'none';
+      listEl.innerHTML = '';
+      if (outBox) outBox.style.display = 'none';
+      return;
+    }
+
+    listWrap.style.display = 'block';
+    listEl.innerHTML = '';
+
+    refs.forEach((refItem, idx) => {
+      const row = document.createElement('div');
+      row.className = `saved-ref-item ${state.activeReferralId === refItem.id ? 'active' : ''}`;
+      row.innerHTML = `
+        <div style="font-weight: 700; font-size: 13px; color: #3b0764;">
+          ${idx + 1}. ${escapeHtml(refItem.specialty)}
+          <span style="font-size: 11px; font-weight: 500; color: #6b21a8; margin-left: 6px;">(${escapeHtml(refItem.priority || '')})</span>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <button type="button" class="btn btn-secondary btn-ref-open" style="padding: 4px 10px; font-size: 12px;">
+            ${state.activeReferralId === refItem.id ? '👁️ Aberto' : 'Abrir'}
+          </button>
+          <button type="button" class="btn btn-primary btn-ref-copy" style="padding: 4px 10px; font-size: 12px;">
+            📋 Copiar
+          </button>
+          <button type="button" class="btn btn-secondary btn-ref-del" style="padding: 4px 8px; font-size: 12px; color: #dc2626;" title="Excluir este encaminhamento">
+            🗑️
+          </button>
+        </div>
+      `;
+
+      row.querySelector('.btn-ref-open').addEventListener('click', () => {
+        if (state.activeReferralId === refItem.id) {
+          state.activeReferralId = null;
+          if (outBox) outBox.style.display = 'none';
+          renderSavedReferralsForConsultation(consult);
+        } else {
+          openSpecificReferralInEditor(consult, refItem.id);
+        }
+      });
+
+      row.querySelector('.btn-ref-copy').addEventListener('click', () => {
+        copyToClipboard(refItem.text, `🏛️ Encaminhamento #${idx + 1} (${refItem.specialty}) copiado!`);
+      });
+
+      row.querySelector('.btn-ref-del').addEventListener('click', async () => {
+        if (!confirm(`Excluir o encaminhamento "${idx + 1}. ${refItem.specialty}"?`)) return;
+        consult.referrals = refs.filter(r => r.id !== refItem.id);
+        if (consult.referrals.length === 0) {
+          consult.referralText = '';
+          consult.referralSpecialty = '';
+        }
+        if (state.activeReferralId === refItem.id) {
+          state.activeReferralId = null;
+          if (outBox) outBox.style.display = 'none';
+        }
+        await window.ScribeDB.saveConsultation(consult);
+        renderSavedReferralsForConsultation(consult);
+      });
+
+      listEl.appendChild(row);
+    });
+  }
+
+  function openSpecificReferralInEditor(consult, refId) {
+    const refs = Array.isArray(consult?.referrals) ? consult.referrals : [];
+    const target = refs.find(r => r.id === refId);
+    const outBox = document.getElementById('referralOutputContainer');
+    const editor = document.getElementById('referralResultEditor');
+    const titleEl = document.getElementById('activeReferralTitleLabel');
+    if (!target || !outBox || !editor) return;
+
+    state.activeReferralId = refId;
+    const idx = refs.indexOf(target) + 1;
+    if (titleEl) {
+      titleEl.textContent = `${idx}. Encaminhamento — ${target.specialty}:`;
+    }
+    editor.value = target.text;
+    outBox.style.display = 'block';
+    renderSavedReferralsForConsultation(consult);
+
+    editor.oninput = async () => {
+      target.text = editor.value;
+      await window.ScribeDB.saveConsultation(consult);
+    };
   }
 
   async function checkCrashRecoveryAndLoadHistory() {
@@ -1464,15 +1617,9 @@
       }
     }
 
-    const refBox = document.getElementById('referralOutputContainer');
-    const refEditor = document.getElementById('referralResultEditor');
-    if (consult.referralText) {
-      refBox.style.display = 'block';
-      refEditor.value = consult.referralText;
-    } else {
-      refBox.style.display = 'none';
-      refEditor.value = '';
-    }
+    state.activeReferralId = null;
+    renderSavedReferralsForConsultation(consult);
+    toggleReferralDrawer(false); // Inicia minimizado para deixar a tela limpa!
 
     const audioPlayer = document.getElementById('savedAudioPlayer');
     const btnDownloadAudio = document.getElementById('btnDownloadAudio');
@@ -1798,6 +1945,18 @@
     document.getElementById('btnCopyReferral')?.addEventListener('click', () => {
       const text = document.getElementById('referralResultEditor')?.value || '';
       copyToClipboard(text, '🏛️ Encaminhamento copiado para a Regulação Estadual!');
+    });
+    document.getElementById('btnToggleReferralDrawer')?.addEventListener('click', () => {
+      toggleReferralDrawer();
+    });
+    document.getElementById('btnCloseActiveReferralView')?.addEventListener('click', async () => {
+      state.activeReferralId = null;
+      const outBox = document.getElementById('referralOutputContainer');
+      if (outBox) outBox.style.display = 'none';
+      if (state.activeConsultationId) {
+        const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+        if (c) renderSavedReferralsForConsultation(c);
+      }
     });
 
     document.getElementById('btnOpenApiKeyModal')?.addEventListener('click', openApiKeyModal);
