@@ -382,20 +382,16 @@ Data de referência de hoje: ${todayStr}.
 
 === REGRAS CRÍTICAS E OBRIGATÓRIAS (SIGA RIGOROSAMENTE) ===
 
-1. EXTRAÇÃO COMPLETA DO ÁUDIO PARA O CABEÇALHO E SUBJETIVO:
-   - Puxe do áudio TODAS as informações básicas faladas: comorbidades (#), medicações em uso contínuo (# MUC: com nome e dose se ditos), tabagismo, alergias, queixa principal, história da doença atual (HDA) completa, tempo de evolução, tratamentos já feitos e negativas pertinentes.
-   - Converta os sintomas relatados para terminologia médica semiológica formal (ex.: "dor de cabeça" -> "cefaleia"; "dor na barriga/estômago" -> "epigastralgia / dor abdominal"; "falta de ar" -> "dispneia"; "ardência para urinar" -> "disúria"; "tosse com catarro" -> "tosse produtiva").
-   - PROIBIDO CONTRADIÇÃO: Se nos modelos de Pré-Natal ou Puericultura houver queixa no áudio, REMOVA as frases padrão "sem queixas" ou as negativas daquele sintoma.
+1. RESPEITO ABSOLUTO À MÁSCARA / MODELO DE EVOLUÇÃO SELECIONADO:
+   - Você DEVE manter a estrutura IDÊNTICA ao "MODELO DE REFERÊNCIA A SER SEGUIDO" abaixo!
+   - Mantenha o cabeçalho (#, # MUC:, # Tabagista:, # Alergias: — preenchendo se foi falado ou deixando em branco se não falado).
+   - Mantenha a frase inicial exata do SUBJETIVO do modelo (ex.: "Paciente vem em consulta em decorrência de ...") completando com a história clínica relatada no áudio em linguagem médica semiológica (ex.: "dor de cabeça" -> "cefaleia").
+   - Mantenha no final da CONDUTA exatamente as frases finais padrão do modelo (ex.: "- Oriento sinais de alarme e na presença emergência. Ciente.\n- Orientações gerais\n- Ciente, concordante e sem dúvidas").
 
-2. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — NÃO INVENTE SISTEMAS NÃO AVALIADOS:
-   - NUNCA cole exame físico padrão de aparelhos que o médico NÃO examinou ou NÃO citou!
-   - Mantenha apenas "BEG, LOC, MUC" (se compatível) e inclua SOMENTE os sinais vitais e os aparelhos/sistemas que foram EFETIVAMENTE citados no áudio ou nas notas rápidas!
-   - Converta os achados do exame físico que o médico falou para linguagem semiológica técnica:
-     * Se o médico falou que auscultou pulmão normal -> adicione "AP: MVUD, SRA" (ou descreva a alteração técnica se houver ruídos adventícios).
-     * Se o médico falou que auscultou coração normal -> adicione "AC: BNF, 2T, RR, SS" (ou descreva a alteração).
-     * Se o médico falou que examinou abdome -> adicione "ABD: ..." com a descrição técnica do que ele falou.
-     * Se o médico falou de otoscopia, oroscopia, extremidades, pele, neurológico, osteomuscular -> descreva tecnicamente apenas o que foi examinado!
-     * Se o médico NÃO falou nada sobre aparelho respiratório, cardiovascular ou abdome, NÃO coloque AP, AC ou ABD no Objetivo!
+2. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — NÃO INVENTE DADOS NÃO FALADOS:
+   - NUNCA invente sinais físicos que o médico não falou (ex.: se o médico só palpou e perguntou se doía, escreva apenas "Dor à palpação em panturrilha direita", NÃO invente "sinais flogísticos" se o médico não falou isso!).
+   - Mantenha apenas "BEG, LOC, MUC" e inclua SOMENTE a PA/sinais vitais e os achados do exame físico que foram EFETIVAMENTE ditos no áudio ou nas notas rápidas!
+   - Se o médico NÃO falou nada sobre aparelho respiratório, cardiovascular ou abdome, NÃO coloque AP, AC ou ABD no Objetivo!
 
 3. REGRA ESTRITA DE EXAMES COMPLEMENTARES (ZERO OMISSÃO E PROIBIDO "N/R"):
    - ${hasExamFiles ? 'Há PDFs/imagens de exames anexados! Crie o bloco "EXAMES COMPLEMENTARES" logo após o OBJETIVO e antes da AVALIAÇÃO e transcreva TODOS os exames presentes nos arquivos.' : 'Se NÃO houver PDF de exame anexado E o médico NÃO tiver falado nenhum resultado de exame complementar no áudio/notas, NÃO CRIE e NÃO ESCREVA o título "EXAMES COMPLEMENTARES" na evolução!'}

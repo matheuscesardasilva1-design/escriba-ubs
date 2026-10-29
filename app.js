@@ -1008,29 +1008,22 @@
     const rawText = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const tokensUsed = responseJson?.usageMetadata?.totalTokenCount || Math.round((consultation.durationSeconds || 60) * 32 + 1200);
 
-    let parsed = null;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch (_) {
-      const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-      try {
-        parsed = JSON.parse(cleaned);
-      } catch (__) {
-        parsed = { evolucao_completa: rawText };
-      }
-    }
+    const parsed = parseGeminiEvolutionResponse(rawText);
 
     let finalEvolution = parsed.evolucao_completa || rawText;
     // Se não houve exames complementares anexados nem citados, garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
     if (examFiles.length === 0 && (!parsed.resumo_exames || parsed.resumo_exames.trim() === '' || parsed.resumo_exames.trim() === '-')) {
       finalEvolution = finalEvolution.replace(/\n*EXAMES COMPLEMENTARES\s*\n\s*-\s*(?:Sem novos exames[^\n]*)?\n*/gi, '\n\n');
     }
-    // Remove qualquer código CID-10 / CIAP-2 que eventualmente tenha sido colocado entre parênteses na evolução
-    finalEvolution = finalEvolution.replace(/\s*\((?:CID(?:-1[01])?|CIAP(?:-2)?)[^)]*\)/gi, '');
+
+    const { cleanText, codes } = cleanAndExtractCidFromEvolution(
+      finalEvolution,
+      Array.isArray(parsed.codigos_cid_ciap) ? parsed.codigos_cid_ciap : []
+    );
 
     return {
-      evolutionText: finalEvolution.trim(),
-      cidCiapCodes: Array.isArray(parsed.codigos_cid_ciap) ? parsed.codigos_cid_ciap : [],
+      evolutionText: cleanText,
+      cidCiapCodes: codes,
       rawTranscript: parsed.transcricao_literal_do_audio || '',
       soapParts: {
         subjetivo: parsed.resumo_subjetivo || '',
@@ -1044,6 +1037,74 @@
       tokensUsed,
       modelUsed
     };
+  }
+
+  // Extrator à prova de falhas: NUNCA permite que código JSON bruto ({ "transcricao_literal_do_audio": ... }) apareça na caixa de evolução!
+  function parseGeminiEvolutionResponse(rawText) {
+    if (!rawText || typeof rawText !== 'string') {
+      return { evolucao_completa: '' };
+    }
+    let cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    // 1. Tenta parse direto
+    try {
+      const obj = JSON.parse(cleaned);
+      return Array.isArray(obj) ? (obj[0] || {}) : obj;
+    } catch (_) {}
+
+    // 2. Tenta remover colchetes/chaves extras que a IA às vezes adiciona no final (ex.: "} ] }")
+    const strippedEnd = cleaned.replace(/\}\s*\]\s*\}\s*$/, '}').replace(/\}\s*\]\s*$/, '}');
+    try {
+      const obj2 = JSON.parse(strippedEnd);
+      return Array.isArray(obj2) ? (obj2[0] || {}) : obj2;
+    } catch (_) {}
+
+    // 3. Extração direta campo a campo via Regex (caso haja aspas ou quebras de linha não escapadas no JSON)
+    const extractField = (key) => {
+      const re = new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 's');
+      const m = cleaned.match(re);
+      if (!m) return '';
+      try {
+        return JSON.parse(`"${m[1]}"`);
+      } catch (__) {
+        return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      }
+    };
+
+    const evo = extractField('evolucao_completa');
+    if (evo) {
+      return {
+        transcricao_literal_do_audio: extractField('transcricao_literal_do_audio'),
+        evolucao_completa: evo,
+        resumo_subjetivo: extractField('resumo_subjetivo'),
+        resumo_objetivo: extractField('resumo_objetivo'),
+        resumo_exames: extractField('resumo_exames'),
+        resumo_avaliacao: extractField('resumo_avaliacao'),
+        resumo_conduta: extractField('resumo_conduta'),
+        especialidade_sugerida_encaminhamento: extractField('especialidade_sugerida_encaminhamento')
+      };
+    }
+
+    return { evolucao_completa: cleaned };
+  }
+
+  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes) {
+    let text = evolutionText || '';
+    const extractedCodes = Array.isArray(existingCodes) ? [...existingCodes] : [];
+
+    // Captura qualquer "(CID-10: ... / CIAP-2: ...)" que esteja na Avaliação para colocar fora da evolução
+    const lines = text.split('\n');
+    lines.forEach(line => {
+      const cidMatch = line.match(/^-\s*([^(\n]+?)\s*\(((?:CID|CIAP)[^)]+)\)/i);
+      if (cidMatch) {
+        const label = `${cidMatch[2].trim()} — ${cidMatch[1].trim()}`;
+        if (!extractedCodes.includes(label)) extractedCodes.push(label);
+      }
+    });
+
+    // Remove os parênteses de CID/CIAP de dentro do texto da evolução
+    text = text.replace(/\s*\((?:CID(?:-1[01])?|CIAP(?:-2)?)[^)]*\)/gi, '');
+    return { cleanText: text.trim(), codes: extractedCodes };
   }
 
   async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate) {
@@ -1397,6 +1458,21 @@
           await window.ScribeDB.saveConsultation(c);
           nextDayAutoQueuedCount++;
         }
+      } else if (c.status === 'done' && c.evolutionText && (c.evolutionText.includes('"evolucao_completa"') || /\((?:CID|CIAP)/i.test(c.evolutionText))) {
+        // Repara automaticamente qualquer evolução anterior que tenha ficado com JSON bruto ou CID no meio do texto!
+        if (c.evolutionText.includes('"evolucao_completa"')) {
+          const repaired = parseGeminiEvolutionResponse(c.evolutionText);
+          if (repaired.evolucao_completa) {
+            c.evolutionText = repaired.evolucao_completa;
+            if (repaired.transcricao_literal_do_audio && !c.rawTranscript) {
+              c.rawTranscript = repaired.transcricao_literal_do_audio;
+            }
+          }
+        }
+        const { cleanText, codes } = cleanAndExtractCidFromEvolution(c.evolutionText, c.cidCiapCodes);
+        c.evolutionText = cleanText;
+        c.cidCiapCodes = codes;
+        await window.ScribeDB.saveConsultation(c);
       }
     }
 
