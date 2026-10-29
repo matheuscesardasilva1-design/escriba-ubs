@@ -377,10 +377,13 @@ Data de referência de hoje: ${todayStr}.
 
 === REGRAS CRÍTICAS E OBRIGATÓRIAS (SIGA RIGOROSAMENTE) ===
 
-1. RESPEITO ABSOLUTO À MÁSCARA / MODELO DE EVOLUÇÃO SELECIONADO:
+1. RESPEITO ABSOLUTO À MÁSCARA / MODELO DE EVOLUÇÃO SELECIONADO E PROIBIÇÃO DE CONTRADIÇÕES:
    - Você DEVE manter a estrutura IDÊNTICA ao "MODELO DE REFERÊNCIA A SER SEGUIDO" abaixo!
    - Mantenha o cabeçalho (#, # MUC:, # Tabagista:, # Alergias: — preenchendo se foi falado ou deixando em branco se não falado).
-   - Mantenha a frase inicial exata do SUBJETIVO do modelo (ex.: "Paciente vem em consulta em decorrência de ...") completando com a história clínica relatada no áudio em linguagem médica semiológica (ex.: "dor de cabeça" -> "cefaleia").
+   - Mantenha a frase inicial do SUBJETIVO do modelo completando com a história clínica relatada no áudio em linguagem médica semiológica (ex.: "dor de cabeça" -> "cefaleia").
+   - PROIBIDO CONTRADIÇÃO NO PRÉ-NATAL, PUERICULTURA, VISITA DOMICILIAR E DEMAIS MODELOS:
+     * Se a gestante (no Pré-Natal), a mãe/criança (na Puericultura) ou o paciente (na Visita Domiciliar / Consulta Geral) relatar QUALQUER queixa, dor, sintoma, intercorrência ou sinal de alarme no áudio, você DEVE REMOVER IMEDIATAMENTE as frases padrão "Paciente refere estar bem, sem queixas", "Familiar relata que paciente está bem", "Nega intercorrências" e "Sem demais queixas"!
+     * Se a gestante/paciente referir algum sintoma que está listado como negativa padrão no modelo (ex.: se ela tiver cefaleia, escotomas, disúria, sangramento vaginal, perda de líquido ou febre), APAGUE a frase "Nega [aquele sintoma]" e descreva detalhadamente o sintoma que ela está sentindo! Mantenha como "Nega ..." apenas os sintomas que ela realmente negou ou não apresentou.
    - Mantenha no final da CONDUTA as frases finais padrão do modelo SEM traço no início (ex.: "Orientações gerais\nCiente, concordante e sem dúvidas"). Se o médico orientou sinais de alarme específicos no áudio, descreva esses sinais na linha "Oriento sinais de alarme (...) e na presença emergência. Ciente." e NÃO repita a frase genérica "Oriento sinais de alarme e na presença emergência. Ciente."!
 
 2. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — NÃO INVENTE DADOS NÃO FALADOS:

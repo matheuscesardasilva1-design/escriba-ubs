@@ -1253,6 +1253,7 @@
 
           if (res.ok) {
             const responseJson = await res.json();
+            updateTokenMonitorUI();
             return { responseJson, modelUsed: model };
           }
 
@@ -1260,6 +1261,11 @@
           const errMsg = errData?.error?.message || `HTTP ${res.status}`;
 
           if (res.status === 400 && errMsg.toLowerCase().includes('api key')) {
+            const elDaily = document.getElementById('dailyTokenCounter');
+            if (elDaily) {
+              elDaily.textContent = `🔴 Chave API inválida`;
+              elDaily.style.color = '#dc2626';
+            }
             throw new Error('Credencial de API inválida. Clique em "Credencial API" no topo para verificar.');
           }
 
@@ -1270,7 +1276,18 @@
           }
 
           if (res.status === 429 || res.status === 503) {
-            lastError = new Error(`Limite temporário (${res.status}): ${errMsg}`);
+            const elDaily = document.getElementById('dailyTokenCounter');
+            const isDailyQuota = /per day|daily|quota exceeded.*day/i.test(errMsg);
+            if (elDaily) {
+              if (isDailyQuota) {
+                elDaily.textContent = `🔴 Cota diária da chave atingida`;
+                elDaily.style.color = '#dc2626';
+              } else {
+                elDaily.textContent = `🟡 Aguardando limite por minuto da chave...`;
+                elDaily.style.color = '#d97706';
+              }
+            }
+            lastError = new Error(`Limite (${res.status}): ${errMsg}`);
             if (attempt < maxAttempts) {
               const waitSec = 8 * attempt;
               if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando fila (${waitSec}s)...`);
