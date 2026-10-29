@@ -28,11 +28,12 @@
     selectedMicDeviceId: localStorage.getItem('ubs_selected_mic') || ''
   };
 
+  // Prioriza os modelos FLASH COMPLETOS (muito mais precisos em áudio médico e prescrições do que o Lite!)
   const GEMINI_MODELS = [
-    'gemini-3.5-flash-lite',
-    'gemini-3.5-flash',
+    'gemini-2.5-flash',
     'gemini-3-flash-preview',
-    'gemini-2.5-flash'
+    'gemini-3.5-flash',
+    'gemini-3.5-flash-lite'
   ];
 
   let cachedDiscoveredModels = null;
@@ -50,28 +51,31 @@
           .map(m => m.name.replace(/^models\//, ''))
           .filter(name => name.includes('gemini') && !name.includes('embedding') && !name.includes('imagen') && !name.includes('veo') && !name.includes('tts'));
 
-        // Ordena priorizando os modelos 3.5 / 3.0 / 2.5 flash mais rápidos e econômicos
+        // Prioriza os modelos Flash completos (não-lite) primeiro para máxima precisão clínica!
         const preferredOrder = [
-          'gemini-3.5-flash-lite',
-          'gemini-3.5-flash',
+          'gemini-2.5-flash',
           'gemini-3-flash',
           'gemini-3-flash-preview',
-          'gemini-2.5-flash'
+          'gemini-3.5-flash',
+          'gemini-2.5-pro',
+          'gemini-3.5-flash-lite'
         ];
         const sorted = [];
         preferredOrder.forEach(pref => {
-          const match = available.find(a => a === pref || a.startsWith(pref));
+          const match = available.find(a => a === pref || (a.startsWith(pref) && !a.includes('lite')));
           if (match && !sorted.includes(match)) sorted.push(match);
         });
+        // Adiciona outros flash não-lite
         available.forEach(a => {
-          if (a.includes('flash') && !sorted.includes(a)) sorted.push(a);
+          if (a.includes('flash') && !a.includes('lite') && !sorted.includes(a)) sorted.push(a);
         });
+        // Deixa os modelos lite apenas como último fallback de segurança
         available.forEach(a => {
-          if (!sorted.includes(a)) sorted.push(a);
+          if (a.includes('lite') && !sorted.includes(a)) sorted.push(a);
         });
 
         if (sorted.length > 0) {
-          cachedDiscoveredModels = sorted.slice(0, 5);
+          cachedDiscoveredModels = sorted.slice(0, 6);
           return cachedDiscoveredModels;
         }
       }
@@ -97,7 +101,7 @@
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v3');
+    const saved = localStorage.getItem('ubs_custom_templates_v4');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -109,7 +113,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v3', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v4', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -139,15 +143,22 @@
   }
 
   function updateTokenMonitorUI() {
-    const examTokens = state.pendingExamFiles.length * 850;
-    const estCurrentAudioTokens = Math.round(state.recordingSeconds * 32) + examTokens + (state.isRecording ? 1200 : 0);
+    // Limite diário de referência no plano gratuito (~60 consultas / ~1.500.000 tokens/dia)
+    const DAILY_MAX_CONSULTATIONS = 60;
+    const usedConsults = state.dailyConsultationsProcessed || 0;
+    const remainingConsults = Math.max(0, DAILY_MAX_CONSULTATIONS - usedConsults);
+    const freePercent = Math.max(0, Math.min(100, Math.round((remainingConsults / DAILY_MAX_CONSULTATIONS) * 100)));
+
     const elCurrent = document.getElementById('liveTokenEstimate');
     const elDaily = document.getElementById('dailyTokenCounter');
+
     if (elCurrent) {
-      elCurrent.textContent = estCurrentAudioTokens.toLocaleString('pt-BR') + ' tok';
+      const minRec = Math.floor(state.recordingSeconds / 60);
+      elCurrent.textContent = state.isRecording ? `Ativo (${minRec} min)` : 'Pronto';
     }
     if (elDaily) {
-      elDaily.textContent = `${state.dailyTokensUsed.toLocaleString('pt-BR')} tok (${state.dailyConsultationsProcessed} atend.)`;
+      elDaily.textContent = `${freePercent}% livre (~${remainingConsults} consultas restantes hoje)`;
+      elDaily.style.color = freePercent > 30 ? '#34d399' : (freePercent > 10 ? '#fbbf24' : '#f87171');
     }
   }
 
@@ -787,6 +798,7 @@
           const result = await processSingleConsultationWithGemini(nextItem, apiKey);
           nextItem.status = 'done';
           nextItem.evolutionText = result.evolutionText;
+          nextItem.rawTranscript = result.rawTranscript || '';
           nextItem.soapParts = result.soapParts;
           nextItem.auditAlerts = result.auditAlerts || [];
           nextItem.suggestedSpecialty = result.suggestedSpecialty || '';
@@ -891,8 +903,15 @@
       }
     }
 
+    let finalEvolution = parsed.evolucao_completa || rawText;
+    // Se não houve exames complementares anexados nem citados, garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
+    if (examFiles.length === 0 && (!parsed.resumo_exames || parsed.resumo_exames.trim() === '' || parsed.resumo_exames.trim() === '-')) {
+      finalEvolution = finalEvolution.replace(/\n*EXAMES COMPLEMENTARES\s*\n\s*-\s*(?:Sem novos exames[^\n]*)?\n*/gi, '\n\n');
+    }
+
     return {
-      evolutionText: parsed.evolucao_completa || rawText,
+      evolutionText: finalEvolution.trim(),
+      rawTranscript: parsed.transcricao_literal_do_audio || '',
       soapParts: {
         subjetivo: parsed.resumo_subjetivo || '',
         objetivo: parsed.resumo_objetivo || '',
@@ -1256,6 +1275,16 @@
       editor.value = '⏳ Estruturando evolução clínica e laudos anexados em segundo plano...\n\nO painel à esquerda já está livre para o próximo atendimento.';
     } else {
       editor.value = consult.evolutionText || '';
+    }
+
+    const rawBox = document.getElementById('rawTranscriptBox');
+    const rawTextEl = document.getElementById('rawTranscriptText');
+    if (rawBox && rawTextEl) {
+      if (consult.rawTranscript) {
+        rawTextEl.textContent = consult.rawTranscript;
+      } else {
+        rawTextEl.textContent = 'Transcrição literal disponível nos novos atendimentos gravados.';
+      }
     }
 
     if (consult.suggestedSpecialty) {

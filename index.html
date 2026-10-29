@@ -19,11 +19,11 @@
     </div>
 
     <div class="topbar-metrics">
-      <span class="metric-pill" title="Estimativa de consumo da sessão atual">
-        ⏱️ Sessão: <strong id="liveTokenEstimate">0 tok</strong>
+      <span class="metric-pill" title="Status da folha atual">
+        ⏱️ Status: <strong id="liveTokenEstimate">Pronto</strong>
       </span>
-      <span class="metric-pill" title="Consumo acumulado no turno de hoje">
-        📊 Turno: <strong id="dailyTokenCounter">0 tok (0 atend.)</strong>
+      <span class="metric-pill" title="Cota diária estimada da chave gratuita (~60 atendimentos completos por dia)">
+        🔋 Cota Diária: <strong id="dailyTokenCounter">100% livre (~60 consultas restantes hoje)</strong>
       </span>
       <span class="metric-pill" id="diskUsageBadge" title="Armazenamento local de segurança">
         💽 0.0 MB
@@ -330,6 +330,12 @@
 
           <!-- Editor da Evolução (Preenchido na sua máscara exata + Exames Complementares) -->
           <textarea id="mainEvolutionEditor" class="evolution-editor" placeholder="A evolução estruturada aparecerá aqui..."></textarea>
+
+          <!-- Transcrição Literal do Áudio (Oculta em gaveta discreta para conferência) -->
+          <details id="rawTranscriptBox" style="margin-top: 8px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 7px; padding: 7px 11px; font-size: 12px; color: #475569;">
+            <summary style="cursor: pointer; font-weight: 700;">🔎 Conferir Transcrição Bruta do Áudio (O que foi ouvido na consulta)</summary>
+            <div id="rawTranscriptText" style="margin-top: 6px; white-space: pre-wrap; font-family: inherit;"></div>
+          </details>
 
           <!-- GERADOR DE ENCAMINHAMENTO PARA REGULAÇÃO ESTADUAL (TODOS OS 7 MODELOS) -->
           <div class="referral-section">

@@ -1,6 +1,5 @@
 // ============================================================================
 // MODELOS DE EVOLUÇÃO UBS & PROMPTS CLÍNICOS (SEMIOLOGIA + RESGUARDO JURÍDICO)
-// Inclui formatação padrão de EXAMES COMPLEMENTARES (Labs com "|" e Imagem em texto corrido)
 // ============================================================================
 
 window.DEFAULT_TEMPLATES = {
@@ -20,13 +19,6 @@ Paciente vem em consulta em decorrência de
 
 OBJETIVO
 BEG, LOC, MUC
-AP: MVUD, SRA
-AC: BNF, 2T, RR, SS
-Extremidades aquecidas e bem perfundidas. TEC < 2 seg
-ABD: Globoso, indolor a palpação superficial e profunda
-
-EXAMES COMPLEMENTARES
-- 
 
 AVALIAÇÃO
 -
@@ -67,12 +59,6 @@ MF:
 Edema em membros inferiores: 
 Peso:
 PA:  mmHg
-ABD: Globoso, indolor a palpação superficial e profunda
-AP: MVUD, SRA
-AC: BNF, 2T, RR, SS
-
-EXAMES COMPLEMENTARES
-- 
 
 AVALIAÇÃO
 1. Gestação de risco habitual em curso ou alto risco
@@ -120,20 +106,6 @@ Altura:  (Z-Score Estatura/Idade: )
 PC:  (Z-Score PC/Idade: )
 IMC:  (Z-Score IMC/Idade: )
 Marcos do desenvolvimento: 
-AP: MVUD, SRA. Sem esforço ventilatório
-AC: BNF, 2T, RR, SS
-ABD: Globoso, sem fáscies de dor a palpação superficial e profunda. Não palpo visceromegalias
-Extremidades aquecidas e bem perfundidas. TEC < 2 seg
-Sem sinais de desidratação
-Fontanelas normotensas
-Ortolani:
-Barlow:
-Oroscopia: sp
-Otoscopia: MTD e MTE translúcidas e sem abaulamentos. Não visualizo secreção em canal auditivo
-Não realizado teste do olho vermelho por falta de oftalmoscópio na UBS
-
-EXAMES COMPLEMENTARES
-- 
 
 AVALIAÇÃO
 1. Criança em desenvolvimento
@@ -167,13 +139,6 @@ Paciente
 
 OBJETIVO
 BEG, LOC, MUC
-AP: MVUD, SRA
-AC: BNF, 2T, RR, SS
-Extremidades aquecidas e bem perfundidas. TEC < 2 seg
-ABD: Globoso, indolor a palpação superficial e profunda
-
-EXAMES COMPLEMENTARES
-- 
 
 AVALIAÇÃO
 -
@@ -208,9 +173,6 @@ Paciente avaliado(a) em decorrência de
 
 OBJETIVO
 BEG, LOC, MUC
-
-EXAMES COMPLEMENTARES
-- 
 
 AVALIAÇÃO
 - 
@@ -269,11 +231,6 @@ Altura:  m
 IMC: 
 PA:  mmHg
 Circunferência Abdominal:  cm
-Aparelho Cardiovascular: Bulhas normofonéticas, em 2 tempos, ritmo regular, sem sopros.
-Aparelho Respiratório: Murmúrio vesicular universalmente audível, sem ruídos adventícios.
-
-EXAMES COMPLEMENTARES
-- 
 
 7. RASTREAMENTOS (BASEADO EM ÓRGÃOS PRESENTES)
 Citopatológico (Colo Uterino): 
@@ -365,11 +322,6 @@ Altura:  m
 IMC: 
 PA:  mmHg
 Circunferência Abdominal:  cm
-Aparelho Cardiovascular: Bulhas normofonéticas, em 2 tempos, ritmo regular, sem sopros.
-Aparelho Respiratório: Murmúrio vesicular universalmente audível, sem ruídos adventícios.
-
-EXAMES COMPLEMENTARES
-- 
 
 7. RASTREAMENTOS (BASEADO EM ÓRGÃOS PRESENTES)
 Citopatológico (Colo Uterino): 
@@ -421,74 +373,72 @@ Critérios Clínicos Observados:
 // ============================================================================
 window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles) {
   const todayStr = new Date().toLocaleDateString('pt-BR');
-  return `Você é um Médico de Família e Comunidade experiente e Perito em Auditoria/Documentação Médica na Atenção Primária à Saúde (UBS / SUS).
-Sua tarefa é analisar atentamente o áudio da consulta médica (se fornecido), os PDFs/imagens de exames laboratoriais e de imagem anexados (se fornecidos) e as anotações rápidas, preenchendo EXATAMENTE o modelo de evolução selecionado pelo médico, com rigor semiológico, coerência clínica absoluta e resguardo jurídico.
+  return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
+Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS:
+ETAPA 1: Ouvir o áudio anexado do início ao fim com atenção absoluta e transcrever fielmente TUDO o que foi dito pelo médico e pelo paciente no campo "transcricao_literal_do_audio" do JSON. Não pule nenhuma palavra, sintoma, exame físico ou nome de remédio/posologia!
+ETAPA 2: Com base na sua transcrição completa do áudio + PDFs de exames anexados (se houver) + anotações rápidas, preencher o modelo de evolução selecionado abaixo com rigor semiológico, coerência clínica e resguardo jurídico.
 
-Data de referência de hoje (se não for citada outra data no áudio): ${todayStr}.
-Arquivos de Exames (PDF/Imagem) anexados nesta consulta: ${hasExamFiles ? 'SIM (transcreva TODOS os exames anexados na seção EXAMES COMPLEMENTARES seguindo estritamente a regra 4 abaixo)' : 'Apenas se falados no áudio ou escritos nas notas rápidas'}.
+Data de referência de hoje: ${todayStr}.
 
-=== REGRAS DE OURO (OBRIGATÓRIAS) ===
+=== REGRAS CRÍTICAS E OBRIGATÓRIAS (SIGA RIGOROSAMENTE) ===
 
-1. FIDELIDADE ESTRITA AO MODELO:
-   - Mantenha EXATAMENTE a estrutura, cabeçalhos (#), seções e frases de fechamento de segurança jurídica do modelo abaixo.
-   - Nos modelos que possuem parênteses de seleção como "( ) Opção", marque com "(X)" as opções confirmadas na consulta e deixe "( )" nas demais.
-   - Na PUERICULTURA:
-     * Substitua "X MESES" no título pela idade da criança informada.
-     * Dê atenção especial ao ALEITAMENTO / ALIMENTAÇÃO (no cabeçalho "# Aleitamento / Alimentação:" e no SUBJETIVO): especifique claramente se está em Aleitamento Materno Exclusivo (SME / livre demanda), Aleitamento Materno Complementado (com detalhes da introdução alimentar), Aleitamento Misto ou Fórmula Infantil Exclusiva. Se estiver em uso de FÓRMULA INFANTIL, registre obrigatoriamente qual a fórmula (ex: NAN, Aptamil, Nestogeno, etc.), volume/quantidade por mamada (ml), número de medidas/diluição, frequência/intervalo das mamadas e aceitação/tolerância gastrointestinal.
-   - No PRÉ-NATAL:
-     * Preencha no OBJETIVO e no cabeçalho todos os dados obstétricos objetivos informados no painel rápido ou no áudio (AU em cm, BCF em bpm, MF presentes/ausentes, Edema em MMII, Peso em kg, PA em mmHg e IG).
-   - Na VISITA DOMICILIAR (VD):
-     * Substitua "DD/MM/AAAA" no título pela data falada no áudio ou pela data de hoje (${todayStr}).
-     * Preencha o nome do(a) Enfermeiro(a), do(a) ACS e o nome + vínculo do Familiar/Cuidador(a) que estava na casa recebendo a equipe.
-     * Preencha com muita atenção o bloco final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
+1. EXTRAÇÃO COMPLETA DO ÁUDIO PARA O CABEÇALHO E SUBJETIVO:
+   - Puxe do áudio TODAS as informações básicas faladas: comorbidades (#), medicações em uso contínuo (# MUC: com nome e dose se ditos), tabagismo, alergias, queixa principal, história da doença atual (HDA) completa, tempo de evolução, tratamentos já feitos e negativas pertinentes.
+   - Converta os sintomas relatados para terminologia médica semiológica formal (ex.: "dor de cabeça" -> "cefaleia"; "dor na barriga/estômago" -> "epigastralgia / dor abdominal"; "falta de ar" -> "dispneia"; "ardência para urinar" -> "disúria"; "tosse com catarro" -> "tosse produtiva").
+   - PROIBIDO CONTRADIÇÃO: Se nos modelos de Pré-Natal ou Puericultura houver queixa no áudio, REMOVA as frases padrão "sem queixas" ou as negativas daquele sintoma.
 
-2. SUBJETIVO COM SEMIOLOGIA TÉCNICA, COERÊNCIA E RESGUARDO JURÍDICO:
-   - Converta TODA a linguagem leiga do paciente/familiar para terminologia médica semiológica formal (ex.: "dor na boca do estômago" -> "epigastralgia"; "ardência para urinar" -> "disúria"; "urinar toda hora pouquinho" -> "polaciúria"; "falta de ar deitado" -> "ortopneia"; "dor de garganta ao engolir" -> "odinofagia"; "tontura que gira" -> "vertigem"; "mancha escura na vista" -> "escotomas").
-   - PACIENTE POLIQUEIXOSO: Se o paciente relatar múltiplos problemas fora de ordem, reorganize de forma lógica, cronológica e coesa.
-   - RESGUARDO JURÍDICO E NEGATIVAS PERTINENTES: Documente explicitamente todos os sinais de alarme (red flags) perguntados ou negados na consulta.
-   - PROIBIDO CONTRADIÇÃO INTERNA: Nos modelos de Pré-Natal e Puericultura que trazem frases padrão como "Paciente refere estar bem, sem queixas. Nega disúria...", SE o paciente relatou alguma queixa, REMOVA a negativa correspondente da frase padrão e descreva a queixa tecnicamente.
+2. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — NÃO INVENTE SISTEMAS NÃO AVALIADOS:
+   - NUNCA cole exame físico padrão de aparelhos que o médico NÃO examinou ou NÃO citou!
+   - Mantenha apenas "BEG, LOC, MUC" (se compatível) e inclua SOMENTE os sinais vitais e os aparelhos/sistemas que foram EFETIVAMENTE citados no áudio ou nas notas rápidas!
+   - Converta os achados do exame físico que o médico falou para linguagem semiológica técnica:
+     * Se o médico falou que auscultou pulmão normal -> adicione "AP: MVUD, SRA" (ou descreva a alteração técnica se houver ruídos adventícios).
+     * Se o médico falou que auscultou coração normal -> adicione "AC: BNF, 2T, RR, SS" (ou descreva a alteração).
+     * Se o médico falou que examinou abdome -> adicione "ABD: ..." com a descrição técnica do que ele falou.
+     * Se o médico falou de otoscopia, oroscopia, extremidades, pele, neurológico, osteomuscular -> descreva tecnicamente apenas o que foi examinado!
+     * Se o médico NÃO falou nada sobre aparelho respiratório, cardiovascular ou abdome, NÃO coloque AP, AC ou ABD no Objetivo!
 
-3. OBJETIVO COM TRADUÇÃO TÉCNICA E PRESERVAÇÃO DA MÁSCARA:
-   - Tudo o que o médico falar sobre o exame físico deve ser redigido em linguagem semiológica técnica formal.
-   - Se um aparelho do exame físico (AP, AC, ABD, Extremidades, Otoscopia, etc.) NÃO teve alteração citada no áudio nem nas notas, MANTENHA o texto normal padrão da máscara.
+3. REGRA ESTRITA DE EXAMES COMPLEMENTARES — SÓ INCLUA SE HOUVER EXAMES:
+   - ${hasExamFiles ? 'Há PDFs/imagens de exames anexados! Crie o bloco "EXAMES COMPLEMENTARES" logo após o OBJETIVO e antes da AVALIAÇÃO e transcreva todos os exames.' : 'Se NÃO houver PDF de exame anexado E o médico NÃO tiver falado nenhum resultado de exame complementar no áudio/notas, NÃO CRIE e NÃO ESCREVA o título "EXAMES COMPLEMENTARES" na evolução!'}
+   - Quando houver exames complementares (por PDF anexado ou ditados no áudio/notas), coloque o bloco "EXAMES COMPLEMENTARES" entre OBJETIVO e AVALIAÇÃO seguindo este padrão exato:
+     * LABORATORIAIS (em linha única separada por " | "):
+       - LABS DD/MM/AAAA: Hb ... | Ht ... | Leuco ... | Plaq ... | GJ ... | HbA1c ... | Creat ... | Ureia ... | Sódio ... | K ... | CT ... | HDL ... | LDL ... | TAG ... | TSH ... | T4L ... | EQU: ...
+     * EXAMES DE IMAGEM (em texto corrido conciso):
+       - NOME DO EXAME DD/MM/AAAA: Descrição em texto corrido dos achados e conclusão.
 
-4. EXAMES COMPLEMENTARES (APÓS O OBJETIVO E ANTES DA AVALIAÇÃO) — REGRA DE FORMATAÇÃO ESTRITA:
-   - Se houver PDFs/imagens de exames anexados, falados no áudio ou colados nas notas, preencha a seção "EXAMES COMPLEMENTARES" exatamente neste padrão:
-   - PARA EXAMES LABORATORIAIS (em linha única compacta separada por barras verticais " | ", agrupados por data da coleta, usando abreviações médicas limpas):
-     Exemplo exato a seguir:
-     - LABS 06/10/2026: Hb 13,2 | Ht 39% | Leuco 6.400 | Plaq 245.000 | Reticulócitos 2,8% (100.520/mm³) | Eletroforese de Hb (Hb A1 97,5%, Hb A2 2,5%, Hb Fetal 0,0%) | GJ 328 | HbA1c 7,9% (Glicemia Média Estimada 180) | Creat 0,93 | Ureia 34 | Sódio 137 | K 4,96 | CT 203,0 | HDL 52,9 | LDL 133,6 | Não-HDL 150,1 | TAG 71,0 | PCR 5,3 | Ferro 59,0 | CTLF 267,9 | Transferrina 206,7 | Ferritina 65,2 | IST 22,0% (calculado) | TSH 2,25 | T4L 0,83 | Vit B12 441 | Ácido Fólico > 24,80 | RAC 35,0 mg/g (Albuminúria 7,6 mg/L / Creatinina Urinária 22,0 mg/dL) | EQU: Leucócitos 0,4/µL, Hemácias 1,5/µL, Células 2,3/µL, Cilindros ausentes, Esterase leucocitária negativa, Nitrito negativo, Proteína ausente, Glicose (4+), pH 7,5, Densidade 1.017 | Sangue Oculto nas Fezes: Negativo
-   - PARA EXAMES DE IMAGEM E MÉTODOS GRÁFICOS (Ecocardiograma, USG, Raio-X, Tomografia, Ressonância, Mamografia, Densitometria, Endoscopia, ECG, etc.):
-     * OBRIGATÓRIO SER EM TEXTO CORRIDO (sem tópicos soltos ou quebras de linha desnecessárias), iniciando com o NOME DO EXAME EM MAIÚSCULAS + DATA + dois pontos + descrição corrida dos achados relevantes e conclusão do laudo.
-     Exemplo exato a seguir:
-     - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento. Diâmetro do átrio esquerdo limítrofe. Sinais de degeneração fibrocálcica acometendo anel mitral e cúspides da válvula aórtica.
-   - Se NÃO houver nenhum exame complementar (nem PDF anexado, nem citado no áudio/notas), você pode remover o bloco "EXAMES COMPLEMENTARES" ou deixar "- Sem novos exames complementares avaliados nesta consulta."
-   - Nos modelos de Pré-Natal ou LGBTQIAP+, se o PDF trouxer sorologias, TS ou toxoplasmose, preencha também os campos correspondentes do cabeçalho/seção de sorologias!
+4. REGRA ESTRITA DA CONDUTA — DETALHE CADA MEDICAÇÃO (PROIBIDO FRASE GENÉRICA!):
+   - É TERMINANTEMENTE PROIBIDO escrever frases genéricas como "Prescrição medicamentosa conforme avaliação médica" ou "Ajuste terapêutico".
+   - Você DEVE escrever explicitamente o nome de cada medicação, concentração, dose/posologia e ação tomada que o médico falou no áudio:
+     * Se prescreveu medicação nova: "- Prescrevo [Nome do remédio + mg + posologia + dias, conforme falado]"
+     * Se alterou ou ajustou dose: "- Altero / Ajusto dose de [Nome do remédio] de [...] para [...]"
+     * Se suspendeu medicação: "- Suspendo o uso de [Nome do remédio] devido a [...]"
+     * Se renovou/manteve receita: "- Renovo / Mantenho prescrição de [Nome dos remédios]"
+     * Se solicitou exames ou encaminhou: liste exatamente quais exames foram solicitados e para qual especialidade encaminhou.
+     * Se mencionou plano para a próxima consulta: "- Plano para próxima consulta: [...]"
+   - Ao final da CONDUTA, mantenha sempre as frases de orientação de sinais de alarme e concordância do modelo.
 
-5. ZERO ALUCINAÇÃO (NUNCA INVENTE DADOS NUMÉRICOS):
-   - Se dados específicos do cabeçalho ou exame físico (como PA, Peso, AU, BCF, IG, Tipo Sanguíneo, APGAR, Capurro) NÃO forem falados no áudio nem constarem nos PDFs/notas, deixe o campo em branco após os dois pontos para o médico preencher manualmente.
-
-6. AVALIAÇÃO E CONDUTA / PLANO FUTURO:
-   - Em AVALIAÇÃO: Liste as hipóteses diagnósticas ou condições avaliadas em linguagem técnica (incluindo alterações importantes vistas nos exames complementares, ex: "DM2 descompensado", "Dislipidemia"), sugerindo entre parênteses o código CID-10 e CIAP-2 correspondente.
-   - Em CONDUTA: Liste prescrições, exames solicitados, encaminhamentos, plano para a próxima consulta e mantenha no final as frases padrão de orientações de sinais de alarme e concordância do modelo.
+5. REGRAS ESPECÍFICAS DE PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
+   - Na PUERICULTURA: détailhe o Aleitamento/Alimentação (SME, complementado, misto ou fórmula infantil com nome da fórmula, volume em ml, medidas e horários).
+   - Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
-${zScoreSummary ? '\n=== CÁLCULO ANTROPOMÉTRICO / Z-SCORE (OMS) ===\n' + zScoreSummary : ''}
+${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===\n' + zScoreSummary : ''}
 
-=== MODELO EXATO A SER PREENCHIDO ===
+=== MODELO DE REFERÊNCIA A SER SEGUIDO ===
 ${templateObj.templateText}
 
-=== FORMATO DE RESPOSTA ===
-Responda em JSON válido contendo exatamente estas chaves:
+=== FORMATO DE RESPOSTA (JSON OBRIGATÓRIO) ===
+Responda em JSON válido contendo exatamente estas chaves (preencha "transcricao_literal_do_audio" PRIMEIRO!):
 {
-  "evolucao_completa": "Texto completo da evolução seguindo fielmente o modelo acima (com EXAMES COMPLEMENTARES formatados após o OBJETIVO e antes da AVALIAÇÃO) com quebras de linha \\n",
+  "transcricao_literal_do_audio": "Transcrição completa e fiel de tudo o que foi falado no áudio (para garantir que nenhuma informação, queixa, exame físico ou medicação seja perdida)",
+  "evolucao_completa": "Texto completo da evolução seguindo fielmente o modelo acima com quebras de linha \\n",
   "resumo_subjetivo": "Apenas o bloco SUBJETIVO extraído",
-  "resumo_objetivo": "Apenas o bloco OBJETIVO + EXAMES COMPLEMENTARES extraído",
-  "resumo_exames": "Apenas o bloco EXAMES COMPLEMENTARES formatado (LABS com '|' e IMAGEM em texto corrido)",
+  "resumo_objetivo": "Apenas o bloco OBJETIVO extraído",
+  "resumo_exames": "Apenas o bloco EXAMES COMPLEMENTARES (ou string vazia se não houver exames)",
   "resumo_avaliacao": "Apenas o bloco AVALIAÇÃO extraído (com sugestões CID-10 / CIAP-2)",
-  "resumo_conduta": "Apenas o bloco CONDUTA (e Pendências/Plano futuro) extraído",
+  "resumo_conduta": "Apenas o bloco CONDUTA detalhado extraído",
   "especialidade_sugerida_encaminhamento": "Se durante a consulta foi citado encaminhamento, informe a especialidade, caso contrário deixe string vazia",
-  "alertas_auditoria": ["Lista curta de campos importantes do modelo que não foram falados no áudio para o médico conferir antes de salvar no PEC"]
+  "alertas_auditoria": ["Lista curta apenas se faltou algum dado crítico obrigatório"]
 }`;
 };
 
