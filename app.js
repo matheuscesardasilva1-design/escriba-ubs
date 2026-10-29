@@ -29,10 +29,55 @@
   };
 
   const GEMINI_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-2.5-flash-lite'
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash'
   ];
+
+  let cachedDiscoveredModels = null;
+
+  async function getActiveGeminiModels(apiKey) {
+    if (cachedDiscoveredModels && cachedDiscoveredModels.length > 0) {
+      return cachedDiscoveredModels;
+    }
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+      if (res.ok) {
+        const data = await res.json();
+        const available = (data.models || [])
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''))
+          .filter(name => name.includes('gemini') && !name.includes('embedding') && !name.includes('imagen') && !name.includes('veo') && !name.includes('tts'));
+
+        // Ordena priorizando os modelos 3.5 / 3.0 / 2.5 flash mais rápidos e econômicos
+        const preferredOrder = [
+          'gemini-3.5-flash-lite',
+          'gemini-3.5-flash',
+          'gemini-3-flash',
+          'gemini-3-flash-preview',
+          'gemini-2.5-flash'
+        ];
+        const sorted = [];
+        preferredOrder.forEach(pref => {
+          const match = available.find(a => a === pref || a.startsWith(pref));
+          if (match && !sorted.includes(match)) sorted.push(match);
+        });
+        available.forEach(a => {
+          if (a.includes('flash') && !sorted.includes(a)) sorted.push(a);
+        });
+        available.forEach(a => {
+          if (!sorted.includes(a)) sorted.push(a);
+        });
+
+        if (sorted.length > 0) {
+          cachedDiscoveredModels = sorted.slice(0, 5);
+          return cachedDiscoveredModels;
+        }
+      }
+    } catch (_) {}
+    return GEMINI_MODELS;
+  }
 
   document.addEventListener('DOMContentLoaded', async () => {
     loadCustomOrDefaultTemplates();
@@ -860,15 +905,16 @@
 
   async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate) {
     let lastError = null;
+    const modelsToTry = await getActiveGeminiModels(apiKey);
 
-    for (let mIdx = 0; mIdx < GEMINI_MODELS.length; mIdx++) {
-      const model = GEMINI_MODELS[mIdx];
+    for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+      const model = modelsToTry[mIdx];
       const maxAttempts = 2;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
           if (onStatusUpdate) {
-            onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt}...` : `⚡ Estruturando prontuário...`);
+            onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${model})...` : `⚡ Estruturando (${model})...`);
           }
 
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -890,10 +936,16 @@
             throw new Error('Credencial de API inválida. Clique em "Credencial API" no topo para verificar.');
           }
 
+          // Se o modelo não estiver disponível na conta (404 ou "no longer available"), pula imediatamente para o próximo modelo!
+          if (res.status === 404 || errMsg.toLowerCase().includes('no longer available') || errMsg.toLowerCase().includes('not found')) {
+            lastError = new Error(errMsg);
+            break;
+          }
+
           if (res.status === 429 || res.status === 503) {
             lastError = new Error(`Limite temporário (${res.status}): ${errMsg}`);
             if (attempt < maxAttempts) {
-              const waitSec = 10 * attempt;
+              const waitSec = 8 * attempt;
               if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando fila (${waitSec}s)...`);
               await sleep(waitSec * 1000);
               continue;
@@ -901,15 +953,16 @@
             break;
           }
 
-          throw new Error(errMsg);
+          lastError = new Error(errMsg);
+          break;
         } catch (networkErr) {
           lastError = networkErr;
           if (networkErr.message && networkErr.message.includes('Credencial de API')) {
             throw networkErr;
           }
           if (attempt < maxAttempts) {
-            if (onStatusUpdate) onStatusUpdate(`🌐 Reconectando em 6s...`);
-            await sleep(6000);
+            if (onStatusUpdate) onStatusUpdate(`🌐 Reconectando em 5s...`);
+            await sleep(5000);
           }
         }
       }
