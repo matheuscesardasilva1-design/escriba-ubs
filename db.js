@@ -211,24 +211,26 @@ window.ScribeDB = (function() {
     });
   }
 
-  // Retenção de 30 dias:
-  // 1) Exclui automaticamente consultas com mais de 30 dias (maxAgeDays = 30)
-  // 2) Para consultas já concluídas com mais de 7 dias, remove apenas os blocos brutos de áudio/PDF para economizar espaço no HD, mas MANTÉM TODAS AS TRANSCRIÇÕES/EVOLUÇÕES E ENCAMINHAMENTOS SALVOS PELOS 30 DIAS!
-  async function autoCleanupOldAudio(maxAgeDays = 30) {
+  // Retenção automática configurada:
+  // 1) Marcados como "Evoluído no PEC" (evolvedInPEC = true): exclui tudo automaticamente após 15 dias!
+  // 2) Não marcados ("Falta Evoluir"): exclui tudo automaticamente após 30 dias!
+  async function autoCleanupOldAudio(maxAgeDays = 30, evolvedMaxAgeDays = 15) {
     const all = await getAllConsultations();
     const now = Date.now();
     const cutoff30Days = now - maxAgeDays * 24 * 3600 * 1000;
-    const cutoff7DaysAudio = now - 7 * 24 * 3600 * 1000;
+    const cutoff15DaysEvolved = now - evolvedMaxAgeDays * 24 * 3600 * 1000;
     let deletedConsultations = 0;
 
     for (const c of all) {
-      if (c.createdAt < cutoff30Days) {
-        // Passou de 30 dias -> exclui tudo automaticamente
+      const refTimeForEvolved = c.evolvedAt || c.createdAt;
+      if (c.evolvedInPEC && refTimeForEvolved < cutoff15DaysEvolved) {
+        // Marcado como "Evoluído no PEC" há mais de 15 dias -> exclui tudo automaticamente (áudio + PDF + evolução)
         await deleteConsultation(c.id);
         deletedConsultations++;
-      } else if (c.status === 'done' && !c.audioDeleted && c.createdAt < cutoff7DaysAudio) {
-        // Entre 7 e 30 dias -> mantém o texto da evolução e encaminhamento intactos, libera só o áudio pesado
-        await deleteAudioChunksOnly(c.id);
+      } else if (c.createdAt < cutoff30Days) {
+        // Qualquer atendimento com mais de 30 dias -> exclui tudo automaticamente
+        await deleteConsultation(c.id);
+        deletedConsultations++;
       }
     }
     return deletedConsultations;

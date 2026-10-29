@@ -98,8 +98,17 @@
     renderPendingExamFilesUI();
 
     try {
-      await window.ScribeDB.autoCleanupOldAudio(30); // Retenção de 30 dias com exclusão automática após 30 dias
+      await window.ScribeDB.autoCleanupOldAudio(30, 15); // 15 dias para "Evoluído no PEC" e 30 dias para os demais
+      await refreshQueueSidebar();
     } catch (_) {}
+
+    // Verifica limpeza automática de 15 e 30 dias a cada hora caso a aba fique aberta
+    setInterval(async () => {
+      try {
+        const removed = await window.ScribeDB.autoCleanupOldAudio(30, 15);
+        if (removed > 0) await refreshQueueSidebar();
+      } catch (_) {}
+    }, 3600 * 1000);
   });
 
   function loadCustomOrDefaultTemplates() {
@@ -1944,16 +1953,17 @@
       refreshQueueSidebar();
     });
 
-    // Marcar / Desmarcar como Evoluído no PEC
+    // Marcar / Desmarcar como Evoluído no PEC (exclui automaticamente em 15 dias)
     document.getElementById('btnToggleEvolvedPEC')?.addEventListener('click', async () => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
       if (c) {
         c.evolvedInPEC = !c.evolvedInPEC;
+        c.evolvedAt = c.evolvedInPEC ? Date.now() : null;
         await window.ScribeDB.saveConsultation(c);
         await renderActiveConsultationView(c);
         await refreshQueueSidebar();
-        showToast(c.evolvedInPEC ? '☑️ Marcado como Já Evoluído no PEC!' : '📌 Marcado como Pendente de Evoluir no PEC.');
+        showToast(c.evolvedInPEC ? '☑️ Marcado como Evoluído no PEC (será excluído automaticamente em 15 dias)!' : '📌 Marcado como Pendente de Evoluir no PEC (retido por 30 dias).');
       }
     });
 
@@ -1973,6 +1983,7 @@
         const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
         if (c && !c.evolvedInPEC) {
           c.evolvedInPEC = true;
+          c.evolvedAt = Date.now();
           await window.ScribeDB.saveConsultation(c);
           await renderActiveConsultationView(c);
           await refreshQueueSidebar();
