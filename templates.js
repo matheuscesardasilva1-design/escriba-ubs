@@ -21,13 +21,12 @@ OBJETIVO
 BEG, LOC, MUC
 
 AVALIAÇÃO
--
+
 
 CONDUTA
-- 
-- Oriento sinais de alarme e na presença emergência. Ciente. 
-- Orientações gerais
-- Ciente, concordante e sem dúvidas`
+Oriento sinais de alarme e na presença emergência. Ciente. 
+Orientações gerais
+Ciente, concordante e sem dúvidas`
   },
 
   prenatal: {
@@ -61,15 +60,15 @@ Peso:
 PA:  mmHg
 
 AVALIAÇÃO
-1. Gestação de risco habitual em curso ou alto risco
+Gestação de risco habitual em curso ou alto risco
 
 CONDUTA
-- Parabenizo paciente sobre acompanhamento no PN
-- Oriento sobre pródromos de TP
-- Oriento sinais de alarme e, na presença, procurar atendimento médico imediatamente
-- Orientações gerais
-- Retorno em X dias com enfermagem ou médico
-- Ciente, concordante e sem dúvidas`
+Parabenizo paciente sobre acompanhamento no PN
+Oriento sobre pródromos de TP
+Oriento sinais de alarme e, na presença, procurar atendimento médico imediatamente
+Orientações gerais
+Retorno em X dias com enfermagem ou médico
+Ciente, concordante e sem dúvidas`
   },
 
   puericultura: {
@@ -108,14 +107,14 @@ IMC:  (Z-Score IMC/Idade: )
 Marcos do desenvolvimento: 
 
 AVALIAÇÃO
-1. Criança em desenvolvimento
+Criança em desenvolvimento
 
 CONDUTA
-- Parabenizo familiar sobre cuidados de saúde com paciente
-- Oriento sobre alimentação/aleitamento, prevenção de quedas, cuidados com paciente, prevenção de IVAS
-- Orientações gerais
-- Oriento retorno em X meses com enfermagem ou antes via acolhimento para demandas agudas
-- Familiar ciente, concordante e sem dúvidas`
+Parabenizo familiar sobre cuidados de saúde com paciente
+Oriento sobre alimentação/aleitamento, prevenção de quedas, cuidados com paciente, prevenção de IVAS
+Orientações gerais
+Oriento retorno em X meses com enfermagem ou antes via acolhimento para demandas agudas
+Familiar ciente, concordante e sem dúvidas`
   },
 
   visita_domiciliar: {
@@ -141,18 +140,17 @@ OBJETIVO
 BEG, LOC, MUC
 
 AVALIAÇÃO
--
+
 
 CONDUTA
-- 
-- Orientações gerais e sinais de alarme repassados ao paciente e ao familiar/cuidador(a) presente
-- Ciente, concordante e sem dúvidas
+Orientações gerais e sinais de alarme repassados ao paciente e ao familiar/cuidador(a) presente
+Ciente, concordante e sem dúvidas
 
 >> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:
-- Receitas / Troca ou ajuste de medicação: 
-- Solicitação de exames: 
-- Encaminhamento (Regulação Estadual): 
-- Outras pendências da equipe: `
+Receitas / Troca ou ajuste de medicação: 
+Solicitação de exames: 
+Encaminhamento (Regulação Estadual): 
+Outras pendências da equipe: `
   },
 
   interconsulta: {
@@ -175,14 +173,13 @@ OBJETIVO
 BEG, LOC, MUC
 
 AVALIAÇÃO
-- 
+
 
 CONDUTA
-- 
-- Caso discutido e conduta alinhada com equipe de Enfermagem
-- Oriento sinais de alarme e, na presença destes, procurar atendimento médico / emergência imediatamente
-- Orientações gerais
-- Ciente, concordante e sem dúvidas`
+Caso discutido e conduta alinhada com equipe de Enfermagem
+Oriento sinais de alarme e, na presença destes, procurar atendimento médico / emergência imediatamente
+Orientações gerais
+Ciente, concordante e sem dúvidas`
   },
 
   lgbt_primeira: {
@@ -269,11 +266,10 @@ Critérios Clínicos Observados:
 ( ) Desejo de adquirir características sexuais primárias/secundárias do gênero experienciado.
 ( ) Duração dos sintomas superior a 6 meses e sofrimento clinicamente significativo.
 10. CONDUTA
-- 
-- Oriento sobre efeitos esperados, tempo de início das transformações e potenciais riscos/efeitos adversos da THAG
-- Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
-- Orientações gerais e acolhimento
-- Ciente, concordante e sem dúvidas`
+Oriento sobre efeitos esperados, tempo de início das transformações e potenciais riscos/efeitos adversos da THAG
+Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
+Orientações gerais e acolhimento
+Ciente, concordante e sem dúvidas`
   },
 
   lgbt_seguimento: {
@@ -360,11 +356,10 @@ Critérios Clínicos Observados:
 ( ) Desejo de adquirir características sexuais primárias/secundárias do gênero experienciado.
 ( ) Duração dos sintomas superior a 6 meses e sofrimento clinicamente significativo.
 10. CONDUTA
-- 
-- Oriento sobre manutenção/ajustes de THAG, adesão e monitoramento laboratorial
-- Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
-- Orientações gerais e acolhimento
-- Ciente, concordante e sem dúvidas`
+Oriento sobre manutenção/ajustes de THAG, adesão e monitoramento laboratorial
+Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
+Orientações gerais e acolhimento
+Ciente, concordante e sem dúvidas`
   }
 };
 
@@ -386,7 +381,7 @@ Data de referência de hoje: ${todayStr}.
    - Você DEVE manter a estrutura IDÊNTICA ao "MODELO DE REFERÊNCIA A SER SEGUIDO" abaixo!
    - Mantenha o cabeçalho (#, # MUC:, # Tabagista:, # Alergias: — preenchendo se foi falado ou deixando em branco se não falado).
    - Mantenha a frase inicial exata do SUBJETIVO do modelo (ex.: "Paciente vem em consulta em decorrência de ...") completando com a história clínica relatada no áudio em linguagem médica semiológica (ex.: "dor de cabeça" -> "cefaleia").
-   - Mantenha no final da CONDUTA exatamente as frases finais padrão do modelo (ex.: "- Oriento sinais de alarme e na presença emergência. Ciente.\n- Orientações gerais\n- Ciente, concordante e sem dúvidas").
+   - Mantenha no final da CONDUTA as frases finais padrão do modelo SEM traço no início (ex.: "Orientações gerais\nCiente, concordante e sem dúvidas"). Se o médico orientou sinais de alarme específicos no áudio, descreva esses sinais na linha "Oriento sinais de alarme (...) e na presença emergência. Ciente." e NÃO repita a frase genérica "Oriento sinais de alarme e na presença emergência. Ciente."!
 
 2. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — NÃO INVENTE DADOS NÃO FALADOS:
    - NUNCA invente sinais físicos que o médico não falou (ex.: se o médico só palpou e perguntou se doía, escreva apenas "Dor à palpação em panturrilha direita", NÃO invente "sinais flogísticos" se o médico não falou isso!).
@@ -404,21 +399,23 @@ Data de referência de hoje: ${todayStr}.
         * EXAMES DE IMAGEM E MÉTODOS GRÁFICOS (em texto corrido conciso, sem tópicos soltos):
           Exemplo: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.
 
-4. REGRA ESTRITA DA AVALIAÇÃO (SEM CID-10 E SEM CIAP-2 NO TEXTO DA EVOLUÇÃO!):
-   - Na seção AVALIAÇÃO da "evolucao_completa", escreva APENAS o nome clínico das hipóteses diagnósticas / condições avaliadas (ex.: "- Hipertensão arterial sistêmica", "- Lombalgia mecânica aguda").
+4. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
+   - Na seção AVALIAÇÃO da "evolucao_completa", escreva APENAS o nome clínico das hipóteses diagnósticas / condições avaliadas, uma por linha, SEM traço ("- ") no início da linha! (Exemplo: escreva "Erisipela" e na linha de baixo "Cefaleia", sem "- ").
    - É TERMINANTEMENTE PROIBIDO colocar códigos CID-10 ou CIAP-2 dentro do texto da evolução!
    - Os códigos CID-10 e CIAP-2 correspondentes devem ser informados SEPARADAMENTE apenas no campo JSON "codigos_cid_ciap" (ex.: ["CIAP-2: K86 | CID-10: I10 — Hipertensão essencial"]).
 
-5. REGRA ESTRITA DA CONDUTA — DETALHE CADA MEDICAÇÃO (PROIBIDO FRASE GENÉRICA!):
+5. REGRA ESTRITA DA CONDUTA (SEM TRAÇOS "-" NO INÍCIO DAS LINHAS + SINAIS DE ALARME SEM DUPLICAR!):
+   - NÃO coloque traços ("- ") no início das linhas da CONDUTA! Escreva cada conduta diretamente em uma linha limpa.
    - É TERMINANTEMENTE PROIBIDO escrever frases genéricas como "Prescrição medicamentosa conforme avaliação médica" ou "Ajuste terapêutico".
    - Você DEVE escrever explicitamente o nome de cada medicação, concentração, dose/posologia e ação tomada que o médico falou no áudio:
-     * Se prescreveu medicação nova: "- Prescrevo [Nome do remédio + mg + posologia + dias, conforme falado]"
-     * Se alterou ou ajustou dose: "- Altero / Ajusto dose de [Nome do remédio] de [...] para [...]"
-     * Se suspendeu medicação: "- Suspendo o uso de [Nome do remédio] devido a [...]"
-     * Se renovou/manteve receita: "- Renovo / Mantenho prescrição de [Nome dos remédios]"
+     * Se prescreveu medicação nova: "Prescrevo [Nome do remédio + mg + posologia + dias, conforme falado]"
+     * Se alterou ou ajustou dose: "Altero / Ajusto dose de [Nome do remédio] de [...] para [...]"
+     * Se suspendeu medicação: "Suspendo o uso de [Nome do remédio] devido a [...]"
+     * Se renovou/manteve receita: "Renovo / Mantenho prescrição de [Nome dos remédios]"
      * Se solicitou exames ou encaminhou: liste exatamente quais exames foram solicitados e para qual especialidade encaminhou.
-     * Se mencionou plano para a próxima consulta: "- Plano para próxima consulta: [...]"
-   - Ao final da CONDUTA, mantenha sempre as frases de orientação de sinais de alarme e concordância do modelo.
+   - SINAIS DE ALARME (PROIBIDO DUPLICAR!):
+     * Se o médico orientou sinais de alarme no áudio (ou se houver sinais de alarme específicos citados), descreva-os na própria linha de sinais de alarme (ex.: "Oriento sinais de alarme ([descrever os sinais orientados]) e na presença procurar emergência. Ciente.") e REMOVA a frase genérica "Oriento sinais de alarme e na presença emergência. Ciente." para não ficar repetido!
+     * Se o médico não especificou quais sinais de alarme, mantenha apenas a frase padrão "Oriento sinais de alarme e na presença emergência. Ciente.".
 
 6. REGRAS ESPECÍFICAS DE PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR (EXTRAÇÃO AUTOMÁTICA DO ÁUDIO!):
    - ATENÇÃO MÁXIMA: O médico pode optar por NÃO digitar nada nos campos da tela e apenas FALAR os dados no áudio! Portanto, se os campos da tela estiverem vazios, você DEVE extrair diretamente da fala do médico no áudio:

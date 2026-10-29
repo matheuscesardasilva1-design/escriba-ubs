@@ -112,7 +112,7 @@
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v5');
+    const saved = localStorage.getItem('ubs_custom_templates_v6');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -124,7 +124,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v5', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v6', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -1095,7 +1095,7 @@
     // Captura qualquer "(CID-10: ... / CIAP-2: ...)" que esteja na Avaliação para colocar fora da evolução
     const lines = text.split('\n');
     lines.forEach(line => {
-      const cidMatch = line.match(/^-\s*([^(\n]+?)\s*\(((?:CID|CIAP)[^)]+)\)/i);
+      const cidMatch = line.match(/^(?:-\s*)?([^(\n]+?)\s*\(((?:CID|CIAP)[^)]+)\)/i);
       if (cidMatch) {
         const label = `${cidMatch[2].trim()} — ${cidMatch[1].trim()}`;
         if (!extractedCodes.includes(label)) extractedCodes.push(label);
@@ -1104,7 +1104,34 @@
 
     // Remove os parênteses de CID/CIAP de dentro do texto da evolução
     text = text.replace(/\s*\((?:CID(?:-1[01])?|CIAP(?:-2)?)[^)]*\)/gi, '');
-    return { cleanText: text.trim(), codes: extractedCodes };
+
+    // Remove traços ("- ") no início das linhas dos blocos AVALIAÇÃO e CONDUTA e evita duplicação de "Oriento sinais de alarme"
+    let inAvaliacaoOrConduta = false;
+    const allLines = text.split('\n');
+    const hasDetailedAlarmLine = allLines.some(l => /Oriento sinais de alarme\s*\(/i.test(l));
+
+    const cleanedLines = [];
+    for (let rawLine of allLines) {
+      const trimmed = rawLine.trim();
+      if (/^(?:\d+\.\s*)?(?:AVALIAÇÃO|CONDUTA|>>\s*PENDÊNCIAS)/i.test(trimmed)) {
+        inAvaliacaoOrConduta = true;
+        cleanedLines.push(rawLine);
+        continue;
+      }
+      if (/^(?:\d+\.\s*)?(?:SUBJETIVO|OBJETIVO|EXAMES COMPLEMENTARES|RASTREAMENTOS|SOROLOGIAS)/i.test(trimmed)) {
+        inAvaliacaoOrConduta = false;
+      }
+      if (inAvaliacaoOrConduta) {
+        rawLine = rawLine.replace(/^\s*-\s+/, '');
+        // Se já descreveu os sinais de alarme específicos, remove a frase genérica duplicada
+        if (hasDetailedAlarmLine && /^Oriento sinais de alarme e(?:,\s*)? na presença/i.test(rawLine.trim())) {
+          continue;
+        }
+      }
+      cleanedLines.push(rawLine);
+    }
+
+    return { cleanText: cleanedLines.join('\n').trim(), codes: extractedCodes };
   }
 
   async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate) {
@@ -1458,8 +1485,8 @@
           await window.ScribeDB.saveConsultation(c);
           nextDayAutoQueuedCount++;
         }
-      } else if (c.status === 'done' && c.evolutionText && (c.evolutionText.includes('"evolucao_completa"') || /\((?:CID|CIAP)/i.test(c.evolutionText))) {
-        // Repara automaticamente qualquer evolução anterior que tenha ficado com JSON bruto ou CID no meio do texto!
+      } else if (c.status === 'done' && c.evolutionText && (c.evolutionText.includes('"evolucao_completa"') || /\((?:CID|CIAP)/i.test(c.evolutionText) || /\n-\s+/m.test(c.evolutionText))) {
+        // Repara automaticamente qualquer evolução anterior que tenha ficado com JSON bruto, CID ou traços "- " na Avaliação/Conduta!
         if (c.evolutionText.includes('"evolucao_completa"')) {
           const repaired = parseGeminiEvolutionResponse(c.evolutionText);
           if (repaired.evolucao_completa) {
