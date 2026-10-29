@@ -146,24 +146,18 @@
   }
 
   function updateTokenMonitorUI() {
-    // Limpa chamadas com mais de 60 segundos para calcular o RPM real do último minuto
     const now = Date.now();
     state.recentApiCallsTimestamps = (state.recentApiCallsTimestamps || []).filter(ts => now - ts < 60000);
     const rpmLastMinute = state.recentApiCallsTimestamps.length;
-
-    // Na API gratuita do Google AI Studio:
-    // - Limite por Minuto (RPM): ~15 requisições/minuto e 250k~1M tokens/minuto
-    // - Uso do Dia: mostramos exatamente quantas requisições (consultas + PDFs + encaminhamentos) e tokens reais a API processou hoje!
     const usedCalls = state.dailyConsultationsProcessed || 0;
-    const usedTokensK = (state.dailyTokensUsed / 1000).toFixed(1);
 
     const elDaily = document.getElementById('dailyTokenCounter');
     if (elDaily) {
-      if (rpmLastMinute >= 10) {
-        elDaily.textContent = `⚠️ ${rpmLastMinute}/15 envios no último min • Hoje: ${usedCalls} envios (${usedTokensK}k tok)`;
+      if (rpmLastMinute >= 12) {
+        elDaily.textContent = `🟡 Aguardando fila rápida (${usedCalls} hoje)`;
         elDaily.style.color = '#d97706';
       } else {
-        elDaily.textContent = `Hoje: ${usedCalls} envios (${usedTokensK}k tok) • Minuto: livre (${rpmLastMinute}/15)`;
+        elDaily.textContent = `🟢 Sistema Pronto (${usedCalls} hoje)`;
         elDaily.style.color = '#059669';
       }
     }
