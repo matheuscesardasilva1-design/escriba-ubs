@@ -464,6 +464,64 @@
     updateDocumentTitle();
   }
 
+  // Cancela e exclui a gravação em andamento (com confirmação de segurança)
+  async function cancelCurrentRecording() {
+    if (!state.isRecording || !state.mediaRecorder) return;
+
+    // Se ainda não estava pausado, pausa preventivamente enquanto pergunta
+    const wasPaused = state.isPaused;
+    if (!wasPaused) {
+      try {
+        state.mediaRecorder.pause();
+        state.isPaused = true;
+        updateRecordingControlsUI();
+      } catch (_) {}
+    }
+
+    const confirmed = confirm(
+      '⚠️ CONFIRMAÇÃO DE EXCLUSÃO:\n\nTem certeza que deseja CANCELAR e EXCLUIR a gravação deste atendimento?\n\nTodo o áudio captado nesta folha será apagado e não poderá ser recuperado.'
+    );
+
+    if (!confirmed) {
+      // Se o médico desistiu de cancelar e antes estava gravando, pode retomar ou manter pausado
+      return;
+    }
+
+    const cancelingId = state.recordingConsultationId;
+
+    await new Promise((resolve) => {
+      state.mediaRecorder.onstop = () => resolve();
+      try {
+        state.mediaRecorder.stop();
+      } catch (_) {
+        resolve();
+      }
+    });
+
+    stopStreamAndMeters();
+    state.timerWorker.postMessage('stop');
+    releaseWakeLock();
+
+    state.isRecording = false;
+    state.isPaused = false;
+    state.recordingConsultationId = null;
+    state.recordingSeconds = 0;
+    state.pendingExamFiles = [];
+    renderPendingExamFilesUI();
+    updateRecordingControlsUI();
+    updateRecordingTimerUI();
+    updateTokenMonitorUI();
+    updateDocumentTitle();
+
+    if (cancelingId) {
+      await window.ScribeDB.deleteConsultation(cancelingId);
+    }
+
+    await refreshQueueSidebar();
+    updateStorageStatsUI();
+    showToast('🗑️ Atendimento cancelado e excluído com sucesso.');
+  }
+
   async function finishRecordingAndQueue() {
     if (!state.isRecording || !state.mediaRecorder) return;
 
@@ -1427,6 +1485,7 @@
     document.getElementById('btnStartRec')?.addEventListener('click', startRecording);
     document.getElementById('btnPauseRec')?.addEventListener('click', togglePauseRecording);
     document.getElementById('btnStopRec')?.addEventListener('click', finishRecordingAndQueue);
+    document.getElementById('btnCancelRec')?.addEventListener('click', cancelCurrentRecording);
 
     // Atalho discreto de teclado (Alt + R) para abrir ou salvar a folha sem precisar clicar no botão
     document.addEventListener('keydown', (e) => {
@@ -1702,6 +1761,7 @@
     const btnStart = document.getElementById('btnStartRec');
     const btnPause = document.getElementById('btnPauseRec');
     const btnStop = document.getElementById('btnStopRec');
+    const btnCancel = document.getElementById('btnCancelRec');
     const statusDot = document.getElementById('recStatusDot');
     const statusLabel = document.getElementById('recStatusLabel');
 
@@ -1709,6 +1769,7 @@
       btnStart.style.display = 'none';
       btnPause.style.display = 'inline-flex';
       btnStop.style.display = 'inline-flex';
+      if (btnCancel) btnCancel.style.display = 'inline-flex';
       btnPause.textContent = state.isPaused ? 'Retomar Folha' : 'Aguardar';
       statusDot.className = state.isPaused ? 'rec-dot paused' : 'rec-dot active';
       statusLabel.textContent = state.isPaused
@@ -1718,6 +1779,7 @@
       btnStart.style.display = 'inline-flex';
       btnPause.style.display = 'none';
       btnStop.style.display = 'none';
+      if (btnCancel) btnCancel.style.display = 'none';
       statusDot.className = 'rec-dot';
       statusLabel.textContent = 'Aguardando abertura de folha';
     }
