@@ -10,6 +10,7 @@
     templates: {},
     activeConsultationId: null,
     recordingConsultationId: null,
+    isContinuingConsultation: false,
     isRecording: false,
     isPaused: false,
     recordingSeconds: 0,
@@ -426,33 +427,50 @@
       const quickNotesInput = document.getElementById('quickNotesInput');
       const tpl = state.templates[state.selectedTemplateId];
       const now = Date.now();
-      const consultId = 'cons_' + now + '_' + Math.random().toString(36).slice(2, 6);
 
-      const newConsultation = {
-        id: consultId,
-        patientLabel: (patientInput && patientInput.value.trim()) || `Atendimento ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
-        templateId: tpl.id,
-        templateName: tpl.name,
-        templateIcon: tpl.icon,
-        createdAt: now,
-        updatedAt: now,
-        status: 'recording',
-        durationSeconds: 0,
-        chunkCount: 0,
-        examFileCount: 0,
-        audioBytes: 0,
-        mimeType: recorder.mimeType || mimeType || 'audio/webm',
-        quickNotes: (quickNotesInput && quickNotesInput.value) || '',
-        zScoreSummary: getCalculatedZScoreText(),
-        evolutionText: '',
-        soapParts: null,
-        referralText: '',
-        auditAlerts: [],
-        tokensUsed: 0,
-        errorMessage: ''
-      };
-
-      await window.ScribeDB.saveConsultation(newConsultation);
+      let consultId;
+      if (state.isContinuingConsultation && state.recordingConsultationId) {
+        // Continuação de atendimento do MESMO paciente (após já ter parado/encaminhado a 1ª parte)
+        consultId = state.recordingConsultationId;
+        const existing = await window.ScribeDB.getConsultation(consultId);
+        if (existing) {
+          existing.previousEvolutionText = existing.evolutionText || existing.previousEvolutionText || '';
+          existing.previousRawTranscript = existing.rawTranscript || existing.previousRawTranscript || '';
+          await window.ScribeDB.deleteAudioChunksOnly(consultId);
+          existing.status = 'recording';
+          existing.chunkCount = 0;
+          existing.audioDeleted = false;
+          existing.mimeType = recorder.mimeType || mimeType || 'audio/webm';
+          existing.updatedAt = now;
+          await window.ScribeDB.saveConsultation(existing);
+        }
+      } else {
+        consultId = 'cons_' + now + '_' + Math.random().toString(36).slice(2, 6);
+        const newConsultation = {
+          id: consultId,
+          patientLabel: (patientInput && patientInput.value.trim()) || `Atendimento ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+          templateId: tpl.id,
+          templateName: tpl.name,
+          templateIcon: tpl.icon,
+          createdAt: now,
+          updatedAt: now,
+          status: 'recording',
+          durationSeconds: 0,
+          chunkCount: 0,
+          examFileCount: 0,
+          audioBytes: 0,
+          mimeType: recorder.mimeType || mimeType || 'audio/webm',
+          quickNotes: (quickNotesInput && quickNotesInput.value) || '',
+          zScoreSummary: getCalculatedZScoreText(),
+          evolutionText: '',
+          soapParts: null,
+          referralText: '',
+          auditAlerts: [],
+          tokensUsed: 0,
+          errorMessage: ''
+        };
+        await window.ScribeDB.saveConsultation(newConsultation);
+      }
 
       state.recordingConsultationId = consultId;
       state.isRecording = true;
@@ -565,8 +583,10 @@
     state.timerWorker.postMessage('stop');
     releaseWakeLock();
 
+    const wasContinuing = state.isContinuingConsultation;
     state.isRecording = false;
     state.isPaused = false;
+    state.isContinuingConsultation = false;
     state.templateLocked = false;
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
@@ -579,7 +599,18 @@
     updateDocumentTitle();
 
     if (cancelingId) {
-      await window.ScribeDB.deleteConsultation(cancelingId);
+      if (wasContinuing) {
+        // Se estava apenas gravando uma continuação e desistiu, restaura a 1ª parte intacta!
+        const existing = await window.ScribeDB.getConsultation(cancelingId);
+        if (existing && existing.previousEvolutionText) {
+          await window.ScribeDB.deleteAudioChunksOnly(cancelingId);
+          existing.evolutionText = existing.previousEvolutionText;
+          existing.status = 'done';
+          await window.ScribeDB.saveConsultation(existing);
+        }
+      } else {
+        await window.ScribeDB.deleteConsultation(cancelingId);
+      }
     }
 
     await refreshQueueSidebar();
@@ -618,6 +649,7 @@
 
     state.isRecording = false;
     state.isPaused = false;
+    state.isContinuingConsultation = false;
     state.templateLocked = false;
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
@@ -950,7 +982,11 @@
           nextItem.status = 'done';
           nextItem.evolutionText = result.evolutionText;
           nextItem.cidCiapCodes = result.cidCiapCodes || [];
-          nextItem.rawTranscript = result.rawTranscript || '';
+          nextItem.rawTranscript = nextItem.previousRawTranscript
+            ? `${nextItem.previousRawTranscript}\n\n--- [CONTINUAÇÃO DO ATENDIMENTO] ---\n${result.rawTranscript || ''}`
+            : (result.rawTranscript || '');
+          nextItem.previousEvolutionText = '';
+          nextItem.previousRawTranscript = '';
           nextItem.soapParts = result.soapParts;
           nextItem.auditAlerts = result.auditAlerts || [];
           nextItem.suggestedSpecialty = result.suggestedSpecialty || '';
@@ -1009,7 +1045,8 @@
       tpl,
       consultation.quickNotes,
       consultation.zScoreSummary,
-      examFiles.length > 0
+      examFiles.length > 0,
+      consultation.previousEvolutionText || ''
     );
 
     const parts = [];
@@ -2124,6 +2161,34 @@
       if (t) t.value = 'all';
       if (d) d.value = '';
       refreshQueueSidebar();
+    });
+
+    // Retomar / Continuar gravando para o mesmo paciente (após já ter parado e transcrito a 1ª parte)
+    document.getElementById('btnContinueRecordingPatient')?.addEventListener('click', async () => {
+      if (!state.activeConsultationId) return;
+      if (state.isRecording) {
+        alert('Já existe uma folha de atendimento aberta no momento. Salve ou cancele a atual antes de continuar outra.');
+        return;
+      }
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (!c) return;
+
+      closePatientDetailModal();
+      switchMainPage('pageRecord');
+
+      state.selectedTemplateId = c.templateId || 'geral';
+      state.templateLocked = true;
+      state.recordingConsultationId = c.id;
+      state.isContinuingConsultation = true;
+
+      const patientInput = document.getElementById('patientIdentifier');
+      const quickNotesInput = document.getElementById('quickNotesInput');
+      if (patientInput) patientInput.value = c.patientLabel || '';
+      if (quickNotesInput) quickNotesInput.value = c.quickNotes || '';
+
+      renderTemplateSelector();
+      await startRecording();
+      showToast(`➕ Continuando atendimento de: ${c.patientLabel}`);
     });
 
     // Marcar / Desmarcar como Evoluído no PEC (exclui tudo em 15 dias; o áudio bruto fica disponível por 24h caso precise reprocessar no dia)

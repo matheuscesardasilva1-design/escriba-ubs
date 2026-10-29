@@ -366,12 +366,12 @@ Ciente, concordante e sem dúvidas`
 // ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles) {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext) {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
 Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS:
-ETAPA 1: Ouvir o áudio anexado do início ao fim com atenção absoluta e transcrever fielmente TUDO o que foi dito pelo médico e pelo paciente no campo "transcricao_literal_do_audio" do JSON. Não pule nenhuma palavra, sintoma, exame físico ou nome de remédio/posologia!
-ETAPA 2: Com base na sua transcrição completa do áudio + PDFs de exames anexados (se houver) + anotações rápidas, preencher o modelo de evolução selecionado abaixo com rigor semiológico, coerência clínica e resguardo jurídico.
+ETAPA 1: Ouvir o áudio anexado do início ao fim com atenção absoluta e transcrever fielmente TUDO o que foi dito no campo "transcricao_literal_do_audio" do JSON, IDENTIFICANDO QUEM ESTÁ FALANDO com as etiquetas "[MÉDICO]:" e "[PACIENTE]:" (ou "[ENFERMAGEM/TERCEIRO]:" se houver interrupção externa). Não pule nenhuma palavra, sintoma, exame físico ou nome de remédio/posologia!
+ETAPA 2: Com base na sua transcrição completa com separação entre [MÉDICO] e [PACIENTE] + PDFs de exames anexados (se houver) + anotações rápidas, preencher o modelo de evolução selecionado abaixo com rigor semiológico, coerência clínica e resguardo jurídico.
 
 Data de referência de hoje: ${todayStr}.
 
@@ -431,6 +431,12 @@ Data de referência de hoje: ${todayStr}.
    - JAMAIS misture sintomas, pressão arterial, exames, diagnósticos ou medicações de um caso discutido com a enfermagem durante uma interrupção dentro do prontuário ("evolucao_completa") do paciente que está sendo atendido!
    - Se você detectar que houve uma interrupção externa discutindo outro paciente no meio do áudio, exclua esses dados da "evolucao_completa" e apenas avise em "alertas_auditoria": "Interrupção externa/interconsulta de terceiro detectada no áudio e isolada automaticamente para não contaminar este prontuário."
 
+8. DIFERENCIAÇÃO ESTRITA ENTRE A VOZ DO MÉDICO E A VOZ DO PACIENTE (PROIBIDO ATRIBUIR EXPLICAÇÕES DO MÉDICO AO PACIENTE!):
+   - Diferencie com precisão absoluta o que foi dito pelo [PACIENTE] do que foi dito pelo [MÉDICO]:
+   - No SUBJETIVO: registre APENAS as queixas, sintomas, história da doença atual e respostas fornecidas pelo PACIENTE (ou seu acompanhante).
+   - PROIBIDO NO SUBJETIVO: Quando o [MÉDICO] estiver explicando alterações de exames complementares ou achados clínicos para o paciente (ex.: médico dizendo "olha, seu exame mostrou colesterol alto / glicose alterada / infecção de urina / gordura no fígado"), JAMAIS escreva no SUBJETIVO que "Paciente refere alteração em exame / refere colesterol alto"! Quem falou isso foi o médico explicando o resultado!
+   - Tudo o que o [MÉDICO] ler ou explicar sobre resultados de exames deve ir para "EXAMES COMPLEMENTARES" e "AVALIAÇÃO", e as explicações/condutas do médico devem ir para "CONDUTA".
+${previousEvolutionContext ? `\n9. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - O médico já havia gravado e transcrito a primeira parte desta consulta e agora gravou uma continuação para o MESMO paciente.\n   - Integre perfeitamente as novas informações faladas neste áudio (novas queixas, exame físico, exames ou condutas/prescrições finais) com a evolução já iniciada abaixo, mantendo uma única evolução completa, coesa e atualizada:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===\n' + zScoreSummary : ''}
