@@ -260,8 +260,8 @@ Sífilis:
 HIV: 
 Hepatite B: 
 Hepatite C: 
-9. AVALIAÇÃO E CRITÉRIOS (CID-10 F64.0 / CID-11 HA60-HA61)
-Hipótese Diagnóstica: ( ) Incongruência de Gênero (HA60/HA61) | ( ) Transexualismo (F64.0)
+9. AVALIAÇÃO E CRITÉRIOS
+Hipótese Diagnóstica: ( ) Incongruência de Gênero | ( ) Transexualismo
 Critérios Clínicos Observados:
 ( ) Incongruência acentuada e persistente entre o gênero experienciado e o sexo atribuído.
 ( ) Desejo de viver e ser aceito como uma pessoa do gênero experienciado.
@@ -351,8 +351,8 @@ Sífilis:
 HIV: 
 Hepatite B: 
 Hepatite C: 
-9. AVALIAÇÃO E CRITÉRIOS (CID-10 F64.0 / CID-11 HA60-HA61)
-Hipótese Diagnóstica: ( ) Incongruência de Gênero (HA60/HA61) | ( ) Transexualismo (F64.0)
+9. AVALIAÇÃO E CRITÉRIOS
+Hipótese Diagnóstica: ( ) Incongruência de Gênero | ( ) Transexualismo
 Critérios Clínicos Observados:
 ( ) Incongruência acentuada e persistente entre o gênero experienciado e o sexo atribuído.
 ( ) Desejo de viver e ser aceito como uma pessoa do gênero experienciado.
@@ -408,7 +408,12 @@ Data de referência de hoje: ${todayStr}.
         * EXAMES DE IMAGEM E MÉTODOS GRÁFICOS (em texto corrido conciso, sem tópicos soltos):
           Exemplo: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.
 
-4. REGRA ESTRITA DA CONDUTA — DETALHE CADA MEDICAÇÃO (PROIBIDO FRASE GENÉRICA!):
+4. REGRA ESTRITA DA AVALIAÇÃO (SEM CID-10 E SEM CIAP-2 NO TEXTO DA EVOLUÇÃO!):
+   - Na seção AVALIAÇÃO da "evolucao_completa", escreva APENAS o nome clínico das hipóteses diagnósticas / condições avaliadas (ex.: "- Hipertensão arterial sistêmica", "- Lombalgia mecânica aguda").
+   - É TERMINANTEMENTE PROIBIDO colocar códigos CID-10 ou CIAP-2 dentro do texto da evolução!
+   - Os códigos CID-10 e CIAP-2 correspondentes devem ser informados SEPARADAMENTE apenas no campo JSON "codigos_cid_ciap" (ex.: ["CIAP-2: K86 | CID-10: I10 — Hipertensão essencial"]).
+
+5. REGRA ESTRITA DA CONDUTA — DETALHE CADA MEDICAÇÃO (PROIBIDO FRASE GENÉRICA!):
    - É TERMINANTEMENTE PROIBIDO escrever frases genéricas como "Prescrição medicamentosa conforme avaliação médica" ou "Ajuste terapêutico".
    - Você DEVE escrever explicitamente o nome de cada medicação, concentração, dose/posologia e ação tomada que o médico falou no áudio:
      * Se prescreveu medicação nova: "- Prescrevo [Nome do remédio + mg + posologia + dias, conforme falado]"
@@ -419,7 +424,7 @@ Data de referência de hoje: ${todayStr}.
      * Se mencionou plano para a próxima consulta: "- Plano para próxima consulta: [...]"
    - Ao final da CONDUTA, mantenha sempre as frases de orientação de sinais de alarme e concordância do modelo.
 
-5. REGRAS ESPECÍFICAS DE PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR (EXTRAÇÃO AUTOMÁTICA DO ÁUDIO!):
+6. REGRAS ESPECÍFICAS DE PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR (EXTRAÇÃO AUTOMÁTICA DO ÁUDIO!):
    - ATENÇÃO MÁXIMA: O médico pode optar por NÃO digitar nada nos campos da tela e apenas FALAR os dados no áudio! Portanto, se os campos da tela estiverem vazios, você DEVE extrair diretamente da fala do médico no áudio:
      * Na PUERICULTURA: extraia do áudio a idade da criança, Peso, Altura/Comprimento, Perímetro Cefálico (PC), calcule o IMC e estime/classifique os Z-Scores (OMS: Peso/Idade, Estatura/Idade, PC/Idade e IMC/Idade) preenchendo as linhas do OBJETIVO! Extraia também do áudio os Marcos do Desenvolvimento, Ortolani, Barlow, Otoscopia/Oroscopia (se falados) e todos os detalhes do Aleitamento/Alimentação (se SME, complementado, misto ou fórmula infantil — especificando qual fórmula, quantidade em ml, medidas e horários).
      * No PRÉ-NATAL: extraia diretamente do áudio todos os dados do cabeçalho (# G P V PC A, # IG, # TS, # TOXO, # SOROLOGIAS, # VACINAS) e todos os dados do OBJETIVO falados pelo médico (AU em cm, BCF em bpm, MF presentes/ausentes, Edema em MMII, Peso em kg e PA em mmHg), além de qualquer exame físico adicional falado!
@@ -436,11 +441,12 @@ ${templateObj.templateText}
 Responda em JSON válido contendo exatamente estas chaves (preencha "transcricao_literal_do_audio" PRIMEIRO!):
 {
   "transcricao_literal_do_audio": "Transcrição completa e fiel de tudo o que foi falado no áudio (para garantir que nenhuma informação, queixa, exame físico ou medicação seja perdida)",
-  "evolucao_completa": "Texto completo da evolução seguindo fielmente o modelo acima com quebras de linha \\n",
+  "evolucao_completa": "Texto completo da evolução seguindo fielmente o modelo acima com quebras de linha \\n (SEM códigos CID-10 ou CIAP-2 dentro do texto!)",
+  "codigos_cid_ciap": ["Lista com os códigos CIAP-2 e CID-10 sugeridos para digitar fora da evolução no PEC, ex: 'CIAP-2: K86 | CID-10: I10 — Hipertensão arterial'"],
   "resumo_subjetivo": "Apenas o bloco SUBJETIVO extraído",
   "resumo_objetivo": "Apenas o bloco OBJETIVO extraído",
   "resumo_exames": "Apenas o bloco EXAMES COMPLEMENTARES (ou string vazia se não houver exames)",
-  "resumo_avaliacao": "Apenas o bloco AVALIAÇÃO extraído (com sugestões CID-10 / CIAP-2)",
+  "resumo_avaliacao": "Apenas o bloco AVALIAÇÃO extraído (sem códigos CID/CIAP)",
   "resumo_conduta": "Apenas o bloco CONDUTA detalhado extraído",
   "especialidade_sugerida_encaminhamento": "Se durante a consulta foi citado encaminhamento, informe a especialidade, caso contrário deixe string vazia",
   "alertas_auditoria": ["Lista curta apenas se faltou algum dado crítico obrigatório"]
@@ -460,7 +466,7 @@ window.buildReferralPrompt = function({
   quickNotes
 }) {
   return `Você é um Médico Regulador e Médico de Família especialista em protocolos de Regulação Estadual do SUS (SISREG / CROSS / GERCON / Telessaúde).
-Sua missão é redigir um DOCUMENTO DE ENCAMINHAMENTO MÉDICO (Referência para Atenção Secundária/Terciária) altamente técnico, completo, persuasivo e À PROVA DE DEVOLUÇÃO pela regulação estadual, com base na evolução da consulta/visita domiciliar e nos exames complementares abaixo.
+Sua missão é redigir o TEXTO CLÍNICO DE ENCAMINHAMENTO MÉDICO direto, técnico, fluido e pronto para copiar e colar na caixa de justificativa clínica da Regulação Estadual.
 
 === CONTEXTO DO ATENDIMENTO ===
 - Tipo de Atendimento na UBS: ${templateName} (${templateId})
@@ -472,31 +478,15 @@ Sua missão é redigir um DOCUMENTO DE ENCAMINHAMENTO MÉDICO (Referência para 
 === EVOLUÇÃO CLÍNICA E EXAMES DA CONSULTA ===
 ${evolucaoTexto}
 
-=== ESTRUTURA OBRIGATÓRIA DO ENCAMINHAMENTO (TEXTO PRONTO PARA COPIAR E COLAR NO SISTEMA DO ESTADO) ===
-Gere um texto estruturado, limpo e direto seguindo exatamente estas seções:
+=== REGRAS DE FORMATAÇÃO DO ENCAMINHAMENTO (SIGA RIGOROSAMENTE) ===
+1. PROIBIDO USAR TÍTULOS NUMERADOS BUROCRÁTICOS:
+   - NÃO escreva títulos como "1. QUADRO CLÍNICO E HISTÓRIA DA DOENÇA ATUAL (COM TEMPO DE EVOLUÇÃO):", "2. ANTECEDENTES...", "3. EXAME FÍSICO...", nem cabeçalhos longos!
+2. FORMATO DE TEXTO CLÍNICO DIRETO E FLUIDO (EM PARÁGRAFOS CURTOS E OBJETIVOS):
+   - Escreva diretamente o texto médico de encaminhamento pronto para colar no sistema de regulação:
+     * 1º Parágrafo (Quadro Clínico, Antecedentes e MUC): Apresente o paciente, comorbidades prévias, medicações em uso contínuo (com doses) e a história clínica detalhada do problema que motiva o encaminhamento para ${especialidade || 'a especialidade'} (com tempo de evolução, sintomas associados, impacto funcional e tratamentos já tentados na APS).
+     * 2º Parágrafo (Exame Físico e Sinais Vitais): Descreva de forma direta os achados relevantes do exame físico, sinais vitais/antropometria (sem inventar dados não examinados).
+     * 3º Parágrafo (Exames Complementares Realizados): Cite os resultados dos exames laboratoriais e/ou de imagem já realizados com suas respectivas datas. Se algum exame essencial para a regulação não constar nos dados, deixe indicado de forma limpa "[Inserir data/resultado de ... se disponível]".
+     * 4º Parágrafo (Hipótese e Justificativa para Regulação): Encerre com a hipótese diagnóstica e a justificativa objetiva solicitando avaliação/seguimento em ${especialidade || 'atenção especializada'}.
 
-ENCAMINHAMENTO MÉDICO - REGULAÇÃO ESTADUAL (APS / SUS)
-ESPECIALIDADE SOLICITADA: [Nome da Especialidade]
-PRIORIDADE SUGERIDA: [Normal / Prioritário / Urgência Eletiva - Código Vermelho/Amarelo/Azul]
-HIPÓTESE DIAGNÓSTICA PRINCIPAL E CID-10 / CIAP-2: [Diagnóstico + Código CID-10]
-
-1. QUADRO CLÍNICO E HISTÓRIA DA DOENÇA ATUAL (COM TEMPO DE EVOLUÇÃO):
-[Resumo técnico, cronológico e rico em semiologia do quadro que motiva o encaminhamento, sintomas associados e impacto funcional]
-
-2. ANTECEDENTES, COMORBIDADES E CONDIÇÕES ESPECÍFICAS:
-[Comorbidades, antecedentes pessoais/obstétricos/perinatais/identidade de gênero/condição de acamado conforme o modelo da consulta]
-
-3. EXAME FÍSICO DIRECIONADO E SINAIS VITAIS / ANTROPOMETRIA:
-[Sinais vitais, antropometria/Z-score se pediatria, dados obstétricos se gestante, e exame físico técnico focado na especialidade]
-
-4. EXAMES COMPLEMENTARES JÁ REALIZADOS (COM DATAS E RESULTADOS):
-[Inclua todos os exames laboratoriais e de imagem presentes na evolução (com datas e valores) ou colados pelo médico. Se algum exame obrigatório de protocolo não tiver data/valor informado, deixar "[Inserir data/resultado: ...]" bem visível]
-
-5. MANEJO E TRATAMENTOS JÁ REALIZADOS NA ATENÇÃO PRIMÁRIA (APS) E MUC:
-[Medicações em uso contínuo com doses, medidas farmacológicas e não-farmacológicas já instituídas na UBS e resposta clínica]
-
-6. JUSTIFICATIVA CLÍNICA PARA ATENÇÃO ESPECIALIZADA E SINAIS DE ALERTA:
-[Argumentação técnica clara demonstrando por que o caso esgotou os recursos da APS ou preenche critérios de protocolo de encaminhamento estadual, indicando presença ou ausência de sinais de gravidade]
-
-Responda APENAS com o texto pronto do encaminhamento, sem comentários extras antes ou depois.`;
+Responda APENAS com o texto clínico limpo do encaminhamento, sem títulos numerados e sem comentários extras antes ou depois.`;
 };

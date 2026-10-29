@@ -103,7 +103,7 @@
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v4');
+    const saved = localStorage.getItem('ubs_custom_templates_v5');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -115,7 +115,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v4', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v5', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -886,6 +886,7 @@
 
           nextItem.status = 'done';
           nextItem.evolutionText = result.evolutionText;
+          nextItem.cidCiapCodes = result.cidCiapCodes || [];
           nextItem.rawTranscript = result.rawTranscript || '';
           nextItem.soapParts = result.soapParts;
           nextItem.auditAlerts = result.auditAlerts || [];
@@ -1015,9 +1016,12 @@
     if (examFiles.length === 0 && (!parsed.resumo_exames || parsed.resumo_exames.trim() === '' || parsed.resumo_exames.trim() === '-')) {
       finalEvolution = finalEvolution.replace(/\n*EXAMES COMPLEMENTARES\s*\n\s*-\s*(?:Sem novos exames[^\n]*)?\n*/gi, '\n\n');
     }
+    // Remove qualquer código CID-10 / CIAP-2 que eventualmente tenha sido colocado entre parênteses na evolução
+    finalEvolution = finalEvolution.replace(/\s*\((?:CID(?:-1[01])?|CIAP(?:-2)?)[^)]*\)/gi, '');
 
     return {
       evolutionText: finalEvolution.trim(),
+      cidCiapCodes: Array.isArray(parsed.codigos_cid_ciap) ? parsed.codigos_cid_ciap : [],
       rawTranscript: parsed.transcricao_literal_do_audio || '',
       soapParts: {
         subjetivo: parsed.resumo_subjetivo || '',
@@ -1185,7 +1189,11 @@
       };
 
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
-      const refText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+      const rawRefText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+      const refText = rawRefText
+        .replace(/^\d+\.\s*[A-ZÀ-Ú\s/()-]+:\s*\n?/gm, '')
+        .replace(/^ENCAMINHAMENTO MÉDICO[^\n]*\n?/gim, '')
+        .trim();
       const tokens = responseJson?.usageMetadata?.totalTokenCount || 800;
 
       if (!Array.isArray(consult.referrals)) {
@@ -1635,6 +1643,31 @@
       editor.value = '⏳ Transcrevendo áudio e estruturando evolução clínica...\n\nAguarde alguns instantes — o texto aparecerá nesta tela automaticamente assim que concluir (não é necessário clicar em Atualizar).';
     } else {
       editor.value = consult.evolutionText || '';
+    }
+
+    // Exibe os códigos CIAP-2 e CID-10 fora da evolução (em painel separado com cópia em 1 clique)
+    const cidBox = document.getElementById('cidCiapOutsideBox');
+    const cidList = document.getElementById('cidCiapChipsList');
+    if (cidBox && cidList) {
+      const codes = Array.isArray(consult.cidCiapCodes) ? consult.cidCiapCodes.filter(Boolean) : [];
+      if (codes.length > 0) {
+        cidBox.style.display = 'block';
+        cidList.innerHTML = '';
+        codes.forEach(codeStr => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-secondary';
+          btn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: #ffffff; border-color: #86efac; color: #14532d; font-weight: 700;';
+          btn.textContent = `📋 ${codeStr}`;
+          btn.addEventListener('click', () => {
+            copyToClipboard(codeStr, `🏷️ Código copiado: ${codeStr}`);
+          });
+          cidList.appendChild(btn);
+        });
+      } else {
+        cidBox.style.display = 'none';
+        cidList.innerHTML = '';
+      }
     }
 
     const rawBox = document.getElementById('rawTranscriptBox');
