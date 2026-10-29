@@ -211,17 +211,27 @@ window.ScribeDB = (function() {
     });
   }
 
-  async function autoCleanupOldAudio(maxAgeHours = 24) {
+  // Retenção de 30 dias:
+  // 1) Exclui automaticamente consultas com mais de 30 dias (maxAgeDays = 30)
+  // 2) Para consultas já concluídas com mais de 7 dias, remove apenas os blocos brutos de áudio/PDF para economizar espaço no HD, mas MANTÉM TODAS AS TRANSCRIÇÕES/EVOLUÇÕES E ENCAMINHAMENTOS SALVOS PELOS 30 DIAS!
+  async function autoCleanupOldAudio(maxAgeDays = 30) {
     const all = await getAllConsultations();
-    const cutoff = Date.now() - maxAgeHours * 3600 * 1000;
-    let cleaned = 0;
+    const now = Date.now();
+    const cutoff30Days = now - maxAgeDays * 24 * 3600 * 1000;
+    const cutoff7DaysAudio = now - 7 * 24 * 3600 * 1000;
+    let deletedConsultations = 0;
+
     for (const c of all) {
-      if (c.status === 'done' && !c.audioDeleted && c.createdAt < cutoff) {
+      if (c.createdAt < cutoff30Days) {
+        // Passou de 30 dias -> exclui tudo automaticamente
+        await deleteConsultation(c.id);
+        deletedConsultations++;
+      } else if (c.status === 'done' && !c.audioDeleted && c.createdAt < cutoff7DaysAudio) {
+        // Entre 7 e 30 dias -> mantém o texto da evolução e encaminhamento intactos, libera só o áudio pesado
         await deleteAudioChunksOnly(c.id);
-        cleaned++;
       }
     }
-    return cleaned;
+    return deletedConsultations;
   }
 
   async function clearAllData() {

@@ -91,10 +91,11 @@ CONDUTA
     name: 'Puericultura (c/ Z-Score)',
     badge: 'Pediatria APS',
     icon: '👶',
-    description: 'Acompanhamento infantil com histórico perinatal, DNPM, triagem neonatal e Z-Scores OMS.',
+    description: 'Acompanhamento infantil com histórico perinatal, aleitamento/fórmula, DNPM, triagem neonatal e Z-Scores OMS.',
     templateText: `## CONSULTA DE PUERICULTURA - X MESES ##
 
 # 
+# Aleitamento / Alimentação: 
 # MUC:
 # Alergias: 
 # Histórico do parto
@@ -110,7 +111,7 @@ CONDUTA
 # Vacinas:
 
 SUBJETIVO
-Paciente vem acompanhado da mãe. Familiar relata que paciente está bem. Em uso corretamente de sulfato ferroso e vitamina AD. Paciente dorme em. Paciente reside com. Nega queda da própria altura. Paciente com exposição à tela de. Paciente frequentando creche. Nega intercorrências ou necessidade de consultas médicas entre as consultas de puericultura. Familiar sem demais queixas
+Paciente vem acompanhado da mãe. Familiar relata que paciente está bem. Alimentação/Aleitamento: [descrever se SME, complementado, misto ou fórmula infantil — se fórmula, especificar qual marca/tipo, volume em ml, diluição/medidas e intervalo/frequência]. Em uso corretamente de sulfato ferroso e vitamina AD. Paciente dorme em. Paciente reside com. Nega queda da própria altura. Paciente com exposição à tela de. Paciente frequentando creche. Nega intercorrências ou necessidade de consultas médicas entre as consultas de puericultura. Familiar sem demais queixas
 
 OBJETIVO
 BEG, MUC, ativo, eupneico em ar ambiente, anictérico e acianótico
@@ -139,7 +140,7 @@ AVALIAÇÃO
 
 CONDUTA
 - Parabenizo familiar sobre cuidados de saúde com paciente
-- Oriento sobre prevenção de quedas, cuidados com paciente, prevenção de IVAS
+- Oriento sobre alimentação/aleitamento, prevenção de quedas, cuidados com paciente, prevenção de IVAS
 - Orientações gerais
 - Oriento retorno em X meses com enfermagem ou antes via acolhimento para demandas agudas
 - Familiar ciente, concordante e sem dúvidas`
@@ -431,6 +432,11 @@ Arquivos de Exames (PDF/Imagem) anexados nesta consulta: ${hasExamFiles ? 'SIM (
 1. FIDELIDADE ESTRITA AO MODELO:
    - Mantenha EXATAMENTE a estrutura, cabeçalhos (#), seções e frases de fechamento de segurança jurídica do modelo abaixo.
    - Nos modelos que possuem parênteses de seleção como "( ) Opção", marque com "(X)" as opções confirmadas na consulta e deixe "( )" nas demais.
+   - Na PUERICULTURA:
+     * Substitua "X MESES" no título pela idade da criança informada.
+     * Dê atenção especial ao ALEITAMENTO / ALIMENTAÇÃO (no cabeçalho "# Aleitamento / Alimentação:" e no SUBJETIVO): especifique claramente se está em Aleitamento Materno Exclusivo (SME / livre demanda), Aleitamento Materno Complementado (com detalhes da introdução alimentar), Aleitamento Misto ou Fórmula Infantil Exclusiva. Se estiver em uso de FÓRMULA INFANTIL, registre obrigatoriamente qual a fórmula (ex: NAN, Aptamil, Nestogeno, etc.), volume/quantidade por mamada (ml), número de medidas/diluição, frequência/intervalo das mamadas e aceitação/tolerância gastrointestinal.
+   - No PRÉ-NATAL:
+     * Preencha no OBJETIVO e no cabeçalho todos os dados obstétricos objetivos informados no painel rápido ou no áudio (AU em cm, BCF em bpm, MF presentes/ausentes, Edema em MMII, Peso em kg, PA em mmHg e IG).
    - Na VISITA DOMICILIAR (VD):
      * Substitua "DD/MM/AAAA" no título pela data falada no áudio ou pela data de hoje (${todayStr}).
      * Preencha o nome do(a) Enfermeiro(a), do(a) ACS e o nome + vínculo do Familiar/Cuidador(a) que estava na casa recebendo a equipe.

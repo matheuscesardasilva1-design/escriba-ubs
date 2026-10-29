@@ -92,12 +92,12 @@
     renderPendingExamFilesUI();
 
     try {
-      await window.ScribeDB.autoCleanupOldAudio(48);
+      await window.ScribeDB.autoCleanupOldAudio(30); // Retenção de 30 dias com exclusão automática após 30 dias
     } catch (_) {}
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v2');
+    const saved = localStorage.getItem('ubs_custom_templates_v3');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -109,7 +109,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v2', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v3', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -250,9 +250,14 @@
   }
 
   function togglePuericulturaZScorePanel() {
-    const panel = document.getElementById('puericulturaZScoreBox');
-    if (!panel) return;
-    panel.style.display = state.selectedTemplateId === 'puericultura' ? 'block' : 'none';
+    const pueriPanel = document.getElementById('puericulturaZScoreBox');
+    const pnPanel = document.getElementById('prenatalObjectiveBox');
+    if (pueriPanel) {
+      pueriPanel.style.display = state.selectedTemplateId === 'puericultura' ? 'block' : 'none';
+    }
+    if (pnPanel) {
+      pnPanel.style.display = state.selectedTemplateId === 'prenatal' ? 'block' : 'none';
+    }
   }
 
   // --- Gerenciamento Discreto de PDFs e Imagens de Exames Complementares ---
@@ -1120,22 +1125,38 @@
     const countBadge = document.getElementById('queueTotalBadge');
     if (countBadge) countBadge.textContent = String(all.length);
 
-    if (all.length === 0) {
+    const searchQuery = (document.getElementById('historySearchInput')?.value || '').toLowerCase().trim();
+    const filterMode = document.getElementById('historyFilterSelect')?.value || 'all';
+
+    const filtered = all.filter(item => {
+      if (filterMode === 'pending_pec' && item.evolvedInPEC) return false;
+      if (filterMode === 'done_pec' && !item.evolvedInPEC) return false;
+      if (searchQuery) {
+        const dateStr = new Date(item.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        const hay = `${item.patientLabel} ${item.templateName} ${dateStr}`.toLowerCase();
+        if (!hay.includes(searchQuery)) return false;
+      }
+      return true;
+    });
+
+    if (filtered.length === 0) {
       listContainer.innerHTML = `
         <div class="empty-queue">
-          <p>Nenhum atendimento registrado na sessão.</p>
-          <small>Selecione o modelo acima para iniciar o registro ou anexar laudos.</small>
+          <p>Nenhum atendimento encontrado para este filtro.</p>
+          <small>As evoluções ficam salvas automaticamente por 30 dias.</small>
         </div>
       `;
       return;
     }
 
     listContainer.innerHTML = '';
-    all.forEach(item => {
+    filtered.forEach(item => {
       const card = document.createElement('div');
       card.className = `queue-item ${item.id === state.activeConsultationId ? 'selected' : ''}`;
 
-      const timeStr = new Date(item.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const dt = new Date(item.createdAt);
+      const dateStr = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+      const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       const durMin = Math.floor((item.durationSeconds || 0) / 60);
       const durSec = (item.durationSeconds || 0) % 60;
       const durLabel = item.durationSeconds ? `${durMin}m${String(durSec).padStart(2, '0')}s` : 'Laudos/Notas';
@@ -1149,22 +1170,27 @@
       } else if (item.status === 'uploading') {
         statusHTML = `<span class="q-status st-up" id="qstatus_${item.id}">⚡ Estruturando...</span>`;
       } else if (item.status === 'done') {
-        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ Concluído</span>`;
+        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ Prontuário Pronto</span>`;
       } else if (item.status === 'error') {
         statusHTML = `<span class="q-status st-err" id="qstatus_${item.id}">⚠️ Pendente (clique p/ reprocessar)</span>`;
       }
 
+      const pecBadge = item.evolvedInPEC
+        ? `<span class="q-status st-done" style="background:#dcfce7;color:#166534;">☑️ Evoluído no PEC</span>`
+        : `<span class="q-status" style="background:#f1f5f9;color:#475569;">📌 Falta Evoluir</span>`;
+
       card.innerHTML = `
         <div class="q-header">
           <span class="q-patient">${escapeHtml(item.patientLabel)}</span>
-          <span class="q-time">${timeStr}</span>
+          <span class="q-time">${dateStr} • ${timeStr}</span>
         </div>
         <div class="q-meta">
           <span>${item.templateIcon || '🩺'} ${escapeHtml(item.templateName)}</span>
           <span>${durLabel} ${examLabel}</span>
         </div>
-        <div class="q-footer">
+        <div class="q-footer" style="display:flex;justify-content:space-between;align-items:center;gap:4px;">
           ${statusHTML}
+          ${pecBadge}
         </div>
       `;
 
@@ -1196,6 +1222,19 @@
 
     document.getElementById('viewPatientTitle').textContent = consult.patientLabel;
     document.getElementById('viewTemplateBadge').textContent = `${consult.templateIcon || '🩺'} ${consult.templateName}`;
+
+    const btnPec = document.getElementById('btnToggleEvolvedPEC');
+    if (btnPec) {
+      if (consult.evolvedInPEC) {
+        btnPec.textContent = '☑️ Já Evoluído no PEC';
+        btnPec.style.background = '#dcfce7';
+        btnPec.style.color = '#166534';
+      } else {
+        btnPec.textContent = '📌 Marcar como Evoluído no PEC';
+        btnPec.style.background = '#e2e8f0';
+        btnPec.style.color = '#1e293b';
+      }
+    }
 
     const errBanner = document.getElementById('viewErrorBanner');
     if (consult.status === 'error') {
@@ -1260,33 +1299,71 @@
   }
 
   function getCalculatedZScoreText() {
-    if (state.selectedTemplateId !== 'puericultura') return '';
-    const sex = document.getElementById('zSex')?.value || 'M';
-    const months = document.getElementById('zMonths')?.value;
-    const weight = document.getElementById('zWeight')?.value;
-    const height = document.getElementById('zHeight')?.value;
-    const hc = document.getElementById('zHC')?.value;
+    if (state.selectedTemplateId === 'puericultura') {
+      const sex = document.getElementById('zSex')?.value || 'M';
+      const months = document.getElementById('zMonths')?.value;
+      const weight = document.getElementById('zWeight')?.value;
+      const height = document.getElementById('zHeight')?.value;
+      const hc = document.getElementById('zHC')?.value;
+      const feedingType = document.getElementById('pueriFeedingType')?.value || '';
+      const formulaDetails = document.getElementById('pueriFormulaDetails')?.value.trim() || '';
 
-    if (!months && !weight && !height && !hc) return '';
-    const calc = window.ZScoreCalculator.calculate({
-      sex,
-      months: months || 0,
-      weightKg: weight,
-      heightCm: height,
-      hcCm: hc
-    });
-    return calc ? calc.summaryText : '';
+      const lines = [];
+      if (months) {
+        lines.push(`Idade da criança: ${months} meses`);
+      }
+      if (feedingType || formulaDetails) {
+        lines.push(`Aleitamento / Alimentação Infantil: ${feedingType}${formulaDetails ? ' — Detalhes (fórmula/volume/frequência): ' + formulaDetails : ''}`);
+      }
+
+      if (months || weight || height || hc) {
+        const calc = window.ZScoreCalculator.calculate({
+          sex,
+          months: months || 0,
+          weightKg: weight,
+          heightCm: height,
+          hcCm: hc
+        });
+        if (calc && calc.summaryText) {
+          lines.push(calc.summaryText);
+        }
+      }
+      return lines.join('\n');
+    }
+
+    if (state.selectedTemplateId === 'prenatal') {
+      const ig = document.getElementById('pnIG')?.value.trim() || '';
+      const pa = document.getElementById('pnPA')?.value.trim() || '';
+      const weight = document.getElementById('pnWeight')?.value.trim() || '';
+      const au = document.getElementById('pnAU')?.value.trim() || '';
+      const bcf = document.getElementById('pnBCF')?.value.trim() || '';
+      const mf = document.getElementById('pnMF')?.value || '';
+      const edema = document.getElementById('pnEdema')?.value || '';
+
+      if (!ig && !pa && !weight && !au && !bcf) return '';
+      const pnLines = ['DADOS OBJETIVOS DO PRÉ-NATAL INFORMADOS PELO MÉDICO:'];
+      if (ig) pnLines.push(`- IG atual: ${ig}`);
+      if (au) pnLines.push(`- AU: ${au} cm`);
+      if (bcf) pnLines.push(`- BCF: ${bcf} bpm`);
+      if (mf) pnLines.push(`- MF: ${mf}`);
+      if (edema) pnLines.push(`- Edema em membros inferiores: ${edema}`);
+      if (weight) pnLines.push(`- Peso: ${weight} kg`);
+      if (pa) pnLines.push(`- PA: ${pa} mmHg`);
+      return pnLines.join('\n');
+    }
+
+    return '';
   }
 
   function updateZScoreLivePreview() {
     const preview = document.getElementById('zScorePreviewResult');
     if (!preview) return;
     const text = getCalculatedZScoreText();
-    preview.textContent = text || 'Preencha idade (meses) e medidas acima para calcular os Z-Scores (OMS) automaticamente.';
+    preview.textContent = text || 'Preencha idade (meses), medidas e aleitamento acima para incluir automaticamente na evolução.';
   }
 
   function clearZScoreInputs() {
-    ['zMonths', 'zWeight', 'zHeight', 'zHC'].forEach(id => {
+    ['zMonths', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails', 'pnIG', 'pnPA', 'pnWeight', 'pnAU', 'pnBCF'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -1398,8 +1475,26 @@
 
     document.getElementById('btnProcessNotesOnly')?.addEventListener('click', handleProcessNotesOrExamsOnly);
 
-    ['zSex', 'zMonths', 'zWeight', 'zHeight', 'zHC'].forEach(id => {
+    ['zSex', 'zMonths', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', updateZScoreLivePreview);
+      document.getElementById(id)?.addEventListener('change', updateZScoreLivePreview);
+    });
+
+    // Busca e Filtro dos Últimos 30 Dias
+    document.getElementById('historySearchInput')?.addEventListener('input', refreshQueueSidebar);
+    document.getElementById('historyFilterSelect')?.addEventListener('change', refreshQueueSidebar);
+
+    // Marcar / Desmarcar como Evoluído no PEC
+    document.getElementById('btnToggleEvolvedPEC')?.addEventListener('click', async () => {
+      if (!state.activeConsultationId) return;
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (c) {
+        c.evolvedInPEC = !c.evolvedInPEC;
+        await window.ScribeDB.saveConsultation(c);
+        await renderActiveConsultationView(c);
+        await refreshQueueSidebar();
+        showToast(c.evolvedInPEC ? '☑️ Marcado como Já Evoluído no PEC!' : '📌 Marcado como Pendente de Evoluir no PEC.');
+      }
     });
 
     document.getElementById('mainEvolutionEditor')?.addEventListener('input', async (e) => {
@@ -1411,9 +1506,18 @@
       }
     });
 
-    document.getElementById('btnCopyFullEvolution')?.addEventListener('click', () => {
+    document.getElementById('btnCopyFullEvolution')?.addEventListener('click', async () => {
       const text = document.getElementById('mainEvolutionEditor')?.value || '';
-      copyToClipboard(text, '📋 Evolução completa copiada para o PEC / e-SUS!');
+      copyToClipboard(text, '📋 Evolução completa copiada e marcada como Evoluída no PEC!');
+      if (state.activeConsultationId) {
+        const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+        if (c && !c.evolvedInPEC) {
+          c.evolvedInPEC = true;
+          await window.ScribeDB.saveConsultation(c);
+          await renderActiveConsultationView(c);
+          await refreshQueueSidebar();
+        }
+      }
     });
 
     document.querySelectorAll('.btn-copy-section').forEach(btn => {

@@ -55,10 +55,10 @@
         <div class="template-grid" id="templateGrid"></div>
       </div>
 
-      <!-- 2. CALCULADORA AUTOMÁTICA DE Z-SCORE (APARECE NA PUERICULTURA) -->
+      <!-- 2A. PAINEL DE PUERICULTURA: Z-SCORE + ALEITAMENTO / FÓRMULA -->
       <div class="zscore-box" id="puericulturaZScoreBox">
         <div style="font-weight: 700; font-size: 12.5px; color: #166534;">
-          👶 Antropometria e Cálculo de Z-Score (Curvas OMS)
+          👶 Dados da Puericultura: Antropometria (Z-Score OMS) & Aleitamento
         </div>
         <div class="zscore-grid">
           <div>
@@ -85,8 +85,75 @@
             <input type="number" id="zHC" class="input-text" style="padding: 5px;" placeholder="Ex: 43.2" step="0.1" />
           </div>
         </div>
+
+        <!-- Campos de Aleitamento / Fórmula Infantil -->
+        <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 6px; margin-top: 7px;">
+          <div>
+            <label style="font-size: 11px; font-weight: 600; color: #166534; display: block; margin-bottom: 2px;">Tipo de Aleitamento / Dieta</label>
+            <select id="pueriFeedingType" class="select-box" style="padding: 5px; font-size: 12px;">
+              <option value="">-- Selecionar (ou falar no áudio) --</option>
+              <option value="Aleitamento Materno Exclusivo (SME) em livre demanda">SME (Materno Exclusivo - livre demanda)</option>
+              <option value="Aleitamento Materno Complementado">AM Complementado (LM + Introdução Alimentar)</option>
+              <option value="Aleitamento Misto (Leite Materno + Fórmula Infantil)">Aleitamento Misto (LM + Fórmula)</option>
+              <option value="Fórmula Infantil Exclusiva">Fórmula Infantil Exclusiva</option>
+              <option value="Alimentação da família">Alimentação da Família</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 11px; font-weight: 600; color: #166534; display: block; margin-bottom: 2px;">Qual Fórmula, Quantidade (ml/medidas) e Intervalo</label>
+            <input type="text" id="pueriFormulaDetails" class="input-text" style="padding: 5px; font-size: 12px;" placeholder="Ex: NAN 1, 120ml (4 med) de 3/3h + frutas" />
+          </div>
+        </div>
+
         <div class="zscore-preview" id="zScorePreviewResult">
-          Preencha idade (meses) e medidas acima para calcular os Z-Scores (OMS) automaticamente.
+          Preencha idade (meses), medidas e aleitamento acima para incluir automaticamente na evolução.
+        </div>
+      </div>
+
+      <!-- 2B. PAINEL DE PRÉ-NATAL: DADOS OBJETIVOS OBSTÉTRICOS (IG, PA, PESO, AU, BCF, MF, EDEMA) -->
+      <div class="prenatal-box" id="prenatalObjectiveBox" style="display: none;">
+        <div style="font-weight: 700; font-size: 12.5px; color: #9d174d; margin-bottom: 6px;">
+          🤰 Dados Objetivos do Pré-Natal (Preenche o Objetivo automaticamente)
+        </div>
+        <div class="prenatal-grid">
+          <div>
+            <label>IG Atual</label>
+            <input type="text" id="pnIG" class="input-text" style="padding: 5px;" placeholder="Ex: 28s 4d" />
+          </div>
+          <div>
+            <label>PA (mmHg)</label>
+            <input type="text" id="pnPA" class="input-text" style="padding: 5px;" placeholder="110x70" />
+          </div>
+          <div>
+            <label>Peso (kg)</label>
+            <input type="text" id="pnWeight" class="input-text" style="padding: 5px;" placeholder="68.5" />
+          </div>
+          <div>
+            <label>AU (cm)</label>
+            <input type="text" id="pnAU" class="input-text" style="padding: 5px;" placeholder="Ex: 27" />
+          </div>
+          <div>
+            <label>BCF (bpm)</label>
+            <input type="text" id="pnBCF" class="input-text" style="padding: 5px;" placeholder="Ex: 144" />
+          </div>
+          <div>
+            <label>Mov. Fetais (MF)</label>
+            <select id="pnMF" class="select-box" style="padding: 5px;">
+              <option value="Presentes">Presentes (+)</option>
+              <option value="Ausentes">Ausentes (-)</option>
+              <option value="Não percebidos (IG precoce)">IG precoce</option>
+            </select>
+          </div>
+          <div>
+            <label>Edema MMII</label>
+            <select id="pnEdema" class="select-box" style="padding: 5px;">
+              <option value="Ausente">Ausente</option>
+              <option value="+/4+">+/4+</option>
+              <option value="++/4+">++/4+</option>
+              <option value="+++/4+">+++/4+</option>
+              <option value="++++/4+">++++/4+</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -178,13 +245,21 @@
         </div>
       </div>
 
-      <!-- 4. FILA ASSÍNCRONA & HISTÓRICO DO DIA -->
+      <!-- 4. FILA ASSÍNCRONA & HISTÓRICO DOS ÚLTIMOS 30 DIAS -->
       <div class="card">
         <div class="card-title">
-          <span>3. Fila de Processamento & Pacientes (<span id="queueTotalBadge">0</span>)</span>
+          <span>3. Atendimentos Salvos — Últimos 30 Dias (<span id="queueTotalBadge">0</span>)</span>
           <button type="button" class="btn-secondary" id="btnClearOldAudios" style="padding: 3px 8px; font-size: 11px; border-radius: 5px; border: none; cursor: pointer;">
-            🧹 Limpar Sessão
+            🧹 Limpar Tudo
           </button>
+        </div>
+        <div style="display: flex; gap: 6px; margin-bottom: 8px;">
+          <input type="text" id="historySearchInput" class="input-text" style="padding: 5px 8px; font-size: 12px;" placeholder="🔍 Buscar paciente ou data..." />
+          <select id="historyFilterSelect" class="select-box" style="width: 155px; padding: 5px; font-size: 11.5px;">
+            <option value="all">Todos (30 dias)</option>
+            <option value="pending_pec">📌 Falta Evoluir</option>
+            <option value="done_pec">☑️ Já Evoluídos</option>
+          </select>
         </div>
         <div class="queue-list" id="consultationQueueList"></div>
       </div>
@@ -214,6 +289,9 @@
               <span class="badge-model" id="viewTemplateBadge">Protocolo</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary" id="btnToggleEvolvedPEC" title="Marcar se você já colou/evoluiu este paciente no PEC">
+                📌 Marcar como Evoluído no PEC
+              </button>
               <audio id="savedAudioPlayer" controls style="height: 30px; display: none;"></audio>
               <button type="button" class="btn btn-secondary" id="btnDownloadAudio" style="display: none;">
                 ⬇️ Áudio

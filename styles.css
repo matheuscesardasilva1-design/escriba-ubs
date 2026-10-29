@@ -527,6 +527,29 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* --- PAINEL DE DADOS OBJETIVOS DO PRÉ-NATAL --- */
+.prenatal-box {
+  background: #fdf2f8;
+  border: 1px solid #f9a8d4;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.prenatal-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.prenatal-grid label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #831843;
+  display: block;
+  margin-bottom: 2px;
+}
+
 /* --- FILA DE ATENDIMENTOS LATERAL --- */
 .queue-list {
   display: flex;
