@@ -266,32 +266,31 @@ body {
 }
 
 .rec-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  background: #94a3b8;
+  background: #cbd5e1;
 }
 
 .rec-dot.active {
-  background: var(--danger);
-  box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2);
+  background: #0284c7;
 }
 
 .rec-dot.paused {
-  background: var(--warning);
+  background: #94a3b8;
 }
 
 .rec-timer {
-  font-size: 22px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: var(--text-main);
+  color: #64748b;
 }
 
 .vu-meter-bar {
-  height: 7px;
+  height: 2px;
   background: #e2e8f0;
-  border-radius: 4px;
+  border-radius: 2px;
   overflow: hidden;
   margin-bottom: 8px;
 }
@@ -299,8 +298,8 @@ body {
 .vu-meter-fill {
   height: 100%;
   width: 0%;
-  background: var(--success);
-  transition: width 0.08s linear;
+  background: #93c5fd;
+  transition: background-color 0.3s ease;
 }
 
 .rec-SubInfo {
@@ -352,26 +351,26 @@ body {
   cursor: not-allowed;
 }
 
-.btn-record {
-  background: var(--danger);
+.btn-record, .btn-open-sheet {
+  background: #0284c7;
   color: #ffffff;
   width: 100%;
-  font-size: 14px;
-  padding: 11px;
+  font-size: 13px;
+  padding: 9px 12px;
 }
 
-.btn-record:hover {
-  background: #b91c1c;
+.btn-record:hover, .btn-open-sheet:hover {
+  background: #0369a1;
 }
 
 .btn-pause {
-  background: var(--warning);
-  color: #ffffff;
+  background: #e2e8f0;
+  color: #334155;
   flex: 1;
 }
 
 .btn-finish {
-  background: var(--success);
+  background: #0f766e;
   color: #ffffff;
   flex: 1.5;
 }

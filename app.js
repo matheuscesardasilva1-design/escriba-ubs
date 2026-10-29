@@ -178,13 +178,11 @@
 
   function updateDocumentTitle() {
     if (state.isRecording) {
-      const mm = String(Math.floor(state.recordingSeconds / 60)).padStart(2, '0');
-      const ss = String(state.recordingSeconds % 60).padStart(2, '0');
       document.title = state.isPaused
-        ? `⏸️ ${mm}:${ss} | Prontuário APS`
-        : `🔴 ${mm}:${ss} | Prontuário APS`;
+        ? `e-SUS APS • Em espera`
+        : `e-SUS APS • Em atendimento`;
     } else if (state.queueRunning) {
-      document.title = `⏳ Sincronizando... | Prontuário APS`;
+      document.title = `e-SUS APS • Sincronizando`;
     } else {
       document.title = `Prontuário Clínico APS - Evolução & Regulação`;
     }
@@ -574,8 +572,9 @@
 
         const vuFill = document.getElementById('vuMeterFill');
         if (vuFill) {
-          vuFill.style.width = (state.isPaused ? 0 : pct) + '%';
-          vuFill.style.backgroundColor = pct > 8 ? '#10b981' : '#f59e0b';
+          // Linha discreta estática (não dança na tela com a voz para o acompanhante não perceber)
+          vuFill.style.width = state.isPaused ? '0%' : '100%';
+          vuFill.style.backgroundColor = pct > 3 ? '#93c5fd' : '#cbd5e1';
         }
 
         const now = Date.now();
@@ -592,10 +591,10 @@
               if (state.silenceSeconds >= 180) {
                 togglePauseRecording();
                 silenceBanner.style.display = 'flex';
-                silenceBanner.innerHTML = `<span>⚠️ <strong>Pausado automaticamente por 3 min de inatividade</strong>. Clique em Retomar quando desejar.</span>`;
-              } else if (state.silenceSeconds >= 12) {
+                silenceBanner.innerHTML = `<span> Sessão em espera por inatividade (3 min).</span>`;
+              } else if (state.silenceSeconds >= 15) {
                 silenceBanner.style.display = 'flex';
-                silenceBanner.innerHTML = `<span>🔇 Sem captação de áudio há ${state.silenceSeconds}s — verifique o microfone.</span>`;
+                silenceBanner.innerHTML = `<span>⚠️ Verifique o dispositivo de entrada nas configurações.</span>`;
               } else {
                 silenceBanner.style.display = 'none';
               }
@@ -1283,8 +1282,9 @@
       if (blob) {
         const url = URL.createObjectURL(blob);
         audioPlayer.src = url;
-        audioPlayer.style.display = 'inline-block';
+        audioPlayer.style.display = 'none'; // Oculto para manter discrição visual no consultório
         btnDownloadAudio.style.display = 'inline-flex';
+        btnDownloadAudio.textContent = '⬇️ Arquivo';
         btnDownloadAudio.onclick = () => {
           const a = document.createElement('a');
           a.href = url;
@@ -1398,6 +1398,18 @@
     document.getElementById('btnStartRec')?.addEventListener('click', startRecording);
     document.getElementById('btnPauseRec')?.addEventListener('click', togglePauseRecording);
     document.getElementById('btnStopRec')?.addEventListener('click', finishRecordingAndQueue);
+
+    // Atalho discreto de teclado (Alt + R) para abrir ou salvar a folha sem precisar clicar no botão
+    document.addEventListener('keydown', (e) => {
+      if (e.altKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        if (state.isRecording) {
+          finishRecordingAndQueue();
+        } else {
+          startRecording();
+        }
+      }
+    });
 
     document.getElementById('micSelect')?.addEventListener('change', (e) => {
       state.selectedMicDeviceId = e.target.value;
@@ -1668,17 +1680,17 @@
       btnStart.style.display = 'none';
       btnPause.style.display = 'inline-flex';
       btnStop.style.display = 'inline-flex';
-      btnPause.textContent = state.isPaused ? '▶️ Retomar' : '⏸️ Pausar';
+      btnPause.textContent = state.isPaused ? 'Retomar Folha' : 'Aguardar';
       statusDot.className = state.isPaused ? 'rec-dot paused' : 'rec-dot active';
       statusLabel.textContent = state.isPaused
-        ? 'Pausado (salvo no disco)'
-        : 'Captando atendimento (salvo a cada 3s)...';
+        ? 'Folha em espera'
+        : 'Folha de atendimento aberta';
     } else {
       btnStart.style.display = 'inline-flex';
       btnPause.style.display = 'none';
       btnStop.style.display = 'none';
       statusDot.className = 'rec-dot';
-      statusLabel.textContent = 'Pronto para iniciar registro';
+      statusLabel.textContent = 'Aguardando abertura de folha';
     }
   }
 

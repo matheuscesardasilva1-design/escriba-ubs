@@ -157,91 +157,81 @@
         </div>
       </div>
 
-      <!-- 3. REGISTRO DE CONSULTA + ANEXO DISCRETO DE LAUDOS PDF -->
+      <!-- 3. CABEÇALHO DE ATENDIMENTO DISCRETO (CAMUFLADO COMO PRONTUÁRIO PEC) -->
       <div class="card">
         <div class="card-title">
-          <span>2. Registro Clínico & Anexo de Laudos</span>
-          <span id="diskSaveIndicator" style="font-size: 11px; color: #059669;">💾 Salvamento Contínuo Ativo</span>
+          <span>2. Dados do Atendimento Atual</span>
+          <span id="diskSaveIndicator" style="font-size: 11px; color: #64748b;">Sincronizado</span>
         </div>
 
-        <div class="patient-row">
-          <input type="text" id="patientIdentifier" class="input-text" placeholder="Paciente / Prontuário (ex: Maria S.)" />
-          <select id="micSelect" class="select-box">
-            <option value="">🎤 Microfone Padrão</option>
-          </select>
+        <div class="patient-row" style="grid-template-columns: 1fr;">
+          <input type="text" id="patientIdentifier" class="input-text" placeholder="Nome / Iniciais / CNS ou Prontuário do Paciente" />
         </div>
 
         <div class="recorder-box">
           <div class="rec-header">
             <div class="rec-status-wrap">
               <span class="rec-dot" id="recStatusDot"></span>
-              <span id="recStatusLabel">Pronto para iniciar registro</span>
+              <span id="recStatusLabel">Aguardando abertura de folha</span>
             </div>
-            <div class="rec-timer" id="recTimerDisplay">00:00</div>
+            <div class="rec-timer" id="recTimerDisplay" title="Tempo de atendimento (Atalho: Alt+R)">00:00</div>
           </div>
 
-          <div class="vu-meter-bar" title="Nível de áudio do microfone">
+          <!-- Indicador de linha sutil (não dança na tela para não chamar atenção) -->
+          <div class="vu-meter-bar">
             <div class="vu-meter-fill" id="vuMeterFill"></div>
-          </div>
-
-          <div class="rec-SubInfo">
-            <span>Áudio compacto (~1 MB / 6 min)</span>
-            <span>Sincronização local a cada 3s</span>
           </div>
 
           <div class="silence-banner" id="silenceWarningBanner"></div>
 
           <div class="rec-buttons">
-            <button type="button" class="btn btn-record" id="btnStartRec">
-              🔴 Iniciar Registro da Consulta
+            <button type="button" class="btn btn-open-sheet" id="btnStartRec" title="Atalho rápido: Alt + R">
+              ➕ Abrir Folha de Atendimento
             </button>
             <button type="button" class="btn btn-pause" id="btnPauseRec" style="display: none;">
-              ⏸️ Pausar
+              Aguardar / Pausar
             </button>
-            <button type="button" class="btn btn-finish" id="btnStopRec" style="display: none;">
-              ✅ Concluir Atendimento (Enviar p/ Fila)
+            <button type="button" class="btn btn-finish" id="btnStopRec" style="display: none;" title="Atalho rápido: Alt + R">
+              ✔️ Salvar e Fechar Folha
             </button>
           </div>
         </div>
 
-        <!-- ÁREA DISCRETA PARA ANEXAR PDFs / IMAGENS DE EXAMES (JUNTA COM A EVOLUÇÃO AO FINALIZAR) -->
+        <!-- ÁREA DISCRETA PARA ANEXAR PDFs / IMAGENS DE EXAMES -->
         <div id="examDropZone" class="exam-attach-box">
           <div class="exam-attach-header">
             <div>
-              <strong>📎 Exames Complementares (PDF / Imagem):</strong>
-              <span class="exam-count-tag" id="examCountBadge">Nenhum anexo</span>
+              <strong>📎 Documentos / Resultados (PDF):</strong>
+              <span class="exam-count-tag" id="examCountBadge">0</span>
             </div>
             <label class="btn btn-secondary" style="cursor: pointer; padding: 4px 9px; font-size: 11.5px;">
-              + Anexar PDF / Laudo
+              + Anexar Arquivo
               <input type="file" id="examFilesInput" accept="application/pdf,image/*,.pdf,.png,.jpg,.jpeg" multiple style="display: none;" />
             </label>
-          </div>
-          <div class="exam-attach-hint">
-            Arraste PDFs da barra do navegador, clique em <em>+ Anexar PDF</em> ou pressione <strong>Ctrl+V</strong>. Ao concluir a consulta, os exames serão inseridos formatados entre o Objetivo e a Avaliação.
           </div>
           <div id="pendingExamFilesList" class="exam-chips-wrap" style="display: none;"></div>
         </div>
 
-        <!-- Campo de Notas Rápidas / Sinais Vitais em Silêncio -->
+        <!-- Campo de Notas Rápidas / Sinais Vitais -->
         <div style="margin-bottom: 8px;">
           <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px;">
-            ✍️ Dados Rápidos / Sinais Vitais / Anotações (opcional):
+            ✍️ Anotações Clínicas / Triagem / Sinais Vitais:
           </label>
-          <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="Ex: PA 130x80, Peso 72kg, AU 29cm, BCF 142bpm, HGT 98..."></textarea>
+          <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, AU, BCF, HGT ou anotações livres..."></textarea>
         </div>
 
-        <div style="display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; margin-bottom: 8px;">
-          <label class="btn btn-primary" style="cursor: pointer; flex: 1; background: #0d9488;">
-            📱 Importar Áudio (VD / Celular)
+        <div style="display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap;">
+          <label class="btn btn-secondary" style="cursor: pointer; flex: 1;">
+            📂 Importar Registro Externo (VD)
             <input type="file" id="audioFileInput" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" multiple style="display: none;" />
           </label>
-          <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly" title="Gerar evolução ou transcrever os PDFs anexados sem precisar gravar áudio">
-            ⚡ Processar Só Laudos PDF / Notas
+          <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly">
+            ⚡ Gerar das Anotações / PDF
           </button>
         </div>
 
-        <div id="whatsappDropZone" class="drop-zone">
-          📥 <strong>Visita Domiciliar (VD):</strong> Arraste áudios (<code>.ogg</code> / <code>.m4a</code>) ou PDFs de exames direto para esta área
+        <div id="whatsappDropZone" class="drop-zone" style="margin-top: 6px; padding: 6px; font-size: 11px;">
+          Arraste arquivos de Visita Domiciliar ou PDFs para cá (ou pressione Ctrl+V)
         </div>
       </div>
 
@@ -444,6 +434,13 @@
           <li>Clique em <strong>"Create API Key"</strong> e copie o código gerado.</li>
           <li>Cole abaixo. Cada profissional usa sua própria chave no seu usuário do Windows, de forma 100% independente.</li>
         </ol>
+      </div>
+
+      <div style="margin-bottom: 12px;">
+        <label style="font-weight: 700; display: block; margin-bottom: 5px;">Dispositivo de Entrada (Configuração Oculta):</label>
+        <select id="micSelect" class="select-box">
+          <option value="">Padrão do Sistema</option>
+        </select>
       </div>
 
       <div style="margin-bottom: 12px;">
