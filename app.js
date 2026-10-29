@@ -2019,6 +2019,13 @@
           startRecording();
         }
       }
+      if (e.altKey && (e.key === 'p' || e.key === 'P')) {
+        if (state.isRecording) {
+          e.preventDefault();
+          togglePauseRecording();
+          showToast(state.isPaused ? '⏸️ Folha em espera (pausado para interrupção)' : '▶️ Atendimento retomado');
+        }
+      }
     });
 
     document.getElementById('micSelect')?.addEventListener('change', (e) => {

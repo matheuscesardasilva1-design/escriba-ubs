@@ -425,6 +425,12 @@ Data de referência de hoje: ${todayStr}.
      * No PRÉ-NATAL: extraia diretamente do áudio todos os dados do cabeçalho (# G P V PC A, # IG, # TS, # TOXO, # SOROLOGIAS, # VACINAS) e todos os dados do OBJETIVO falados pelo médico (AU em cm, BCF em bpm, MF presentes/ausentes, Edema em MMII, Peso em kg e PA em mmHg), além de qualquer exame físico adicional falado!
      * Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
+7. BLINDAGEM ABSOLUTA CONTRA INTERRUPÇÕES DE ENFERMAGEM / DISCUSSÃO DE OUTRO PACIENTE NO MEIO DA CONSULTA:
+   - Na rotina da UBS, é muito comum que durante o atendimento de um paciente outra profissional (Enfermeira, Técnica de Enfermagem, ACS, Recepção ou colega) bata na porta e entre na sala para discutir o caso de OUTRO paciente (uma interconsulta rápida de porta, renovação de receita de terceiro, dúvida sobre curativo/vacina/acolhimento de outra pessoa) e o médico esqueça de pausar a gravação.
+   - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'ESTE ATENDIMENTO NÃO É UMA INTERCONSULTA DE TERCEIROS! Portanto, você DEVE identificar quem é o PACIENTE PRINCIPAL que está sendo atendido na consulta e FILTRAR/DESCARTAR COMPLETAMENTE qualquer conversa paralela ou interrupção em que a enfermagem/equipe entre na sala para falar de outro paciente (ex.: mudanças bruscas para falar de "um paciente lá no acolhimento", "dona fulana", "licença doutor, só tirar uma dúvida de um caso", ou queixas/receitas de terceira pessoa sem relação com o paciente em consulta).'}
+   - JAMAIS misture sintomas, pressão arterial, exames, diagnósticos ou medicações de um caso discutido com a enfermagem durante uma interrupção dentro do prontuário ("evolucao_completa") do paciente que está sendo atendido!
+   - Se você detectar que houve uma interrupção externa discutindo outro paciente no meio do áudio, exclua esses dados da "evolucao_completa" e apenas avise em "alertas_auditoria": "Interrupção externa/interconsulta de terceiro detectada no áudio e isolada automaticamente para não contaminar este prontuário."
+
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===\n' + zScoreSummary : ''}
