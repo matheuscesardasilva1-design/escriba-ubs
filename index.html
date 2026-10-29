@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
-  <link rel="stylesheet" href="styles.css?v=20261028_13" />
+  <link rel="stylesheet" href="styles.css?v=20261028_14" />
 </head>
 <body>
 
@@ -186,9 +186,9 @@
         <div class="rec-header">
           <div class="rec-status-wrap">
             <span class="rec-dot" id="recStatusDot"></span>
-            <span id="recStatusLabel">Aguardando abertura de folha</span>
+            <span id="recStatusLabel">Pronto para iniciar</span>
           </div>
-          <div class="rec-timer" id="recTimerDisplay" title="Tempo de sessão (Atalho: Alt+R)">00:00</div>
+          <div class="rec-timer" id="recTimerDisplay" title="Tempo de atendimento (Atalho: Alt+R)">00:00</div>
         </div>
 
         <div class="vu-meter-bar">
@@ -199,15 +199,15 @@
 
         <div class="rec-buttons">
           <button type="button" class="btn btn-open-sheet" id="btnStartRec" title="Atalho rápido: Alt + R">
-            ➕ Abrir Folha de Atendimento
+            ▶️ Iniciar Atendimento
           </button>
           <button type="button" class="btn btn-pause" id="btnPauseRec" style="display: none;">
-            Aguardar / Pausar
+            ⏸️ Pausar
           </button>
           <button type="button" class="btn btn-finish" id="btnStopRec" style="display: none;" title="Atalho rápido: Alt + R">
-            ✔️ Salvar e Fechar Folha
+            ✔️ Finalizar Atendimento
           </button>
-          <button type="button" class="btn btn-secondary" id="btnCancelRec" style="display: none; color: #b91c1c;" title="Descartar folha atual">
+          <button type="button" class="btn btn-secondary" id="btnCancelRec" style="display: none; color: #b91c1c;" title="Descartar atendimento atual">
             ✕ Cancelar
           </button>
         </div>
@@ -586,9 +586,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261028_13"></script>
-  <script src="zscore.js?v=20261028_13"></script>
-  <script src="db.js?v=20261028_13"></script>
-  <script src="app.js?v=20261028_13"></script>
+  <script src="templates.js?v=20261028_14"></script>
+  <script src="zscore.js?v=20261028_14"></script>
+  <script src="db.js?v=20261028_14"></script>
+  <script src="app.js?v=20261028_14"></script>
 </body>
 </html>

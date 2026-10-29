@@ -96,7 +96,7 @@ Ciente, concordante e sem dúvidas`
 # Vacinas:
 
 SUBJETIVO
-Paciente vem acompanhado da mãe. Familiar relata que paciente está bem. Alimentação/Aleitamento: [descrever se SME, complementado, misto ou fórmula infantil — se fórmula, especificar qual marca/tipo, volume em ml, diluição/medidas e intervalo/frequência]. Em uso corretamente de sulfato ferroso e vitamina AD. Paciente dorme em. Paciente reside com. Nega queda da própria altura. Paciente com exposição à tela de. Paciente frequentando creche. Nega intercorrências ou necessidade de consultas médicas entre as consultas de puericultura. Familiar sem demais queixas
+Paciente vem acompanhado(a) da mãe [inserir grau de parentesco e nome do familiar se falado no áudio, ex.: da mãe Silvia]. Familiar relata que paciente está bem. Alimentação/Aleitamento: [descrever se SME, complementado, misto ou fórmula infantil — se fórmula, especificar qual marca/tipo, volume em ml, diluição/medidas e intervalo/frequência]. Em uso corretamente de sulfato ferroso e vitamina AD. Paciente dorme em. Paciente reside com. Nega queda da própria altura. Paciente com exposição à tela de. Paciente frequentando creche. Nega intercorrências ou necessidade de consultas médicas entre as consultas de puericultura. Familiar sem demais queixas
 
 OBJETIVO
 BEG, MUC, ativo, eupneico em ar ambiente, anictérico e acianótico
@@ -377,10 +377,12 @@ Data de referência de hoje: ${todayStr}.
 
 === REGRAS CRÍTICAS E OBRIGATÓRIAS (SIGA RIGOROSAMENTE) ===
 
-1. RESPEITO ABSOLUTO À MÁSCARA / MODELO DE EVOLUÇÃO SELECIONADO E PROIBIÇÃO DE CONTRADIÇÕES:
+1. RESPEITO ABSOLUTO À MÁSCARA / MODELO DE EVOLUÇÃO SELECIONADO, ACOMPANHANTE E PROIBIÇÃO DE CONTRADIÇÕES:
    - Você DEVE manter a estrutura IDÊNTICA ao "MODELO DE REFERÊNCIA A SER SEGUIDO" abaixo!
    - Mantenha o cabeçalho (#, # MUC:, # Tabagista:, # Alergias: — preenchendo se foi falado ou deixando em branco se não falado).
-   - Mantenha a frase inicial do SUBJETIVO do modelo completando com a história clínica relatada no áudio em linguagem médica semiológica (ex.: "dor de cabeça" -> "cefaleia").
+   - REGISTRO DO FAMILIAR / ACOMPANHANTE E GRAU DE PARENTESCO NO SUBJETIVO:
+     * Na PUERICULTURA: escreva sempre no início do SUBJETIVO o grau de parentesco e o nome do familiar que acompanha a criança conforme falado no áudio ou notas (exemplo: "Paciente vem acompanhado da mãe Silvia." ou "Paciente vem acompanhado do pai João."). Se apenas o parentesco foi citado sem o nome, escreva o parentesco (ex.: "Paciente vem acompanhado da mãe.").
+     * Na CONSULTA GERAL (SOAP) e demais modelos: sempre que o paciente estiver acompanhado por um familiar/acompanhante citado no áudio, inclua o grau de parentesco e o nome logo na abertura do SUBJETIVO (exemplo: "Paciente vem em consulta, acompanhado da mãe Silvia, em decorrência de ..." ou "Paciente vem em consulta, acompanhado da esposa Maria, em decorrência de ..."). Caso esteja desacompanhado, mantenha "Paciente vem em consulta em decorrência de ...".
    - PROIBIDO CONTRADIÇÃO NO PRÉ-NATAL, PUERICULTURA, VISITA DOMICILIAR E DEMAIS MODELOS:
      * Se a gestante (no Pré-Natal), a mãe/criança (na Puericultura) ou o paciente (na Visita Domiciliar / Consulta Geral) relatar QUALQUER queixa, dor, sintoma, intercorrência ou sinal de alarme no áudio, você DEVE REMOVER IMEDIATAMENTE as frases padrão "Paciente refere estar bem, sem queixas", "Familiar relata que paciente está bem", "Nega intercorrências" e "Sem demais queixas"!
      * Se a gestante/paciente referir algum sintoma que está listado como negativa padrão no modelo (ex.: se ela tiver cefaleia, escotomas, disúria, sangramento vaginal, perda de líquido ou febre), APAGUE a frase "Nega [aquele sintoma]" e descreva detalhadamente o sintoma que ela está sentindo! Mantenha como "Nega ..." apenas os sintomas que ela realmente negou ou não apresentou.

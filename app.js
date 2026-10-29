@@ -114,7 +114,7 @@
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v6');
+    const saved = localStorage.getItem('ubs_custom_templates_v7');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -126,7 +126,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v6', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v7', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -739,9 +739,9 @@
 
         const vuFill = document.getElementById('vuMeterFill');
         if (vuFill) {
-          // Linha discreta estática (não dança na tela com a voz para o acompanhante não perceber)
-          vuFill.style.width = state.isPaused ? '0%' : '100%';
-          vuFill.style.backgroundColor = pct > 3 ? '#93c5fd' : '#cbd5e1';
+          // Barrinha de áudio se move em tempo real com a voz para confirmar que está captando o som
+          vuFill.style.width = state.isPaused ? '0%' : `${Math.max(4, pct)}%`;
+          vuFill.style.backgroundColor = pct > 35 ? '#10b981' : '#3b82f6';
         }
 
         const now = Date.now();
@@ -2346,7 +2346,7 @@
     });
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
       if (confirm('Restaurar todos os 7 modelos para o texto original padrão?')) {
-        localStorage.removeItem('ubs_custom_templates_v6');
+        localStorage.removeItem('ubs_custom_templates_v7');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();
         showToast('🔄 Modelos originais restaurados!');
@@ -2425,18 +2425,18 @@
       btnPause.style.display = 'inline-flex';
       btnStop.style.display = 'inline-flex';
       if (btnCancel) btnCancel.style.display = 'inline-flex';
-      btnPause.textContent = state.isPaused ? 'Retomar Folha' : 'Aguardar';
+      btnPause.textContent = state.isPaused ? '▶️ Retomar' : '⏸️ Pausar';
       statusDot.className = state.isPaused ? 'rec-dot paused' : 'rec-dot active';
       statusLabel.textContent = state.isPaused
-        ? 'Folha em espera'
-        : 'Folha de atendimento aberta';
+        ? 'Atendimento pausado'
+        : 'Atendimento em andamento';
     } else {
       btnStart.style.display = 'inline-flex';
       btnPause.style.display = 'none';
       btnStop.style.display = 'none';
       if (btnCancel) btnCancel.style.display = 'none';
       statusDot.className = 'rec-dot';
-      statusLabel.textContent = 'Aguardando abertura de folha';
+      statusLabel.textContent = 'Pronto para iniciar';
     }
   }
 
