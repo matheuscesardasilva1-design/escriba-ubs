@@ -127,6 +127,10 @@
             .replace(/^#\s*(?:Aleitamento\s*\/\s*)?Alimenta[çc][ãa]o:[^\n]*\n/gim, '')
             .replace(/\s*\(Z-Score[^)]*\)/gi, '');
         }
+        if (state.templates.visita_domiciliar && state.templates.visita_domiciliar.templateText) {
+          state.templates.visita_domiciliar.templateText = state.templates.visita_domiciliar.templateText
+            .replace(/Visita domiciliar realizada acompanhada do\(a\) Enfermeiro\(a\) \[nome\][^\n]*/i, 'Visita domiciliar realizada');
+        }
         return;
       } catch (_) {}
     }
@@ -1220,8 +1224,7 @@
     const requestBody = {
       contents: [{ role: 'user', parts }],
       generationConfig: {
-        temperature: 0.15,
-        maxOutputTokens: 8192,
+        temperature: 0.1,
         responseMimeType: 'application/json'
       }
     };
@@ -1238,10 +1241,12 @@
     let finalEvolution = (parsed.evolucao_completa || '').trim();
     const transcriptCandidate = (parsed.transcricao_literal_do_audio || '').trim();
 
-    // AUTOCORREÇÃO AUTOMÁTICA: Se por qualquer motivo a IA devolveu apenas a transcrição bruta sem o modelo SOAP estruturado,
-    // faz uma passagem ultrarrápida de estruturação de texto para que o médico NUNCA veja transcrição bruta no lugar da evolução!
-    const looksLikeStructuredEvolution = /(?:SUBJETIVO|OBJETIVO|AVALIAÇÃO|CONDUTA|IDENTIFICAÇÃO E ORIGEM)/i.test(finalEvolution)
-      && !/^\[(?:MÉDICO|PACIENTE)\]:/i.test(finalEvolution);
+    // AUTOCORREÇÃO AUTOMÁTICA: Se por qualquer motivo a IA devolveu apenas a transcrição bruta sem o modelo SOAP estruturado
+    // (mas sem ser o alerta de áudio sem conteúdo clínico), faz uma passagem rápida de estruturação!
+    const isNonClinicalWarning = /Áudio sem conteúdo de consulta médica/i.test(finalEvolution);
+    const looksLikeStructuredEvolution = isNonClinicalWarning
+      || (/(?:SUBJETIVO|OBJETIVO|AVALIAÇÃO|CONDUTA|IDENTIFICAÇÃO E ORIGEM)/i.test(finalEvolution)
+        && !/^\[(?:MÉDICO|PACIENTE)\]:/i.test(finalEvolution));
 
     if (!looksLikeStructuredEvolution && (transcriptCandidate || finalEvolution || rawText)) {
       const sourceDialogue = transcriptCandidate || finalEvolution || rawText;
@@ -1264,7 +1269,6 @@
         }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 8192,
           responseMimeType: 'application/json'
         }
       };
