@@ -1,35 +1,30 @@
 // ============================================================================
 // CALCULADORA DE Z-SCORE PEDIÁTRICO (PADRÃO OMS / CADERNETA DA CRIANÇA)
-// Cálculo local instantâneo (0 a 60 meses) para Peso/Idade, Estatura/Idade,
-// Perímetro Cefálico/Idade e IMC/Idade (Método LMS / Desvio Padrão OMS)
+// Com suporte a Prematuridade (Idade Corrigida para IG < 37 semanas) e
+// trava de segurança: só calcula quando Idade + Medidas forem informadas!
 // ============================================================================
 
 window.ZScoreCalculator = (function() {
-  // Tabelas de referência simplificadas da OMS (0 a 60 meses) - Mediana (M) e DP (SD)
-  // Valores em meses: [0, 1, 2, 3, 4, 5, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60]
+  // Tabelas de referência da OMS (0 a 60 meses) - Mediana (M) e DP (SD)
   const MONTHS_GRID = [0, 1, 2, 3, 4, 5, 6, 9, 12, 15, 18, 24, 30, 36, 48, 60];
 
   const WHO_DATA = {
     M: {
-      // Peso (kg): [Mediana, DP aproximado]
       weight: [
         [3.35, 0.45], [4.47, 0.55], [5.56, 0.65], [6.37, 0.72], [7.00, 0.78],
         [7.51, 0.82], [7.93, 0.86], [8.90, 0.96], [9.65, 1.05], [10.3, 1.12],
         [10.9, 1.20], [12.2, 1.35], [13.3, 1.50], [14.3, 1.65], [16.3, 1.95], [18.3, 2.30]
       ],
-      // Comprimento/Estatura (cm): [Mediana, DP]
       height: [
         [49.9, 1.89], [54.7, 1.95], [58.4, 2.00], [61.4, 2.05], [63.9, 2.10],
         [65.9, 2.15], [67.6, 2.20], [72.0, 2.30], [75.7, 2.42], [79.1, 2.55],
         [82.3, 2.68], [87.8, 2.95], [92.4, 3.20], [96.1, 3.45], [103.3, 3.90], [110.0, 4.35]
       ],
-      // Perímetro Cefálico (cm): [Mediana, DP]
       hc: [
         [34.5, 1.26], [37.3, 1.22], [39.1, 1.22], [40.5, 1.23], [41.6, 1.24],
         [42.6, 1.25], [43.3, 1.26], [45.0, 1.28], [46.1, 1.29], [47.0, 1.31],
         [47.7, 1.32], [48.7, 1.35], [49.4, 1.37], [49.9, 1.39], [50.7, 1.42], [51.3, 1.44]
       ],
-      // IMC (kg/m²): [Mediana, DP]
       bmi: [
         [13.4, 1.25], [14.9, 1.35], [16.3, 1.40], [16.9, 1.42], [17.2, 1.42],
         [17.3, 1.40], [17.3, 1.38], [17.2, 1.35], [16.8, 1.32], [16.4, 1.30],
@@ -95,9 +90,9 @@ window.ZScoreCalculator = (function() {
   }
 
   function classifyHCForAge(z) {
-    if (z < -2) return 'Acima do risco p/ Microcefalia (Z < -2)';
+    if (z < -2) return 'Abaixo do esperado / Risco p/ Microcefalia (Z < -2)';
     if (z <= 2) return 'Perímetro cefálico adequado (-2 ≤ Z ≤ +2)';
-    return 'Risco p/ Macrocefalia (Z > +2)';
+    return 'Acima do esperado / Risco p/ Macrocefalia (Z > +2)';
   }
 
   function classifyBMIForAge(z, months) {
@@ -114,12 +109,39 @@ window.ZScoreCalculator = (function() {
     }
   }
 
-  function calculate({ sex = 'M', months = 6, weightKg = null, heightCm = null, hcCm = null }) {
-    const ref = WHO_DATA[sex === 'F' ? 'F' : 'M'];
-    const m = parseFloat(months);
-    if (isNaN(m) || m < 0) return null;
+  function calculate({ sex = 'M', months = null, birthGAWeeks = null, weightKg = null, heightCm = null, hcCm = null }) {
+    // TRAVA DE SEGURANÇA: Se a idade em meses NÃO foi preenchida explicitamente na calculadora, NUNCA calcula Z-Score!
+    if (months === null || months === undefined || String(months).trim() === '') {
+      return null;
+    }
 
-    // Se o médico digitou o peso em gramas (ex: 7500), converte automaticamente para kg (7.5)
+    const mChronological = parseFloat(months);
+    if (isNaN(mChronological) || mChronological < 0) return null;
+
+    const ga = parseFloat(birthGAWeeks);
+    let mEffective = mChronological;
+    let prematurityNote = '';
+
+    // Se nasceu prematuro (IG < 37 semanas) e tem até 24 meses, corrige a idade para 40 semanas!
+    if (!isNaN(ga) && ga > 20 && ga < 37 && mChronological <= 24) {
+      const weeksPremature = 40 - ga;
+      const monthsDiscount = (weeksPremature * 7) / 30.4375;
+      mEffective = mChronological - monthsDiscount;
+
+      if (mEffective < 0) {
+        // Ainda não atingiu 40 semanas de Idade Pós-Menstrual -> Curva Intergrowth-21st (não aplicar OMS 0-5 anos!)
+        return {
+          months: mChronological,
+          correctedMonths: mEffective,
+          isPretermIntergrowth: true,
+          summaryText: `Prematuro (IG ao nascer: ${ga} sem | Idade cronológica: ${mChronological} meses) — Ainda abaixo de 40 semanas de Idade Pós-Menstrual (avaliar pela curva Intergrowth-21st; não aplicar Z-Score OMS de termo).`
+        };
+      }
+      prematurityNote = ` [ Calculado pela Idade Corrigida de ${mEffective.toFixed(1)} meses (Prematuro de ${ga} sem) ]`;
+    }
+
+    const ref = WHO_DATA[sex === 'F' ? 'F' : 'M'];
+
     let w = parseFloat(weightKg);
     if (!isNaN(w) && w > 80) {
       w = w / 1000;
@@ -128,7 +150,8 @@ window.ZScoreCalculator = (function() {
     const hc = parseFloat(hcCm);
 
     const result = {
-      months: m,
+      months: mChronological,
+      correctedMonths: mEffective,
       sex: sex === 'F' ? 'Feminino' : 'Masculino',
       weight: null,
       height: null,
@@ -138,9 +161,12 @@ window.ZScoreCalculator = (function() {
     };
 
     const lines = [];
+    if (prematurityNote) {
+      lines.push(`Idade Cronológica: ${mChronological} meses | Idade Corrigida p/ Prematuridade (${ga} sem): ${mEffective.toFixed(1)} meses`);
+    }
 
     if (!isNaN(w) && w > 0) {
-      const { med, sd } = interpolate(m, ref.weight);
+      const { med, sd } = interpolate(mEffective, ref.weight);
       const z = (w - med) / sd;
       result.weight = {
         valueKg: w,
@@ -149,11 +175,11 @@ window.ZScoreCalculator = (function() {
         zFormatted: formatZ(z),
         classification: classifyWeightForAge(z)
       };
-      lines.push(`Peso: ${w.toFixed(3).replace(/\.?0+$/, '')} kg (${Math.round(w * 1000)} g) | Z-Score Peso/Idade: ${formatZ(z)} (${result.weight.classification})`);
+      lines.push(`Peso: ${w.toFixed(3).replace(/\.?0+$/, '')} kg (${Math.round(w * 1000)} g) — Z-Score Peso/Idade: ${formatZ(z)} (${result.weight.classification})${prematurityNote}`);
     }
 
     if (!isNaN(h) && h > 0) {
-      const { med, sd } = interpolate(m, ref.height);
+      const { med, sd } = interpolate(mEffective, ref.height);
       const z = (h - med) / sd;
       result.height = {
         valueCm: h,
@@ -161,11 +187,11 @@ window.ZScoreCalculator = (function() {
         zFormatted: formatZ(z),
         classification: classifyHeightForAge(z)
       };
-      lines.push(`Altura/Comprimento: ${h} cm | Z-Score Estatura/Idade: ${formatZ(z)} (${result.height.classification})`);
+      lines.push(`Altura/Comprimento: ${h} cm — Z-Score Estatura/Idade: ${formatZ(z)} (${result.height.classification})${prematurityNote}`);
     }
 
     if (!isNaN(hc) && hc > 0) {
-      const { med, sd } = interpolate(m, ref.hc);
+      const { med, sd } = interpolate(mEffective, ref.hc);
       const z = (hc - med) / sd;
       result.hc = {
         valueCm: hc,
@@ -173,21 +199,21 @@ window.ZScoreCalculator = (function() {
         zFormatted: formatZ(z),
         classification: classifyHCForAge(z)
       };
-      lines.push(`PC: ${hc} cm | Z-Score PC/Idade: ${formatZ(z)} (${result.hc.classification})`);
+      lines.push(`PC: ${hc} cm — Z-Score PC/Idade: ${formatZ(z)} (${result.hc.classification})${prematurityNote}`);
     }
 
     if (!isNaN(w) && w > 0 && !isNaN(h) && h > 0) {
       const hMeters = h / 100;
       const bmiVal = w / (hMeters * hMeters);
-      const { med, sd } = interpolate(m, ref.bmi);
+      const { med, sd } = interpolate(mEffective, ref.bmi);
       const z = (bmiVal - med) / sd;
       result.bmi = {
         value: bmiVal.toFixed(1),
         z,
         zFormatted: formatZ(z),
-        classification: classifyBMIForAge(z, m)
+        classification: classifyBMIForAge(z, mEffective)
       };
-      lines.push(`IMC: ${bmiVal.toFixed(1)} kg/m² | Z-Score IMC/Idade: ${formatZ(z)} (${result.bmi.classification})`);
+      lines.push(`IMC: ${bmiVal.toFixed(1)} kg/m² — Z-Score IMC/Idade: ${formatZ(z)} (${result.bmi.classification})${prematurityNote}`);
     }
 
     result.summaryText = lines.join('\n');

@@ -17,6 +17,8 @@
     silenceSeconds: 0,
     chunkIndex: 0,
     pendingExamFiles: [], // PDFs/Imagens de exames anexados para a consulta atual
+    preTranscribedExamsText: '', // Resultado dos exames transcritos na hora durante a gravação
+    autoCloudSync: localStorage.getItem('ubs_auto_cloud_sync') !== 'false',
     mediaRecorder: null,
     mediaStream: null,
     audioContext: null,
@@ -92,6 +94,7 @@
     loadDailyTokenStats();
     renderTemplateSelector();
     initTimerWorker();
+    await tryRestoreApiKeyFromChromeCredentialManager();
     await populateMicrophones();
     await checkCrashRecoveryAndLoadHistory();
     bindUIEvents();
@@ -114,11 +117,16 @@
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v7');
+    const saved = localStorage.getItem('ubs_custom_templates_v8');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         state.templates = { ...window.DEFAULT_TEMPLATES, ...parsed };
+        if (state.templates.puericultura && state.templates.puericultura.templateText) {
+          state.templates.puericultura.templateText = state.templates.puericultura.templateText
+            .replace(/^#\s*(?:Aleitamento\s*\/\s*)?Alimenta[çc][ãa]o:[^\n]*\n/gim, '')
+            .replace(/\s*\(Z-Score[^)]*\)/gi, '');
+        }
         return;
       } catch (_) {}
     }
@@ -126,7 +134,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v7', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v8', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -350,10 +358,14 @@
   function renderPendingExamFilesUI() {
     const listEl = document.getElementById('pendingExamFilesList');
     const countEl = document.getElementById('examCountBadge');
+    const btnNow = document.getElementById('btnTranscribeExamsNow');
     if (countEl) {
       countEl.textContent = state.pendingExamFiles.length > 0
         ? `${state.pendingExamFiles.length} anexo(s)`
-        : 'Nenhum anexo';
+        : '0';
+    }
+    if (btnNow) {
+      btnNow.style.display = state.pendingExamFiles.length > 0 ? 'inline-flex' : 'none';
     }
     if (!listEl) return;
     if (state.pendingExamFiles.length === 0) {
@@ -378,6 +390,78 @@
       });
       listEl.appendChild(chip);
     });
+  }
+
+  // Transcreve os PDFs/imagens anexados IMEDIATAMENTE durante a consulta (sem precisar finalizar a gravação!)
+  async function transcribePendingExamsNow() {
+    if (!state.pendingExamFiles || state.pendingExamFiles.length === 0) {
+      showToast('📎 Anexe um PDF ou imagem de exame primeiro.');
+      return;
+    }
+    const apiKey = getSavedApiKey();
+    if (!apiKey) {
+      openApiKeyModal();
+      return;
+    }
+
+    const btnNow = document.getElementById('btnTranscribeExamsNow');
+    const liveBox = document.getElementById('liveExamTranscriptionBox');
+    const liveEditor = document.getElementById('liveExamTranscriptionEditor');
+
+    if (liveBox) liveBox.style.display = 'block';
+    if (liveEditor) liveEditor.value = '⏳ Lendo e transcrevendo os exames anexados (a gravação da consulta continua normalmente)...';
+    if (btnNow) {
+      btnNow.disabled = true;
+      btnNow.textContent = '⏳ Transcrevendo...';
+    }
+
+    try {
+      const parts = [];
+      for (const exam of state.pendingExamFiles) {
+        if (exam.blob && exam.blob.size > 0) {
+          const mime = exam.mimeType || 'application/pdf';
+          if (exam.blob.size > 15 * 1024 * 1024) {
+            const fileUri = await uploadLargeFileToGeminiFileAPI(exam.blob, mime, apiKey);
+            parts.push({ fileData: { mimeType: mime, fileUri } });
+          } else {
+            const base64Doc = await blobToBase64(exam.blob);
+            parts.push({ inlineData: { mimeType: mime, data: base64Doc } });
+          }
+        }
+      }
+      parts.push({ text: window.buildInstantExamTranscriptionPrompt() });
+
+      const requestBody = {
+        contents: [{ role: 'user', parts }],
+        generationConfig: { temperature: 0.1 }
+      };
+
+      const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
+      let examText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+      examText = fixBrazilianMedicationSpelling(examText);
+
+      state.preTranscribedExamsText = examText;
+      if (liveEditor) liveEditor.value = examText;
+
+      // Se já houver uma consulta sendo gravada, salva os exames pré-transcritos nela imediatamente
+      if (state.recordingConsultationId) {
+        const existing = await window.ScribeDB.getConsultation(state.recordingConsultationId);
+        if (existing) {
+          existing.preTranscribedExamsText = examText;
+          await window.ScribeDB.saveConsultation(existing);
+        }
+      }
+
+      addDailyTokenUsage(responseJson?.usageMetadata?.totalTokenCount || 800);
+      showToast('🧪 Exames transcritos na hora! Você já pode ler/copiar sem parar a gravação.');
+    } catch (err) {
+      if (liveEditor) liveEditor.value = `⚠️ Erro ao transcrever anexo: ${err.message}`;
+    } finally {
+      if (btnNow) {
+        btnNow.disabled = false;
+        btnNow.textContent = '⚡ Transcrever Anexo na Hora';
+      }
+    }
   }
 
   // --- Gravação Anti-Crash (Streaming de Chunks de 3s direto pro HD/IndexedDB) ---
@@ -417,8 +501,8 @@
 
       const mimeType = getSupportedAudioMimeType();
       const recorderOptions = mimeType
-        ? { mimeType, audioBitsPerSecond: 24000 }
-        : { audioBitsPerSecond: 24000 };
+        ? { mimeType, audioBitsPerSecond: 16000 }
+        : { audioBitsPerSecond: 16000 };
 
       const recorder = new MediaRecorder(stream, recorderOptions);
       state.mediaRecorder = recorder;
@@ -466,6 +550,7 @@
           mimeType: recorder.mimeType || mimeType || 'audio/webm',
           quickNotes: (quickNotesInput && quickNotesInput.value) || '',
           previousConsultationText: (prevConsultInput && prevConsultInput.value.trim()) || '',
+          preTranscribedExamsText: state.preTranscribedExamsText || '',
           zScoreSummary: getCalculatedZScoreText(),
           evolutionText: '',
           soapParts: null,
@@ -634,6 +719,10 @@
     const currentLabel = patientInput ? patientInput.value.trim() : '';
     const currentNotes = quickNotesInput ? quickNotesInput.value : '';
     const currentPrevConsult = prevConsultInput ? prevConsultInput.value.trim() : '';
+    const liveExamEditor = document.getElementById('liveExamTranscriptionEditor');
+    const currentPreTranscribedExams = (liveExamEditor && liveExamEditor.value && !liveExamEditor.value.startsWith('⏳') && !liveExamEditor.value.startsWith('⚠️'))
+      ? liveExamEditor.value.trim()
+      : (state.preTranscribedExamsText || '');
     const currentZScore = getCalculatedZScoreText();
     const currentTpl = state.templates[state.selectedTemplateId];
     const attachedExams = [...state.pendingExamFiles];
@@ -661,6 +750,10 @@
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
     state.pendingExamFiles = [];
+    state.preTranscribedExamsText = '';
+    const liveBox = document.getElementById('liveExamTranscriptionBox');
+    if (liveBox) liveBox.style.display = 'none';
+    if (liveExamEditor) liveExamEditor.value = '';
     renderPendingExamFilesUI();
     renderTemplateSelector();
     updateRecordingControlsUI();
@@ -682,6 +775,7 @@
       consult.examFileCount = attachedExams.length;
       consult.quickNotes = currentNotes;
       if (currentPrevConsult) consult.previousConsultationText = currentPrevConsult;
+      if (currentPreTranscribedExams) consult.preTranscribedExamsText = currentPreTranscribedExams;
       consult.zScoreSummary = currentZScore;
       consult.status = 'queued';
       consult.updatedAt = Date.now();
@@ -1015,6 +1109,10 @@
           addDailyTokenUsage(result.tokensUsed || 0);
           showToast(`✅ Evolução pronta: ${nextItem.patientLabel}`);
 
+          if (state.autoCloudSync) {
+            pushConsultationsToGeminiCloud(true).catch(() => {});
+          }
+
           if (banner && bannerText) {
             banner.style.background = '#dcfce7';
             banner.style.color = '#166534';
@@ -1057,26 +1155,28 @@
   async function processSingleConsultationWithGemini(consultation, apiKey) {
     const tpl = state.templates[consultation.templateId] || window.DEFAULT_TEMPLATES.geral;
     const examFiles = await window.ScribeDB.getExamFilesForConsultation(consultation.id);
+    const preExams = consultation.preTranscribedExamsText || '';
 
     const promptText = window.buildMedicalEvolutionPrompt(
       tpl,
       consultation.quickNotes,
       consultation.zScoreSummary,
-      examFiles.length > 0,
+      examFiles.length > 0 || Boolean(preExams),
       consultation.previousEvolutionText || '',
-      consultation.previousConsultationText || ''
+      consultation.previousConsultationText || '',
+      preExams
     );
 
     const parts = [];
 
-    // 1. Inclui o Áudio da consulta (se houver no disco) ou usa a transcrição literal já salva (caso reprocessado dias depois)
+    // 1. Inclui o Áudio da consulta (local, na nuvem via remoteFileUri, ou transcrição literal salva)
     let hasAudioAttached = false;
     if (consultation.chunkCount > 0 && !consultation.audioDeleted) {
       const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
       if (audioBlob && audioBlob.size > 0) {
         hasAudioAttached = true;
         const cleanMime = normalizeAudioMimeType(audioBlob, consultation.fileName || '');
-        if (audioBlob.size > 15 * 1024 * 1024) {
+        if (audioBlob.size > 12 * 1024 * 1024) {
           const fileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
           parts.push({ fileData: { mimeType: cleanMime, fileUri } });
         } else {
@@ -1085,20 +1185,31 @@
         }
       }
     }
+    if (!hasAudioAttached && consultation.remoteFileUri) {
+      hasAudioAttached = true;
+      parts.push({
+        fileData: {
+          mimeType: consultation.mimeType || 'audio/webm',
+          fileUri: consultation.remoteFileUri
+        }
+      });
+    }
     if (!hasAudioAttached && consultation.rawTranscript) {
       parts.push({ text: `=== TRANSCRIÇÃO LITERAL DO ÁUDIO SALVA ANTERIORMENTE ===\n${consultation.rawTranscript}` });
     }
 
-    // 2. Inclui todos os PDFs / Imagens de Exames Complementares anexados
-    for (const exam of examFiles) {
-      if (exam.blob && exam.blob.size > 0) {
-        const mime = exam.mimeType || 'application/pdf';
-        if (exam.blob.size > 15 * 1024 * 1024) {
-          const fileUri = await uploadLargeFileToGeminiFileAPI(exam.blob, mime, apiKey);
-          parts.push({ fileData: { mimeType: mime, fileUri } });
-        } else {
-          const base64Doc = await blobToBase64(exam.blob);
-          parts.push({ inlineData: { mimeType: mime, data: base64Doc } });
+    // 2. Inclui PDFs / Imagens de Exames (se já não tiverem sido transcritos na hora durante a consulta)
+    if (!preExams) {
+      for (const exam of examFiles) {
+        if (exam.blob && exam.blob.size > 0) {
+          const mime = exam.mimeType || 'application/pdf';
+          if (exam.blob.size > 15 * 1024 * 1024) {
+            const fileUri = await uploadLargeFileToGeminiFileAPI(exam.blob, mime, apiKey);
+            parts.push({ fileData: { mimeType: mime, fileUri } });
+          } else {
+            const base64Doc = await blobToBase64(exam.blob);
+            parts.push({ inlineData: { mimeType: mime, data: base64Doc } });
+          }
         }
       }
     }
@@ -1110,6 +1221,7 @@
       contents: [{ role: 'user', parts }],
       generationConfig: {
         temperature: 0.15,
+        maxOutputTokens: 8192,
         responseMimeType: 'application/json'
       }
     };
@@ -1120,37 +1232,115 @@
     });
 
     const rawText = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const tokensUsed = responseJson?.usageMetadata?.totalTokenCount || Math.round((consultation.durationSeconds || 60) * 32 + 1200);
+    let tokensUsed = responseJson?.usageMetadata?.totalTokenCount || Math.round((consultation.durationSeconds || 60) * 32 + 1200);
 
-    const parsed = parseGeminiEvolutionResponse(rawText);
+    let parsed = parseGeminiEvolutionResponse(rawText);
+    let finalEvolution = (parsed.evolucao_completa || '').trim();
+    const transcriptCandidate = (parsed.transcricao_literal_do_audio || '').trim();
 
-    let finalEvolution = parsed.evolucao_completa || rawText;
+    // AUTOCORREÇÃO AUTOMÁTICA: Se por qualquer motivo a IA devolveu apenas a transcrição bruta sem o modelo SOAP estruturado,
+    // faz uma passagem ultrarrápida de estruturação de texto para que o médico NUNCA veja transcrição bruta no lugar da evolução!
+    const looksLikeStructuredEvolution = /(?:SUBJETIVO|OBJETIVO|AVALIAÇÃO|CONDUTA|IDENTIFICAÇÃO E ORIGEM)/i.test(finalEvolution)
+      && !/^\[(?:MÉDICO|PACIENTE)\]:/i.test(finalEvolution);
+
+    if (!looksLikeStructuredEvolution && (transcriptCandidate || finalEvolution || rawText)) {
+      const sourceDialogue = transcriptCandidate || finalEvolution || rawText;
+      const rescuePrompt = window.buildMedicalEvolutionPrompt(
+        tpl,
+        consultation.quickNotes,
+        consultation.zScoreSummary,
+        Boolean(preExams),
+        consultation.previousEvolutionText || '',
+        consultation.previousConsultationText || '',
+        preExams
+      );
+      const rescueBody = {
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: `=== TRANSCRIÇÃO DO ATENDIMENTO PARA ESTRUTURAR NO MODELO ===\n${sourceDialogue}` },
+            { text: rescuePrompt }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json'
+        }
+      };
+      try {
+        const rescueRes = await callGeminiWithFallbackAndRetry(rescueBody, apiKey);
+        const rescueRaw = rescueRes.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const rescueParsed = parseGeminiEvolutionResponse(rescueRaw);
+        if (rescueParsed.evolucao_completa) {
+          finalEvolution = rescueParsed.evolucao_completa;
+          if (!parsed.codigos_cid_ciap && rescueParsed.codigos_cid_ciap) {
+            parsed.codigos_cid_ciap = rescueParsed.codigos_cid_ciap;
+          }
+          if (!parsed.transcricao_literal_do_audio) {
+            parsed.transcricao_literal_do_audio = sourceDialogue;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!finalEvolution) {
+      finalEvolution = rawText;
+    }
+
     // Se não houve exames complementares anexados nem citados, garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
-    if (examFiles.length === 0 && (!parsed.resumo_exames || parsed.resumo_exames.trim() === '' || parsed.resumo_exames.trim() === '-')) {
+    if (examFiles.length === 0 && !preExams) {
       finalEvolution = finalEvolution.replace(/\n*EXAMES COMPLEMENTARES\s*\n\s*-\s*(?:Sem novos exames[^\n]*)?\n*/gi, '\n\n');
     }
 
     const { cleanText, codes } = cleanAndExtractCidFromEvolution(
       finalEvolution,
-      Array.isArray(parsed.codigos_cid_ciap) ? parsed.codigos_cid_ciap : []
+      Array.isArray(parsed.codigos_cid_ciap) ? parsed.codigos_cid_ciap : [],
+      consultation.templateId
     );
 
     return {
       evolutionText: cleanText,
       cidCiapCodes: codes,
-      rawTranscript: parsed.transcricao_literal_do_audio || '',
+      rawTranscript: fixBrazilianMedicationSpelling(parsed.transcricao_literal_do_audio || ''),
       soapParts: {
-        subjetivo: parsed.resumo_subjetivo || '',
-        objetivo: parsed.resumo_objetivo || '',
-        exames: parsed.resumo_exames || '',
-        avaliacao: parsed.resumo_avaliacao || '',
-        conduta: parsed.resumo_conduta || ''
+        subjetivo: extractSectionFromText(cleanText, 'subjetivo'),
+        objetivo: extractSectionFromText(cleanText, 'objetivo'),
+        exames: extractSectionFromText(cleanText, 'exames'),
+        avaliacao: extractSectionFromText(cleanText, 'avaliacao'),
+        conduta: extractSectionFromText(cleanText, 'conduta')
       },
       auditAlerts: Array.isArray(parsed.alertas_auditoria) ? parsed.alertas_auditoria : [],
       suggestedSpecialty: parsed.especialidade_sugerida_encaminhamento || '',
       tokensUsed,
       modelUsed
     };
+  }
+
+  // Corretor determinístico de ortografia farmacológica oficial do Brasil (DCB / ANVISA / RENAME)
+  function fixBrazilianMedicationSpelling(text) {
+    if (!text || typeof text !== 'string') return '';
+    return text
+      .replace(/\bSimvastatina\b/g, 'Sinvastatina')
+      .replace(/\bsimvastatina\b/g, 'sinvastatina')
+      .replace(/\bSIMVASTATINA\b/g, 'SINVASTATINA')
+      .replace(/\bAmlodipin([oa])\b/g, 'Anlodipin$1')
+      .replace(/\bamlodipin([oa])\b/g, 'anlodipin$1')
+      .replace(/\bAMLODIPIN([OA])\b/g, 'ANLODIPIN$1')
+      .replace(/\bHydroclorotiazida\b/g, 'Hidroclorotiazida')
+      .replace(/\bhydroclorotiazida\b/g, 'hidroclorotiazida')
+      .replace(/\bLevothyroxin([ae])\b/g, 'Levotiroxina')
+      .replace(/\blevothyroxin([ae])\b/g, 'levotiroxina')
+      .replace(/\bAmoxycilin([ae])\b/g, 'Amoxicilina')
+      .replace(/\bamoxycilin([ae])\b/g, 'amoxicilina')
+      .replace(/\bAzithromicin([ae])\b/g, 'Azitromicina')
+      .replace(/\bazithromicin([ae])\b/g, 'azitromicina')
+      .replace(/\bOmeprasol\b/g, 'Omeprazol')
+      .replace(/\bomeprasol\b/g, 'omeprazol')
+      .replace(/\bPantoprasol\b/g, 'Pantoprazol')
+      .replace(/\bpantoprasol\b/g, 'pantoprazol')
+      .replace(/\bLozartana\b/g, 'Losartana')
+      .replace(/\blozartana\b/g, 'losartana');
   }
 
   // Extrator à prova de falhas: NUNCA permite que código JSON bruto ({ "transcricao_literal_do_audio": ... }) apareça na caixa de evolução!
@@ -1173,28 +1363,32 @@
       return Array.isArray(obj2) ? (obj2[0] || {}) : obj2;
     } catch (_) {}
 
-    // 3. Extração direta campo a campo via Regex (caso haja aspas ou quebras de linha não escapadas no JSON)
+    // 3. Extração direta campo a campo via Regex (mesmo se o JSON tiver sido truncado no final!)
     const extractField = (key) => {
       const re = new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 's');
       const m = cleaned.match(re);
-      if (!m) return '';
-      try {
-        return JSON.parse(`"${m[1]}"`);
-      } catch (__) {
-        return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      if (m) {
+        try {
+          return JSON.parse(`"${m[1]}"`);
+        } catch (__) {
+          return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        }
       }
+      // Fallback caso o campo tenha sido truncado antes da aspa final
+      const reTrunc = new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)`, 's');
+      const mTrunc = cleaned.match(reTrunc);
+      if (mTrunc && mTrunc[1]) {
+        return mTrunc[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+      }
+      return '';
     };
 
     const evo = extractField('evolucao_completa');
-    if (evo) {
+    const trans = extractField('transcricao_literal_do_audio');
+    if (evo || trans) {
       return {
-        transcricao_literal_do_audio: extractField('transcricao_literal_do_audio'),
+        transcricao_literal_do_audio: trans,
         evolucao_completa: evo,
-        resumo_subjetivo: extractField('resumo_subjetivo'),
-        resumo_objetivo: extractField('resumo_objetivo'),
-        resumo_exames: extractField('resumo_exames'),
-        resumo_avaliacao: extractField('resumo_avaliacao'),
-        resumo_conduta: extractField('resumo_conduta'),
         especialidade_sugerida_encaminhamento: extractField('especialidade_sugerida_encaminhamento')
       };
     }
@@ -1202,9 +1396,14 @@
     return { evolucao_completa: cleaned };
   }
 
-  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes) {
-    let text = evolutionText || '';
+  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId) {
+    let text = fixBrazilianMedicationSpelling(evolutionText || '');
     const extractedCodes = Array.isArray(existingCodes) ? [...existingCodes] : [];
+
+    // Na Puericultura, garante que nunca apareça "# Alimentação:" ou "# Aleitamento:" no cabeçalho "#" inicial
+    if (templateId === 'puericultura' || /CONSULTA DE PUERICULTURA/i.test(text)) {
+      text = text.replace(/^#\s*(?:Aleitamento\s*\/\s*)?Alimenta[çc][ãa]o:[^\n]*\n?/gim, '');
+    }
 
     // Captura qualquer "(CID-10: ... / CIAP-2: ...)" que esteja na Avaliação para colocar fora da evolução
     const lines = text.split('\n');
@@ -1957,28 +2156,35 @@
     }
   }
 
-  function getCalculatedZScoreText() {
+  function getCalculatedZScoreText(forcePreview = false) {
     if (state.selectedTemplateId === 'puericultura') {
       const sex = document.getElementById('zSex')?.value || 'M';
       const months = document.getElementById('zMonths')?.value;
+      const birthGA = document.getElementById('zBirthGA')?.value;
       const weight = document.getElementById('zWeight')?.value;
       const height = document.getElementById('zHeight')?.value;
       const hc = document.getElementById('zHC')?.value;
+      const includeZ = document.getElementById('chkIncludeZScoreInEvolution')?.checked;
       const feedingType = document.getElementById('pueriFeedingType')?.value || '';
       const formulaDetails = document.getElementById('pueriFormulaDetails')?.value.trim() || '';
 
       const lines = [];
-      if (months) {
-        lines.push(`Idade da criança: ${months} meses`);
+      if (months !== undefined && months !== null && String(months).trim() !== '') {
+        lines.push(`Idade da criança: ${months} meses${birthGA ? ` (IG ao nascer: ${birthGA} semanas)` : ''}`);
       }
       if (feedingType || formulaDetails) {
-        lines.push(`Aleitamento / Alimentação Infantil: ${feedingType}${formulaDetails ? ' — Detalhes (fórmula/volume/frequência): ' + formulaDetails : ''}`);
+        lines.push(`Alimentação Infantil (incluir apenas no SUBJETIVO): ${feedingType}${formulaDetails ? ' — Detalhes (fórmula/volume/frequência): ' + formulaDetails : ''}`);
       }
 
-      if (months || weight || height || hc) {
+      const hasAnyMeasure = Boolean(weight || height || hc);
+      const hasMonths = months !== undefined && months !== null && String(months).trim() !== '';
+
+      // Se o médico marcou "Incluir Z-Score desta calculadora no Objetivo" (ou no preview visual) E informou a idade + medidas:
+      if (hasMonths && hasAnyMeasure && (includeZ || forcePreview)) {
         const calc = window.ZScoreCalculator.calculate({
           sex,
-          months: months || 0,
+          months,
+          birthGAWeeks: birthGA,
           weightKg: weight,
           heightCm: height,
           hcCm: hc
@@ -1986,6 +2192,11 @@
         if (calc && calc.summaryText) {
           lines.push(calc.summaryText);
         }
+      } else if (hasAnyMeasure) {
+        // Caso não queira Z-Score automático, envia apenas as medidas brutas sem Z-Score!
+        if (weight) lines.push(`Peso informado: ${weight}`);
+        if (height) lines.push(`Altura/Comprimento informado: ${height} cm`);
+        if (hc) lines.push(`PC informado: ${hc} cm`);
       }
       return lines.join('\n');
     }
@@ -2017,20 +2228,308 @@
   function updateZScoreLivePreview() {
     const preview = document.getElementById('zScorePreviewResult');
     if (!preview) return;
-    const text = getCalculatedZScoreText();
-    preview.textContent = text || 'Preencha idade (meses), medidas e aleitamento acima para incluir automaticamente na evolução.';
+    const includeZ = document.getElementById('chkIncludeZScoreInEvolution')?.checked;
+    const text = getCalculatedZScoreText(true);
+    if (!text) {
+      preview.textContent = 'Preencha idade (meses), IG do parto (se prematuro) e medidas caso queira calcular o Z-Score.';
+      return;
+    }
+    preview.textContent = includeZ
+      ? `✅ Z-Score ATIVO p/ Objetivo:\n${text}`
+      : `ℹ️ Prévia (marque a caixa "Incluir Z-Score desta calculadora no Objetivo" acima se quiser inserir o Z-Score na evolução):\n${text}`;
   }
 
   function clearZScoreInputs() {
-    ['zMonths', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails', 'pnIG', 'pnPA', 'pnWeight', 'pnAU', 'pnBCF'].forEach(id => {
+    ['zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails', 'pnIG', 'pnPA', 'pnWeight', 'pnAU', 'pnBCF'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    const chkZ = document.getElementById('chkIncludeZScoreInEvolution');
+    if (chkZ) chkZ.checked = false;
     updateZScoreLivePreview();
   }
 
   function getSavedApiKey() {
     return localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '';
+  }
+
+  // Integração oficial com o Gerenciador de Senhas do Google Chrome (Credential Management API)
+  async function tryRestoreApiKeyFromChromeCredentialManager() {
+    if (getSavedApiKey()) return;
+    try {
+      if (navigator.credentials && navigator.credentials.get && window.PasswordCredential) {
+        const cred = await navigator.credentials.get({ password: true, mediation: 'optional' });
+        if (cred && cred.password && cred.password.startsWith('AIza')) {
+          localStorage.setItem('ubs_gemini_api_key', cred.password);
+          updateApiKeyStatusBadge();
+          showToast('🔑 Chave Gemini recuperada automaticamente do Gerenciador de Senhas do Chrome!');
+        }
+      }
+    } catch (_) {}
+  }
+
+  // ============================================================================
+  // SINCRONIZAÇÃO ENTRE COMPUTADORES (EVOLUIR DE CASA PELA CHAVE GEMINI OU ARQUIVO)
+  // ============================================================================
+  async function pushConsultationsToGeminiCloud(silent = false) {
+    const apiKey = getSavedApiKey();
+    const statusEl = document.getElementById('cloudSyncStatusText');
+    if (!apiKey) {
+      if (!silent) openApiKeyModal();
+      return;
+    }
+
+    if (!silent && statusEl) {
+      statusEl.textContent = '☁️ Sincronizando plantão na nuvem da sua Chave Gemini...';
+    }
+
+    try {
+      const all = await window.ScribeDB.getAllConsultations();
+      // Sincroniza os últimos 40 atendimentos (dos últimos 7 dias)
+      const recent = all.slice(0, 40);
+      const syncItems = [];
+
+      for (const c of recent) {
+        // Se houver áudio ainda pendente de transcrição e ainda não tiver sido enviado à nuvem, sobe o áudio para a File API da chave!
+        if (c.status !== 'done' && c.chunkCount > 0 && !c.audioDeleted && !c.remoteFileUri) {
+          try {
+            const audioBlob = await window.ScribeDB.assembleAudioBlob(c.id, c.mimeType);
+            if (audioBlob && audioBlob.size > 0) {
+              const cleanMime = normalizeAudioMimeType(audioBlob, c.fileName || '');
+              c.remoteFileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
+              await window.ScribeDB.saveConsultation(c);
+            }
+          } catch (_) {}
+        }
+
+        syncItems.push({
+          id: c.id,
+          patientLabel: c.patientLabel,
+          templateId: c.templateId,
+          templateName: c.templateName,
+          templateIcon: c.templateIcon,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+          status: c.status === 'uploading' ? 'queued' : c.status,
+          durationSeconds: c.durationSeconds,
+          mimeType: c.mimeType,
+          quickNotes: c.quickNotes || '',
+          previousConsultationText: c.previousConsultationText || '',
+          preTranscribedExamsText: c.preTranscribedExamsText || '',
+          zScoreSummary: c.zScoreSummary || '',
+          evolutionText: c.evolutionText || '',
+          cidCiapCodes: c.cidCiapCodes || [],
+          rawTranscript: c.rawTranscript || '',
+          savedReferrals: c.savedReferrals || [],
+          evolvedInPEC: Boolean(c.evolvedInPEC),
+          evolvedAt: c.evolvedAt || null,
+          remoteFileUri: c.remoteFileUri || ''
+        });
+      }
+
+      const payload = JSON.stringify({
+        syncVersion: 1,
+        syncedAt: Date.now(),
+        consultations: syncItems
+      });
+
+      // Remove snapshots antigos "UBS_PLANTAO_SYNC_V1" na conta para manter limpo
+      try {
+        const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/files?pageSize=30&key=${encodeURIComponent(apiKey)}`);
+        if (listRes.ok) {
+          const listData = await listRes.json();
+          const oldFiles = (listData.files || []).filter(f => f.displayName === 'UBS_PLANTAO_SYNC_V1');
+          for (const oldF of oldFiles) {
+            await fetch(`https://generativelanguage.googleapis.com/v1beta/${oldF.name}?key=${encodeURIComponent(apiKey)}`, { method: 'DELETE' }).catch(() => {});
+          }
+        }
+      } catch (_) {}
+
+      const blob = new Blob([payload], { type: 'text/plain' });
+      const initUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`;
+      const initRes = await fetch(initUrl, {
+        method: 'POST',
+        headers: {
+          'X-Goog-Upload-Protocol': 'resumable',
+          'X-Goog-Upload-Command': 'start',
+          'X-Goog-Upload-Header-Content-Length': String(blob.size),
+          'X-Goog-Upload-Header-Content-Type': 'text/plain',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ file: { displayName: 'UBS_PLANTAO_SYNC_V1' } })
+      });
+
+      const uploadUrl = initRes.headers.get('x-goog-upload-url');
+      if (uploadUrl) {
+        await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Length': String(blob.size),
+            'X-Goog-Upload-Offset': '0',
+            'X-Goog-Upload-Command': 'upload, finalize'
+          },
+          body: blob
+        });
+      }
+
+      if (!silent) {
+        if (statusEl) {
+          statusEl.textContent = `✅ ${syncItems.length} atendimento(s) salvos na nuvem da sua Chave Gemini (${new Date().toLocaleTimeString('pt-BR')})! Basta abrir em casa com a mesma chave.`;
+        }
+        showToast(`☁️ Plantão (${syncItems.length} atendimentos) sincronizado na nuvem!`);
+      }
+    } catch (err) {
+      if (!silent && statusEl) {
+        statusEl.textContent = `⚠️ Não foi possível sincronizar na nuvem agora (${err.message}). Use o botão "Baixar Arquivo do Plantão (.ubs)" abaixo!`;
+      }
+    }
+  }
+
+  async function pullConsultationsFromGeminiCloud() {
+    const apiKey = getSavedApiKey();
+    const statusEl = document.getElementById('cloudSyncStatusText');
+    if (!apiKey) {
+      openApiKeyModal();
+      return;
+    }
+
+    if (statusEl) {
+      statusEl.textContent = '⏳ Buscando seus atendimentos salvos na nuvem da Chave Gemini...';
+    }
+
+    try {
+      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/files?pageSize=50&key=${encodeURIComponent(apiKey)}`);
+      if (!listRes.ok) {
+        throw new Error(`Erro HTTP ${listRes.status} ao consultar nuvem da chave`);
+      }
+      const listData = await listRes.json();
+      const syncFiles = (listData.files || []).filter(f => f.displayName === 'UBS_PLANTAO_SYNC_V1');
+
+      if (syncFiles.length === 0) {
+        if (statusEl) {
+          statusEl.textContent = 'ℹ️ Nenhum plantão encontrado na nuvem desta chave. No computador do posto, clique em "Salvar Plantão na Nuvem Agora" antes de sair.';
+        }
+        return;
+      }
+
+      const newestFile = syncFiles[0];
+      const reqBody = {
+        contents: [{
+          role: 'user',
+          parts: [
+            { fileData: { mimeType: 'text/plain', fileUri: newestFile.uri } },
+            { text: 'Retorne EXATAMENTE o objeto JSON contido neste arquivo sem alterar nenhum caractere.' }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0,
+          maxOutputTokens: 8192,
+          responseMimeType: 'application/json'
+        }
+      };
+
+      const { responseJson } = await callGeminiWithFallbackAndRetry(reqBody, apiKey);
+      const rawJson = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const parsed = JSON.parse(rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim());
+      const remoteList = Array.isArray(parsed.consultations) ? parsed.consultations : [];
+
+      let importedCount = 0;
+      for (const item of remoteList) {
+        if (!item || !item.id) continue;
+        const local = await window.ScribeDB.getConsultation(item.id);
+        if (!local || (item.updatedAt || 0) > (local.updatedAt || 0) || (!local.evolutionText && item.evolutionText)) {
+          await window.ScribeDB.saveConsultation({
+            ...(local || {}),
+            ...item
+          });
+          importedCount++;
+        }
+      }
+
+      await refreshQueueSidebar();
+      updateStorageStatsUI();
+      if (statusEl) {
+        statusEl.textContent = `✅ ${remoteList.length} atendimento(s) sincronizados do Posto (${importedCount} novos/atualizados)! Confira na aba "Meu Histórico".`;
+      }
+      showToast(`📥 ${remoteList.length} atendimento(s) puxados da nuvem com sucesso!`);
+      processQueueInBackground();
+    } catch (err) {
+      if (statusEl) {
+        statusEl.textContent = `⚠️ Falha ao puxar da nuvem: ${err.message}. Se a cota diária estiver cheia, use a Opção 2 (Arquivo do Plantão).`;
+      }
+    }
+  }
+
+  async function exportPlantaoToFile() {
+    try {
+      const all = await window.ScribeDB.getAllConsultations();
+      const exportList = [];
+      for (const c of all.slice(0, 60)) {
+        const copy = { ...c };
+        // Se o atendimento ainda não foi transcrito e tem áudio no disco, embute o áudio em base64 para poder transcrever em casa!
+        if (c.status !== 'done' && c.chunkCount > 0 && !c.audioDeleted) {
+          const blob = await window.ScribeDB.assembleAudioBlob(c.id, c.mimeType);
+          if (blob && blob.size > 0 && blob.size < 25 * 1024 * 1024) {
+            copy.embeddedAudioBase64 = await blobToBase64(blob);
+          }
+        }
+        exportList.push(copy);
+      }
+
+      const dataStr = JSON.stringify({
+        ubsExportVersion: 1,
+        exportedAt: Date.now(),
+        consultations: exportList
+      }, null, 2);
+
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Plantao_UBS_${dateStr}.ubs.json`;
+      a.click();
+      showToast(`📤 Arquivo do plantão (${exportList.length} pacientes) baixado!`);
+    } catch (err) {
+      alert('Erro ao exportar plantão: ' + err.message);
+    }
+  }
+
+  async function importPlantaoFromFile(file) {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const list = Array.isArray(parsed.consultations) ? parsed.consultations : [];
+      let count = 0;
+
+      for (const item of list) {
+        if (!item || !item.id) continue;
+        const embeddedB64 = item.embeddedAudioBase64;
+        delete item.embeddedAudioBase64;
+
+        await window.ScribeDB.saveConsultation(item);
+        if (embeddedB64) {
+          const byteChars = atob(embeddedB64);
+          const byteNumbers = new Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) {
+            byteNumbers[i] = byteChars.charCodeAt(i);
+          }
+          const audioBlob = new Blob([new Uint8Array(byteNumbers)], { type: item.mimeType || 'audio/webm' });
+          await window.ScribeDB.saveAudioChunk(item.id, 0, audioBlob, item.mimeType || 'audio/webm');
+        }
+        count++;
+      }
+
+      await refreshQueueSidebar();
+      updateStorageStatsUI();
+      document.getElementById('cloudSyncModal').style.display = 'none';
+      switchMainPage('pageHistory');
+      showToast(`📂 ${count} atendimento(s) importados para este computador!`);
+      processQueueInBackground();
+    } catch (err) {
+      alert('Arquivo de plantão inválido: ' + err.message);
+    }
   }
 
   function updateApiKeyStatusBadge() {
@@ -2176,12 +2675,26 @@
 
     document.getElementById('btnProcessNotesOnly')?.addEventListener('click', handleProcessNotesOrExamsOnly);
 
+    // Transcrição instantânea de exames anexados sem precisar finalizar a gravação
+    document.getElementById('btnTranscribeExamsNow')?.addEventListener('click', transcribePendingExamsNow);
+    document.getElementById('btnCopyLiveExams')?.addEventListener('click', () => {
+      const txt = document.getElementById('liveExamTranscriptionEditor')?.value || '';
+      copyToClipboard(txt, '📋 Resultado dos exames copiado!');
+    });
+    document.getElementById('btnClearLiveExams')?.addEventListener('click', () => {
+      const liveBox = document.getElementById('liveExamTranscriptionBox');
+      if (liveBox) liveBox.style.display = 'none';
+    });
+    document.getElementById('liveExamTranscriptionEditor')?.addEventListener('input', (e) => {
+      state.preTranscribedExamsText = e.target.value;
+    });
+
     document.getElementById('btnClearPrevEvolution')?.addEventListener('click', () => {
       const prevInput = document.getElementById('previousConsultationInput');
       if (prevInput) prevInput.value = '';
     });
 
-    ['zSex', 'zMonths', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails'].forEach(id => {
+    ['zSex', 'zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'chkIncludeZScoreInEvolution', 'pueriFeedingType', 'pueriFormulaDetails'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', updateZScoreLivePreview);
       document.getElementById(id)?.addEventListener('change', updateZScoreLivePreview);
     });
@@ -2326,11 +2839,40 @@
       }
     });
 
+    // Modal de Sincronização entre Computadores / Evoluir de Casa
+    const openCloudSync = () => {
+      const chk = document.getElementById('chkAutoCloudSync');
+      if (chk) chk.checked = state.autoCloudSync;
+      const modal = document.getElementById('cloudSyncModal');
+      if (modal) modal.style.display = 'flex';
+    };
+    document.getElementById('btnOpenCloudSyncModal')?.addEventListener('click', openCloudSync);
+    document.getElementById('btnHistoryCloudSync')?.addEventListener('click', openCloudSync);
+    document.getElementById('btnCloseCloudSyncModal')?.addEventListener('click', () => {
+      const modal = document.getElementById('cloudSyncModal');
+      if (modal) modal.style.display = 'none';
+    });
+    document.getElementById('chkAutoCloudSync')?.addEventListener('change', (e) => {
+      state.autoCloudSync = Boolean(e.target.checked);
+      localStorage.setItem('ubs_auto_cloud_sync', String(state.autoCloudSync));
+    });
+    document.getElementById('btnPushCloudSync')?.addEventListener('click', () => pushConsultationsToGeminiCloud(false));
+    document.getElementById('btnPullCloudSync')?.addEventListener('click', pullConsultationsFromGeminiCloud);
+    document.getElementById('btnExportPlantaoFile')?.addEventListener('click', exportPlantaoToFile);
+    document.getElementById('importPlantaoFileInput')?.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        importPlantaoFromFile(e.target.files[0]);
+        e.target.value = '';
+      }
+    });
+
     document.getElementById('btnOpenApiKeyModal')?.addEventListener('click', openApiKeyModal);
     document.getElementById('btnCloseApiKeyModal')?.addEventListener('click', () => {
       document.getElementById('apiKeyModal').style.display = 'none';
     });
-    document.getElementById('btnSaveApiKey')?.addEventListener('click', () => {
+
+    const saveApiKeyHandler = async (e) => {
+      if (e && e.preventDefault) e.preventDefault();
       const key = document.getElementById('apiKeyInput')?.value.trim() || '';
       const mode = document.querySelector('input[name="keyStorageMode"]:checked')?.value || 'permanent';
       if (!key) {
@@ -2343,12 +2885,28 @@
         localStorage.setItem('ubs_gemini_api_key', key);
         sessionStorage.removeItem('ubs_gemini_api_key');
       }
+
+      // Salva no Gerenciador de Senhas do Google Chrome vinculado à conta fixa "Chave API Gemini - Prontuário APS"
+      try {
+        if (key && window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
+          const cred = new window.PasswordCredential({
+            id: 'Chave API Gemini - Prontuário APS',
+            name: 'Chave API Gemini - Prontuário APS',
+            password: key
+          });
+          await navigator.credentials.store(cred);
+        }
+      } catch (_) {}
+
       updateApiKeyStatusBadge();
       document.getElementById('apiKeyModal').style.display = 'none';
       showToast('🔒 Credencial salva com sucesso!');
       retryAllPendingConsultations();
       processQueueInBackground();
-    });
+    };
+
+    document.getElementById('apiKeyForm')?.addEventListener('submit', saveApiKeyHandler);
+    document.getElementById('btnSaveApiKey')?.addEventListener('click', saveApiKeyHandler);
 
     document.getElementById('btnRetryAllPending')?.addEventListener('click', retryAllPendingConsultations);
 
@@ -2371,7 +2929,7 @@
     });
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
       if (confirm('Restaurar todos os 7 modelos para o texto original padrão?')) {
-        localStorage.removeItem('ubs_custom_templates_v7');
+        localStorage.removeItem('ubs_custom_templates_v8');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();
         showToast('🔄 Modelos originais restaurados!');

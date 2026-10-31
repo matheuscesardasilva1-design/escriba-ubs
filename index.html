@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
-  <link rel="stylesheet" href="styles.css?v=20261028_15" />
+  <link rel="stylesheet" href="styles.css?v=20261029_16" />
 </head>
 <body>
 
@@ -29,6 +29,9 @@
       <span class="quota-pill" title="Status do sistema e total de processamentos realizados hoje">
         <strong id="dailyTokenCounter" style="color: #059669;">🟢 Sistema Pronto (0 hoje)</strong>
       </span>
+      <button type="button" class="btn-top" id="btnOpenCloudSyncModal" title="Evoluir de casa em outro computador ou sincronizar plantão">
+        ☁️ Outro PC / Casa
+      </button>
       <button type="button" class="btn-top" id="btnOpenTemplatesModal">
         📝 Máscaras (7)
       </button>
@@ -72,12 +75,18 @@
       </button>
     </div>
 
-    <!-- PAINEL ESPECÍFICO 1: PUERICULTURA (Z-SCORE + ALEITAMENTO / FÓRMULA) -->
+    <!-- PAINEL ESPECÍFICO 1: PUERICULTURA (Z-SCORE COM IDADE CORRIGIDA P/ PREMATURO + ALEITAMENTO) -->
     <div class="zscore-box" id="puericulturaZScoreBox">
-      <div style="font-weight: 700; font-size: 13px; color: #166534;">
-        👶 Dados da Puericultura (Opcional — se você falar no áudio, o sistema já puxa automático!)
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;">
+        <div style="font-weight: 700; font-size: 13px; color: #166534;">
+          👶 Dados da Puericultura (A IA nunca inventa Z-Score sozinha — só usa o que você falar ou calcular abaixo):
+        </div>
+        <label style="font-size: 11.5px; font-weight: 700; color: #166534; display: flex; align-items: center; gap: 5px; cursor: pointer;">
+          <input type="checkbox" id="chkIncludeZScoreInEvolution" />
+          Incluir Z-Score desta calculadora no Objetivo
+        </label>
       </div>
-      <div class="zscore-grid">
+      <div class="zscore-grid" style="grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));">
         <div>
           <label>Sexo</label>
           <select id="zSex" class="select-box" style="padding: 6px;">
@@ -87,25 +96,29 @@
         </div>
         <div>
           <label>Idade (meses)</label>
-          <input type="number" id="zMonths" class="input-text" style="padding: 6px;" placeholder="Ex: 6" step="0.5" />
+          <input type="number" id="zMonths" class="input-text" style="padding: 6px;" placeholder="Ex: 6" step="0.5" autocomplete="off" />
+        </div>
+        <div>
+          <label title="Se prematuro (< 37 sem), calcula automaticamente pela Idade Corrigida!">IG Parto (sem)</label>
+          <input type="number" id="zBirthGA" class="input-text" style="padding: 6px;" placeholder="Termo ou ex: 34" step="0.5" autocomplete="off" />
         </div>
         <div>
           <label>Peso (kg ou g)</label>
-          <input type="number" id="zWeight" class="input-text" style="padding: 6px;" placeholder="7.8 ou 7800" step="0.01" />
+          <input type="number" id="zWeight" class="input-text" style="padding: 6px;" placeholder="7.8 ou 7800" step="0.01" autocomplete="off" />
         </div>
         <div>
           <label>Estatura (cm)</label>
-          <input type="number" id="zHeight" class="input-text" style="padding: 6px;" placeholder="Ex: 67.5" step="0.1" />
+          <input type="number" id="zHeight" class="input-text" style="padding: 6px;" placeholder="Ex: 67.5" step="0.1" autocomplete="off" />
         </div>
         <div>
           <label>PC (cm)</label>
-          <input type="number" id="zHC" class="input-text" style="padding: 6px;" placeholder="Ex: 43.2" step="0.1" />
+          <input type="number" id="zHC" class="input-text" style="padding: 6px;" placeholder="Ex: 43.2" step="0.1" autocomplete="off" />
         </div>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; margin-top: 8px;">
         <div>
-          <label style="font-size: 11px; font-weight: 700; color: #166534; display: block; margin-bottom: 3px;">Tipo de Aleitamento / Dieta</label>
+          <label style="font-size: 11px; font-weight: 700; color: #166534; display: block; margin-bottom: 3px;">Tipo de Aleitamento / Dieta (vai para o Subjetivo)</label>
           <select id="pueriFeedingType" class="select-box" style="padding: 6px; font-size: 12.5px;">
             <option value="">-- Selecionar (ou falar durante a consulta) --</option>
             <option value="Aleitamento Materno Exclusivo (SME) em livre demanda">SME (Materno Exclusivo - livre demanda)</option>
@@ -117,7 +130,7 @@
         </div>
         <div>
           <label style="font-size: 11px; font-weight: 700; color: #166534; display: block; margin-bottom: 3px;">Qual Fórmula, Quantidade (ml/medidas) e Intervalo</label>
-          <input type="text" id="pueriFormulaDetails" class="input-text" style="padding: 6px; font-size: 12.5px;" placeholder="Ex: NAN 1, 120ml (4 med) de 3/3h + frutas" />
+          <input type="text" id="pueriFormulaDetails" class="input-text" style="padding: 6px; font-size: 12.5px;" placeholder="Ex: NAN 1, 120ml (4 med) de 3/3h + frutas" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
         </div>
       </div>
 
@@ -134,23 +147,23 @@
       <div class="prenatal-grid">
         <div>
           <label>IG Atual</label>
-          <input type="text" id="pnIG" class="input-text" style="padding: 6px;" placeholder="Ex: 28s 4d" />
+          <input type="text" id="pnIG" class="input-text" style="padding: 6px;" placeholder="Ex: 28s 4d" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
         </div>
         <div>
           <label>PA (mmHg)</label>
-          <input type="text" id="pnPA" class="input-text" style="padding: 6px;" placeholder="110x70" />
+          <input type="text" id="pnPA" class="input-text" style="padding: 6px;" placeholder="110x70" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
         </div>
         <div>
           <label>Peso (kg)</label>
-          <input type="text" id="pnWeight" class="input-text" style="padding: 6px;" placeholder="68.5" />
+          <input type="text" id="pnWeight" class="input-text" style="padding: 6px;" placeholder="68.5" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
         </div>
         <div>
           <label>AU (cm)</label>
-          <input type="text" id="pnAU" class="input-text" style="padding: 6px;" placeholder="Ex: 27" />
+          <input type="text" id="pnAU" class="input-text" style="padding: 6px;" placeholder="Ex: 27" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
         </div>
         <div>
           <label>BCF (bpm)</label>
-          <input type="text" id="pnBCF" class="input-text" style="padding: 6px;" placeholder="Ex: 144" />
+          <input type="text" id="pnBCF" class="input-text" style="padding: 6px;" placeholder="Ex: 144" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
         </div>
         <div>
           <label>Mov. Fetais (MF)</label>
@@ -180,7 +193,8 @@
         <span id="diskSaveIndicator" style="font-size: 11.5px; color: #64748b;">Sincronizado no disco</span>
       </div>
 
-      <input type="text" id="patientIdentifier" class="input-text" placeholder="Identificação, iniciais ou número do prontuário" />
+      <!-- Bloqueado contra o Gerenciador de Senhas do Chrome (nunca é tratado como usuário de login!) -->
+      <input type="search" id="patientIdentifier" name="ubs_patient_clinical_identifier" class="input-text" placeholder="Identificação, iniciais ou número do prontuário" autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
 
       <div class="recorder-box">
         <div class="rec-header">
@@ -213,19 +227,40 @@
         </div>
       </div>
 
-      <!-- ANEXO DISCRETO DE LAUDOS PDF -->
+      <!-- ANEXO DISCRETO DE LAUDOS PDF + BOTÃO PARA TRANSCREVER NA HORA SEM FINALIZAR GRAVAÇÃO -->
       <div id="examDropZone" class="exam-attach-box">
-        <div class="exam-attach-header">
+        <div class="exam-attach-header" style="flex-wrap: wrap; gap: 8px;">
           <div>
             <strong>📎 Exames Complementares (PDF / Imagem):</strong>
             <span class="exam-count-tag" id="examCountBadge">0</span>
           </div>
-          <label class="btn btn-secondary" style="cursor: pointer; padding: 5px 10px; font-size: 12px;">
-            + Anexar PDF
-            <input type="file" id="examFilesInput" accept="application/pdf,image/*,.pdf,.png,.jpg,.jpeg" multiple style="display: none;" />
-          </label>
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" id="btnTranscribeExamsNow" style="display: none; padding: 5px 11px; font-size: 12px; background: #0284c7;" title="Transcreve os exames anexados imediatamente sem precisar parar a gravação">
+              ⚡ Transcrever Anexo na Hora
+            </button>
+            <label class="btn btn-secondary" style="cursor: pointer; padding: 5px 10px; font-size: 12px;">
+              + Anexar PDF / Foto
+              <input type="file" id="examFilesInput" accept="application/pdf,image/*,.pdf,.png,.jpg,.jpeg" multiple style="display: none;" />
+            </label>
+          </div>
         </div>
         <div id="pendingExamFilesList" class="exam-chips-wrap" style="display: none;"></div>
+
+        <!-- CAIXA COM OS EXAMES TRANSCRITOS NA HORA (PARA LER/COPIAR DURANTE A CONSULTA SEM PARAR A GRAVAÇÃO) -->
+        <div id="liveExamTranscriptionBox" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #93c5fd;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;">
+            <strong style="font-size: 12px; color: #0369a1;">🧪 Exames Transcritos na Hora (também entrarão automaticamente na evolução final):</strong>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" class="btn btn-primary" id="btnCopyLiveExams" style="padding: 3px 9px; font-size: 11.5px; background: #059669;">
+                📋 Copiar Exames Agora
+              </button>
+              <button type="button" class="btn btn-secondary" id="btnClearLiveExams" style="padding: 3px 8px; font-size: 11px;" title="Ocultar caixa">
+                ✕
+              </button>
+            </div>
+          </div>
+          <textarea id="liveExamTranscriptionEditor" class="textarea-box" rows="3" style="font-family: monospace; font-size: 12px; background: #f0f9ff; border-color: #7dd3fc;" autocomplete="off"></textarea>
+        </div>
       </div>
 
       <!-- EVOLUÇÃO PRÉVIA / ÚLTIMA CONSULTA (PARA ATUALIZAR #, MUC E COMPARAR CONDUTAS NOS 7 MODELOS) -->
@@ -238,15 +273,15 @@
             Limpar
           </button>
         </div>
-        <textarea id="previousConsultationInput" class="textarea-box" rows="3" placeholder="Cole aqui a última evolução do PEC (o sistema puxará os diagnósticos da Avaliação anterior para as #, atualizará a # MUC tirando remédios suspensos e verificará no Subjetivo se o paciente manteve uso de medicação suspensa)..."></textarea>
+        <textarea id="previousConsultationInput" class="textarea-box" rows="3" placeholder="Cole aqui a última evolução do PEC (o sistema puxará os diagnósticos da Avaliação anterior para as #, atualizará a # MUC tirando remédios suspensos e verificará no Subjetivo se o paciente manteve uso de medicação suspensa)..." autocomplete="off"></textarea>
       </div>
 
       <!-- ANOTAÇÕES RÁPIDAS -->
       <div style="margin-bottom: 12px;">
         <label style="font-size: 12.5px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px;">
-          ✍️ Anotações Rápidas / Sinais Vitais de Hoje (opcional):
+          ✍️ Anotações Rápidas / Sinais Vitais / Controles de PA e HGT (opcional):
         </label>
-        <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, HGT ou anotações livres..."></textarea>
+        <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, Controle de HGT/PA ou anotações livres..." autocomplete="off"></textarea>
       </div>
 
       <div style="display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap;">
@@ -275,6 +310,9 @@
         <button type="button" class="btn btn-primary" id="btnRetryAllPending" style="display: none; padding: 6px 12px; font-size: 12px;">
           🔄 Enviar Pendentes Agora
         </button>
+        <button type="button" class="btn btn-secondary" id="btnHistoryCloudSync" style="padding: 6px 10px; font-size: 12px; background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe;">
+          ☁️ Evoluir em Outro PC / Casa
+        </button>
         <span style="font-size: 12px; color: var(--text-muted);" id="diskUsageBadge">💽 0.0 MB</span>
         <button type="button" class="btn btn-secondary" id="btnSelectDiskFolder" style="padding: 6px 10px; font-size: 12px;">
           📁 Pasta Backup
@@ -289,7 +327,7 @@
     <div class="history-filters-grid">
       <div>
         <label class="filter-label">Buscar Paciente</label>
-        <input type="text" id="historySearchInput" class="input-text" style="padding: 8px 10px;" placeholder="🔍 Nome do paciente..." />
+        <input type="search" id="historySearchInput" class="input-text" style="padding: 8px 10px;" placeholder="🔍 Nome do paciente..." autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
       </div>
 
       <div>
@@ -477,7 +515,7 @@
                 <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
                   Ou digite outra especialidade/exame:
                 </label>
-                <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." />
+                <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." autocomplete="off" />
               </div>
 
               <div>
@@ -496,7 +534,7 @@
               <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
                 📋 Dados Complementares / Tratamentos Prévios na APS (opcional):
               </label>
-              <input type="text" id="referralExtraDataInput" class="input-text" placeholder="Ex: Tratamento otimizado na APS há 6 meses sem controle; exames prévios adicionais..." />
+              <input type="text" id="referralExtraDataInput" class="input-text" placeholder="Ex: Tratamento otimizado na APS há 6 meses sem controle; exames prévios adicionais..." autocomplete="off" />
             </div>
 
             <button type="button" class="btn btn-primary" id="btnGenerateReferral" style="width: 100%; background: #7c3aed;">
@@ -524,7 +562,53 @@
     </div>
   </div>
 
-  <!-- MODAL: CONFIGURAÇÃO DA CREDENCIAL API -->
+  <!-- MODAL: EVOLUIR DE CASA / SINCRONIZAR COM OUTRO COMPUTADOR -->
+  <div class="modal-backdrop" id="cloudSyncModal">
+    <div class="modal-card" style="max-width: 620px;">
+      <div class="modal-header">
+        <h3 style="font-size: 16px;">🏠 Evoluir de Casa / Sincronizar entre Computadores</h3>
+        <button type="button" class="btn btn-secondary" id="btnCloseCloudSyncModal">✕</button>
+      </div>
+
+      <div class="step-box" style="background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; margin-bottom: 14px;">
+        <strong>☁️ Opção 1 — Sincronização Automática na Nuvem (pela sua Chave Gemini):</strong>
+        <p style="margin-top: 4px; font-size: 12.5px;">
+          Seus atendimentos (tanto evoluções prontas quanto gravações pendentes) ficam salvos de forma criptografada/privada na nuvem da sua própria chave Gemini por 48h. Ao chegar em casa, basta colocar a mesma chave e clicar em <strong>"Puxar Plantão da Nuvem"</strong>!
+        </p>
+        <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; font-weight: 700; cursor: pointer;">
+          <input type="checkbox" id="chkAutoCloudSync" checked />
+          Sincronizar automaticamente na nuvem após finalizar cada atendimento no Posto
+        </label>
+        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary" id="btnPushCloudSync" style="flex: 1; background: #2563eb;">
+            ☁️ Salvar Plantão na Nuvem Agora
+          </button>
+          <button type="button" class="btn btn-primary" id="btnPullCloudSync" style="flex: 1; background: #059669;">
+            📥 Puxar Plantão da Nuvem (Em Casa)
+          </button>
+        </div>
+        <div id="cloudSyncStatusText" style="margin-top: 8px; font-size: 12px; font-weight: 700; color: #0369a1;"></div>
+      </div>
+
+      <div class="step-box" style="background: #f8fafc; border-color: #cbd5e1; color: #334155;">
+        <strong>📦 Opção 2 — Arquivo Portátil do Plantão (Funciona mesmo com cota zerada / WhatsApp):</strong>
+        <p style="margin-top: 4px; font-size: 12.5px;">
+          Baixe todos os atendimentos de hoje (incluindo áudios pendentes e evoluções prontas) em um único arquivo leve para enviar pelo WhatsApp/Drive e abrir em casa com 1 clique:
+        </p>
+        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary" id="btnExportPlantaoFile" style="flex: 1; font-weight: 700;">
+            📤 Baixar Arquivo do Plantão (.ubs)
+          </button>
+          <label class="btn btn-secondary" style="flex: 1; cursor: pointer; font-weight: 700; text-align: center;">
+            📂 Abrir Arquivo do Plantão em Casa
+            <input type="file" id="importPlantaoFileInput" accept=".json,.ubs" style="display: none;" />
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIGURAÇÃO DA CREDENCIAL API (INTEGRADO AO GERENCIADOR DE SENHAS DO CHROME) -->
   <div class="modal-backdrop" id="apiKeyModal">
     <div class="modal-card">
       <div class="modal-header">
@@ -533,43 +617,49 @@
       </div>
 
       <div class="step-box">
-        <strong>💡 Como gerar sua própria chave gratuita em 1 minuto (para você ou para suas colegas):</strong>
-        <ol>
-          <li>Acesse <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="color: var(--primary); font-weight: 700;">aistudio.google.com/apikey</a> com sua conta do Google.</li>
-          <li>Clique em <strong>"Create API Key"</strong> e copie o código gerado.</li>
-          <li>Cole abaixo. Cada profissional usa sua própria chave no seu usuário do Windows, de forma 100% independente.</li>
-        </ol>
+        <strong>💡 Dica para não precisar decorar sua chave:</strong>
+        <p style="font-size: 12.5px; margin-top: 4px;">
+          Ao clicar em <strong>"Salvar Credencial"</strong> abaixo, o <strong>Gerenciador de Senhas do Google Chrome</strong> salvará sua chave vinculada à conta fixa <em>"Chave API Gemini - Prontuário APS"</em> (sem nunca confundir com o nome do paciente!). Assim, em qualquer computador com seu Chrome sincronizado, a chave já é preenchida sozinha!
+        </p>
       </div>
 
       <div style="margin-bottom: 12px;">
-        <label style="font-weight: 700; display: block; margin-bottom: 5px;">Dispositivo de Entrada (Configuração Oculta):</label>
+        <label style="font-weight: 700; display: block; margin-bottom: 5px;">Dispositivo de Entrada (Microfone):</label>
         <select id="micSelect" class="select-box">
           <option value="">Padrão do Sistema</option>
         </select>
       </div>
 
-      <div style="margin-bottom: 12px;">
-        <label style="font-weight: 700; display: block; margin-bottom: 5px;">Chave de API (AIza...):</label>
-        <input type="password" id="apiKeyInput" class="input-text" placeholder="AIzaSy..." />
-      </div>
+      <!-- FORMULÁRIO OFICIAL PARA O GERENCIADOR DE SENHAS DO CHROME SALVAR APENAS A CHAVE GEMINI -->
+      <form id="apiKeyForm" action="#apikey-saved" method="post" autocomplete="on">
+        <div style="margin-bottom: 10px;">
+          <label style="font-weight: 700; display: block; margin-bottom: 4px; font-size: 12px; color: #475569;">Identificador fixo no Gerenciador de Senhas do Chrome:</label>
+          <input type="text" name="username" id="apiKeyChromeUsername" class="input-text" value="Chave API Gemini - Prontuário APS" autocomplete="username" readonly style="background: #f1f5f9; color: #334155; font-weight: 700; cursor: default;" />
+        </div>
 
-      <div style="margin-bottom: 14px; font-size: 13px;">
-        <label style="font-weight: 700; display: block; margin-bottom: 5px;">Armazenamento neste computador:</label>
-        <label style="display: block; margin-bottom: 4px; cursor: pointer;">
-          <input type="radio" name="keyStorageMode" value="permanent" checked />
-          <strong>Salvar no meu usuário do Windows/Mac</strong>
-        </label>
-        <label style="display: block; cursor: pointer;">
-          <input type="radio" name="keyStorageMode" value="session" />
-          <strong>Apenas nesta sessão (apagar ao fechar o navegador)</strong>
-        </label>
-      </div>
+        <div style="margin-bottom: 12px;">
+          <label style="font-weight: 700; display: block; margin-bottom: 5px;">Chave de API (AIza...):</label>
+          <input type="password" name="password" id="apiKeyInput" class="input-text" placeholder="AIzaSy..." autocomplete="current-password" />
+        </div>
 
-      <div style="display: flex; justify-content: flex-end; gap: 8px;">
-        <button type="button" class="btn btn-primary" id="btnSaveApiKey">
-          💾 Salvar Credencial
-        </button>
-      </div>
+        <div style="margin-bottom: 14px; font-size: 13px;">
+          <label style="font-weight: 700; display: block; margin-bottom: 5px;">Armazenamento neste computador:</label>
+          <label style="display: block; margin-bottom: 4px; cursor: pointer;">
+            <input type="radio" name="keyStorageMode" value="permanent" checked />
+            <strong>Salvar permanentemente neste navegador + Gerenciador de Senhas do Chrome</strong>
+          </label>
+          <label style="display: block; cursor: pointer;">
+            <input type="radio" name="keyStorageMode" value="session" />
+            <strong>Usar apenas nesta sessão (e preencher pelo Gerenciador de Senhas do Chrome)</strong>
+          </label>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="submit" class="btn btn-primary" id="btnSaveApiKey">
+            💾 Salvar Credencial
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -599,9 +689,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261028_15"></script>
-  <script src="zscore.js?v=20261028_15"></script>
-  <script src="db.js?v=20261028_15"></script>
-  <script src="app.js?v=20261028_15"></script>
+  <script src="templates.js?v=20261029_16"></script>
+  <script src="zscore.js?v=20261029_16"></script>
+  <script src="db.js?v=20261029_16"></script>
+  <script src="app.js?v=20261029_16"></script>
 </body>
 </html>
