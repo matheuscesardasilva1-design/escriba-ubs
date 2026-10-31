@@ -2206,7 +2206,8 @@
     }
 
     if (state.selectedTemplateId === 'prenatal') {
-      const ig = document.getElementById('pnIG')?.value.trim() || '';
+      const pnCalc = calculatePrenatalGestationalAge();
+      const ig = document.getElementById('pnIG')?.value.trim() || (pnCalc ? pnCalc.finalIgShort : '');
       const pa = document.getElementById('pnPA')?.value.trim() || '';
       const weight = document.getElementById('pnWeight')?.value.trim() || '';
       const au = document.getElementById('pnAU')?.value.trim() || '';
@@ -2214,9 +2215,13 @@
       const mf = document.getElementById('pnMF')?.value || '';
       const edema = document.getElementById('pnEdema')?.value || '';
 
-      if (!ig && !pa && !weight && !au && !bcf) return '';
-      const pnLines = ['DADOS OBJETIVOS DO PRÉ-NATAL INFORMADOS PELO MÉDICO:'];
-      if (ig) pnLines.push(`- IG atual: ${ig}`);
+      if (!pnCalc && !ig && !pa && !weight && !au && !bcf) return '';
+      const pnLines = ['DADOS OBJETIVOS E CÁLCULO OBSTÉTRICO (PROTOCOLO FEBRASGO / MINISTÉRIO DA SAÚDE) INFORMADOS PELO MÉDICO:'];
+      if (pnCalc && pnCalc.evolutionHeaderBlock) {
+        pnLines.push(pnCalc.evolutionHeaderBlock);
+      } else if (ig) {
+        pnLines.push(`- IG atual: ${ig}`);
+      }
       if (au) pnLines.push(`- AU: ${au} cm`);
       if (bcf) pnLines.push(`- BCF: ${bcf} bpm`);
       if (mf) pnLines.push(`- MF: ${mf}`);
@@ -2227,6 +2232,201 @@
     }
 
     return '';
+  }
+
+  // ============================================================================
+  // CALCULADORA DE IDADE GESTACIONAL (IG) E DPP — PROTOCOLO FEBRASGO / MS
+  // ============================================================================
+  function parseLocalNoonDate(isoStr) {
+    if (!isoStr || typeof isoStr !== 'string') return null;
+    const parts = isoStr.split('-');
+    if (parts.length !== 3) return null;
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+    return new Date(y, m - 1, d, 12, 0, 0);
+  }
+
+  function formatDateBR(dateObj) {
+    if (!dateObj || isNaN(dateObj.getTime())) return '';
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const yyyy = dateObj.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  function formatIGWeeksDays(totalDays) {
+    const safe = Math.max(0, Math.round(totalDays));
+    const w = Math.floor(safe / 7);
+    const d = safe % 7;
+    return {
+      weeks: w,
+      days: d,
+      shortText: `${w}s ${d}d`,
+      longText: `${w} sem e ${d} dias`
+    };
+  }
+
+  function getFebrasgoRedatingRule(usgAtExamDays) {
+    // Critérios oficiais FEBRASGO / Ministério da Saúde / ACOG para redatação pela Ecografia:
+    if (usgAtExamDays <= 62) {
+      return { maxToleranceDays: 5, phaseLabel: '1º Trimestre precoce (até 8s 6d — CCN)' };
+    }
+    if (usgAtExamDays <= 97) {
+      return { maxToleranceDays: 7, phaseLabel: '1º Trimestre (9s 0d a 13s 6d — CCN)' };
+    }
+    if (usgAtExamDays <= 111) {
+      return { maxToleranceDays: 7, phaseLabel: '2º Trimestre inicial (14s 0d a 15s 6d)' };
+    }
+    if (usgAtExamDays <= 153) {
+      return { maxToleranceDays: 10, phaseLabel: '2º Trimestre (16s 0d a 21s 6d)' };
+    }
+    if (usgAtExamDays <= 195) {
+      return { maxToleranceDays: 14, phaseLabel: '2º Trimestre tardio (22s 0d a 27s 6d)' };
+    }
+    return { maxToleranceDays: 21, phaseLabel: '3º Trimestre (≥ 28s 0d — atenção: baixa precisão p/ redatação; avaliar RCIU)' };
+  }
+
+  function calculatePrenatalGestationalAge() {
+    const dumStr = document.getElementById('pnDUM')?.value || '';
+    const cycleRaw = parseInt(document.getElementById('pnCycleDays')?.value, 10);
+    const cycleDays = (!isNaN(cycleRaw) && cycleRaw >= 15 && cycleRaw <= 60) ? cycleRaw : 28;
+
+    const usgDateStr = document.getElementById('pnUsgDate')?.value || '';
+    const usgWeeksVal = document.getElementById('pnUsgWeeks')?.value;
+    const usgDaysVal = document.getElementById('pnUsgDays')?.value;
+
+    const now = new Date();
+    const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+
+    // 1. Cálculo pela DUM (com ajuste pela duração do ciclo menstrual — Regra de Naegele modificada / FEBRASGO)
+    let dumResult = null;
+    const dumDate = parseLocalNoonDate(dumStr);
+    if (dumDate && dumDate <= todayNoon) {
+      const rawDaysFromDUM = Math.round((todayNoon - dumDate) / 86400000);
+      // Ovulação ocorre ~14 dias antes da menstruação seguinte -> deslocamento = (cycleDays - 28) dias
+      const cycleAdjustment = cycleDays - 28;
+      const adjustedDaysFromDUM = Math.max(0, rawDaysFromDUM - cycleAdjustment);
+      const dppAdjustedDate = new Date(dumDate.getTime() + (280 + cycleAdjustment) * 86400000);
+      const dppStandard28Date = new Date(dumDate.getTime() + 280 * 86400000);
+
+      dumResult = {
+        dumDate,
+        dumDateBR: formatDateBR(dumDate),
+        cycleDays,
+        cycleAdjustment,
+        rawDaysFromDUM,
+        rawIG: formatIGWeeksDays(rawDaysFromDUM),
+        adjustedDaysFromDUM,
+        adjustedIG: formatIGWeeksDays(adjustedDaysFromDUM),
+        dppAdjustedBR: formatDateBR(dppAdjustedDate),
+        dppStandard28BR: formatDateBR(dppStandard28Date)
+      };
+    }
+
+    // 2. Cálculo pela Ecografia Obstétrica Anterior (USG)
+    let usgResult = null;
+    const usgDate = parseLocalNoonDate(usgDateStr);
+    const hasUsgWeeks = usgWeeksVal !== undefined && usgWeeksVal !== null && String(usgWeeksVal).trim() !== '';
+    if (usgDate && hasUsgWeeks && usgDate <= todayNoon) {
+      const usgW = Math.max(0, parseInt(usgWeeksVal, 10) || 0);
+      const usgD = Math.min(6, Math.max(0, parseInt(usgDaysVal, 10) || 0));
+      const usgAtExamDays = (usgW * 7) + usgD;
+      const daysElapsedSinceUsg = Math.round((todayNoon - usgDate) / 86400000);
+      const totalDaysByUsgToday = usgAtExamDays + daysElapsedSinceUsg;
+      const dppUsgDate = new Date(usgDate.getTime() + (280 - usgAtExamDays) * 86400000);
+
+      usgResult = {
+        usgDate,
+        usgDateBR: formatDateBR(usgDate),
+        usgW,
+        usgD,
+        usgAtExamDays,
+        usgAtExamShort: `${usgW}s ${usgD}d`,
+        usgAtExamLong: `${usgW} sem e ${usgD} dias`,
+        totalDaysByUsgToday,
+        currentIG: formatIGWeeksDays(totalDaysByUsgToday),
+        dppUsgBR: formatDateBR(dppUsgDate)
+      };
+    }
+
+    if (!dumResult && !usgResult) return null;
+
+    // 3. Comparação DUM vs Ecografia e Protocolo Oficial de Redatação (FEBRASGO / Ministério da Saúde)
+    const previewLines = [];
+    const headerLines = [];
+    let finalIgShort = '';
+    let finalDppBR = '';
+    let decisionSummary = '';
+
+    if (dumResult) {
+      const cycleNote = dumResult.cycleDays !== 28
+        ? ` (Ciclo de ${dumResult.cycleDays}d -> ajuste ovulatório de ${dumResult.cycleAdjustment > 0 ? '+' : ''}${dumResult.cycleAdjustment}d; sem ajuste 28d seria ${dumResult.rawIG.shortText})`
+        : ' (Ciclo regular 28 dias)';
+      previewLines.push(`📅 Pela DUM (${dumResult.dumDateBR})${cycleNote}: IG Hoje = ${dumResult.adjustedIG.longText} (${dumResult.adjustedIG.shortText}) | DPP (DUM) = ${dumResult.dppAdjustedBR}`);
+      headerLines.push(`# DUM: ${dumResult.dumDateBR} (Ciclo: ${dumResult.cycleDays} dias) -> IG por DUM: ${dumResult.adjustedIG.longText} | DPP por DUM: ${dumResult.dppAdjustedBR}`);
+    }
+
+    if (usgResult) {
+      previewLines.push(`🖥️ Pela Ecografia (${usgResult.usgDateBR} com ${usgResult.usgAtExamLong}): IG Hoje = ${usgResult.currentIG.longText} (${usgResult.currentIG.shortText}) | DPP (Eco) = ${usgResult.dppUsgBR}`);
+      headerLines.push(`# IG POR ECO COM ${usgResult.usgW} SEM E ${usgResult.usgD} DIAS EM ${usgResult.usgDateBR} -> IG hoje por Eco: ${usgResult.currentIG.longText} | DPP por Eco: ${usgResult.dppUsgBR}`);
+    }
+
+    if (dumResult && usgResult) {
+      const diffDays = Math.abs(dumResult.adjustedDaysFromDUM - usgResult.totalDaysByUsgToday);
+      const rule = getFebrasgoRedatingRule(usgResult.usgAtExamDays);
+      if (diffDays > rule.maxToleranceDays) {
+        finalIgShort = `${usgResult.currentIG.shortText} (por Eco — DPP ${usgResult.dppUsgBR})`;
+        finalDppBR = usgResult.dppUsgBR;
+        decisionSummary = `✅ CONDUTA FEBRASGO / MS: REDATAR PELA ECOGRAFIA! Discrepância de ${diffDays} dias (> ${rule.maxToleranceDays} dias tolerados no ${rule.phaseLabel}).\n👉 IG Oficial Considerada Hoje: ${usgResult.currentIG.longText} (${usgResult.currentIG.shortText}) | DPP Oficial: ${usgResult.dppUsgBR}`;
+        headerLines.push(`# IG CONSIDERADA (CRITÉRIO FEBRASGO/MS): ${usgResult.currentIG.longText} (Redatada pela Eco — discrepância de ${diffDays}d > ${rule.maxToleranceDays}d) | DPP: ${usgResult.dppUsgBR}`);
+      } else {
+        finalIgShort = `${dumResult.adjustedIG.shortText} (por DUM — DPP ${dumResult.dppAdjustedBR})`;
+        finalDppBR = dumResult.dppAdjustedBR;
+        decisionSummary = `✅ CONDUTA FEBRASGO / MS: MANTER IG PELA DUM! Discrepância de ${diffDays} dia(s) está dentro do limite de até ${rule.maxToleranceDays} dias para ${rule.phaseLabel}.\n👉 IG Oficial Considerada Hoje: ${dumResult.adjustedIG.longText} (${dumResult.adjustedIG.shortText}) | DPP Oficial: ${dumResult.dppAdjustedBR}`;
+        headerLines.push(`# IG CONSIDERADA (CRITÉRIO FEBRASGO/MS): ${dumResult.adjustedIG.longText} (Mantida pela DUM — discrepância de ${diffDays}d <= ${rule.maxToleranceDays}d) | DPP: ${dumResult.dppAdjustedBR}`);
+      }
+      previewLines.push(decisionSummary);
+    } else if (dumResult) {
+      finalIgShort = `${dumResult.adjustedIG.shortText} (por DUM — DPP ${dumResult.dppAdjustedBR})`;
+      finalDppBR = dumResult.dppAdjustedBR;
+      previewLines.push(`👉 IG Considerada Hoje (pela DUM): ${dumResult.adjustedIG.longText} | DPP: ${dumResult.dppAdjustedBR}`);
+    } else if (usgResult) {
+      finalIgShort = `${usgResult.currentIG.shortText} (por Eco — DPP ${usgResult.dppUsgBR})`;
+      finalDppBR = usgResult.dppUsgBR;
+      previewLines.push(`👉 IG Considerada Hoje (pela Ecografia): ${usgResult.currentIG.longText} | DPP: ${usgResult.dppUsgBR}`);
+    }
+
+    return {
+      dumResult,
+      usgResult,
+      finalIgShort,
+      finalDppBR,
+      previewText: previewLines.join('\n'),
+      evolutionHeaderBlock: [
+        'CÁLCULO OBSTÉTRICO DE IDADE GESTACIONAL E DPP (INCLUIR NAS LINHAS "#" DO TOPO DA EVOLUÇÃO DE PRÉ-NATAL):',
+        ...headerLines
+      ].join('\n')
+    };
+  }
+
+  function updatePrenatalLivePreview() {
+    const previewEl = document.getElementById('pnCalcPreviewResult');
+    const igInput = document.getElementById('pnIG');
+    const calc = calculatePrenatalGestationalAge();
+    if (!calc) {
+      if (previewEl) {
+        previewEl.textContent = 'Preencha a DUM (com dias do ciclo) e/ou os dados da 1ª Ecografia acima para calcular automaticamente a IG de hoje, a DPP e o critério oficial de redatação (FEBRASGO / Ministério da Saúde).';
+      }
+      return;
+    }
+    if (previewEl) {
+      previewEl.textContent = calc.previewText;
+    }
+    if (igInput) {
+      igInput.value = calc.finalIgShort;
+    }
   }
 
   function updateZScoreLivePreview() {
@@ -2244,13 +2444,16 @@
   }
 
   function clearZScoreInputs() {
-    ['zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails', 'pnIG', 'pnPA', 'pnWeight', 'pnAU', 'pnBCF'].forEach(id => {
+    ['zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails', 'pnDUM', 'pnUsgDate', 'pnUsgWeeks', 'pnUsgDays', 'pnIG', 'pnPA', 'pnWeight', 'pnAU', 'pnBCF'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    const cycleEl = document.getElementById('pnCycleDays');
+    if (cycleEl) cycleEl.value = '28';
     const chkZ = document.getElementById('chkIncludeZScoreInEvolution');
     if (chkZ) chkZ.checked = false;
     updateZScoreLivePreview();
+    updatePrenatalLivePreview();
   }
 
   function getSavedApiKey() {
@@ -2701,6 +2904,20 @@
     ['zSex', 'zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'chkIncludeZScoreInEvolution', 'pueriFeedingType', 'pueriFormulaDetails'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', updateZScoreLivePreview);
       document.getElementById(id)?.addEventListener('change', updateZScoreLivePreview);
+    });
+
+    ['pnDUM', 'pnCycleDays', 'pnUsgDate', 'pnUsgWeeks', 'pnUsgDays'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', updatePrenatalLivePreview);
+      document.getElementById(id)?.addEventListener('change', updatePrenatalLivePreview);
+    });
+
+    document.getElementById('btnCopyPrenatalCalc')?.addEventListener('click', () => {
+      const calc = calculatePrenatalGestationalAge();
+      if (!calc) {
+        showToast('ℹ️ Preencha a DUM e/ou a Ecografia primeiro para copiar o cálculo.');
+        return;
+      }
+      copyToClipboard(calc.previewText, '🤰 Cálculo de IG e DPP copiado!');
     });
 
     // Busca e Filtros dos Últimos 30 Dias (Nome, Tipo de Atendimento, Data e Status PEC)
