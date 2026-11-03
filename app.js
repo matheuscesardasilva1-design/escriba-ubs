@@ -681,7 +681,57 @@
     updateDocumentTitle();
   }
 
-  // Cancela e exclui a gravação em andamento (com confirmação de segurança)
+  function resetCurrentConsultationFormFields() {
+    state.templateLocked = false;
+    state.pendingExamFiles = [];
+    state.preTranscribedExamsText = '';
+
+    const patientInput = document.getElementById('patientIdentifier');
+    const quickNotesInput = document.getElementById('quickNotesInput');
+    const prevConsultInput = document.getElementById('previousConsultationInput');
+    const liveBox = document.getElementById('liveExamTranscriptionBox');
+    const liveEditor = document.getElementById('liveExamTranscriptionEditor');
+
+    if (patientInput) patientInput.value = '';
+    if (quickNotesInput) quickNotesInput.value = '';
+    if (prevConsultInput) prevConsultInput.value = '';
+    if (liveBox) liveBox.style.display = 'none';
+    if (liveEditor) liveEditor.value = '';
+
+    clearZScoreInputs();
+    renderPendingExamFilesUI();
+    renderTemplateSelector();
+    updateQuickNotesExamBadge();
+  }
+
+  async function clearAllCurrentSheet() {
+    if (state.isRecording) {
+      await cancelCurrentRecording();
+      return;
+    }
+
+    const patientInput = document.getElementById('patientIdentifier');
+    const quickNotesInput = document.getElementById('quickNotesInput');
+    const prevConsultInput = document.getElementById('previousConsultationInput');
+    const hasAnyData = Boolean(
+      (patientInput && patientInput.value.trim()) ||
+      (quickNotesInput && quickNotesInput.value.trim()) ||
+      (prevConsultInput && prevConsultInput.value.trim()) ||
+      (state.pendingExamFiles && state.pendingExamFiles.length > 0) ||
+      state.preTranscribedExamsText
+    );
+
+    if (hasAnyData) {
+      const ok = confirm('🧹 Deseja limpar todos os campos, anexos e anotações preenchidos nesta tela?');
+      if (!ok) return;
+    }
+
+    resetCurrentConsultationFormFields();
+    updateTokenMonitorUI();
+    showToast('🧹 Tudo limpo! Tela pronta para o próximo atendimento.');
+  }
+
+  // Cancela e exclui a gravação em andamento (com confirmação de segurança) e limpa todos os campos
   async function cancelCurrentRecording() {
     if (!state.isRecording || !state.mediaRecorder) return;
 
@@ -696,7 +746,7 @@
     }
 
     const confirmed = confirm(
-      '⚠️ CONFIRMAÇÃO DE EXCLUSÃO:\n\nTem certeza que deseja CANCELAR e EXCLUIR a gravação deste atendimento?\n\nTodo o áudio captado nesta folha será apagado e não poderá ser recuperado.'
+      '⚠️ CONFIRMAÇÃO DE EXCLUSÃO:\n\nTem certeza que deseja CANCELAR a gravação e LIMPAR todos os dados deste atendimento?\n\nTodo o áudio e os campos preenchidos nesta folha serão descartados.'
     );
 
     if (!confirmed) {
@@ -726,12 +776,10 @@
     state.isRecording = false;
     state.isPaused = false;
     state.isContinuingConsultation = false;
-    state.templateLocked = false;
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
-    state.pendingExamFiles = [];
-    renderPendingExamFilesUI();
-    renderTemplateSelector();
+
+    resetCurrentConsultationFormFields();
     updateRecordingControlsUI();
     updateRecordingTimerUI();
     updateTokenMonitorUI();
@@ -754,7 +802,7 @@
 
     await refreshQueueSidebar();
     updateStorageStatsUI();
-    showToast('🗑️ Atendimento cancelado e excluído com sucesso.');
+    showToast('🧹 Atendimento cancelado e todos os campos limpos!');
   }
 
   async function finishRecordingAndQueue() {
@@ -2812,6 +2860,8 @@
     document.getElementById('btnPauseRec')?.addEventListener('click', togglePauseRecording);
     document.getElementById('btnStopRec')?.addEventListener('click', finishRecordingAndQueue);
     document.getElementById('btnCancelRec')?.addEventListener('click', cancelCurrentRecording);
+    document.getElementById('btnClearAllSheetTop')?.addEventListener('click', clearAllCurrentSheet);
+    document.getElementById('btnClearAllSheetBottom')?.addEventListener('click', clearAllCurrentSheet);
     document.getElementById('btnChangeTemplateModel')?.addEventListener('click', () => {
       state.templateLocked = false;
       renderTemplateSelector();

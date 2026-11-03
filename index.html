@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
-  <link rel="stylesheet" href="styles.css?v=20261102_19" />
+  <link rel="stylesheet" href="styles.css?v=20261102_20" />
 </head>
 <body>
 
@@ -249,9 +249,14 @@
 
     <!-- CARTÃO CENTRAL LIMPO E DISCRETO DE ABERTURA DE FOLHA -->
     <div class="card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
         <label style="font-weight: 700; font-size: 13.5px;">Identificação do Paciente</label>
-        <span id="diskSaveIndicator" style="font-size: 11.5px; color: #64748b;">Sincronizado no disco</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span id="diskSaveIndicator" style="font-size: 11.5px; color: #64748b;">Sincronizado no disco</span>
+          <button type="button" class="btn btn-secondary" id="btnClearAllSheetTop" style="padding: 4px 10px; font-size: 11.5px; color: #b91c1c; border-color: #fecaca; background: #fff5f5;" title="Limpar todos os campos, anexos e descartar gravação se não for seguir com o atendimento">
+            🧹 Limpar Tudo
+          </button>
+        </div>
       </div>
 
       <!-- Bloqueado contra o Gerenciador de Senhas do Chrome (nunca é tratado como usuário de login!) -->
@@ -282,8 +287,8 @@
           <button type="button" class="btn btn-finish" id="btnStopRec" style="display: none;" title="Atalho rápido: Alt + R">
             ✔️ Finalizar Atendimento
           </button>
-          <button type="button" class="btn btn-secondary" id="btnCancelRec" style="display: none; color: #b91c1c;" title="Descartar atendimento atual">
-            ✕ Cancelar
+          <button type="button" class="btn btn-secondary" id="btnCancelRec" style="display: none; color: #b91c1c; border-color: #fecaca; background: #fff5f5;" title="Descartar gravação e limpar todos os campos">
+            🧹 Cancelar e Limpar Tudo
           </button>
         </div>
       </div>
@@ -360,6 +365,9 @@
         </label>
         <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly">
           ⚡ Gerar Só das Anotações / PDF
+        </button>
+        <button type="button" class="btn btn-secondary" id="btnClearAllSheetBottom" style="color: #b91c1c; border-color: #fecaca; background: #fff5f5;" title="Limpar todos os campos, exames e anotações quando não for seguir com o atendimento">
+          🧹 Limpar Tudo
         </button>
       </div>
 
@@ -758,9 +766,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261102_19"></script>
-  <script src="zscore.js?v=20261102_19"></script>
-  <script src="db.js?v=20261102_19"></script>
-  <script src="app.js?v=20261102_19"></script>
+  <script src="templates.js?v=20261102_20"></script>
+  <script src="zscore.js?v=20261102_20"></script>
+  <script src="db.js?v=20261102_20"></script>
+  <script src="app.js?v=20261102_20"></script>
 </body>
 </html>
