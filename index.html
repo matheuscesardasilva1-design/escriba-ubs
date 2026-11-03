@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
-  <link rel="stylesheet" href="styles.css?v=20261030_18" />
+  <link rel="stylesheet" href="styles.css?v=20261102_19" />
 </head>
 <body>
 
@@ -337,12 +337,20 @@
         <textarea id="previousConsultationInput" class="textarea-box" rows="3" placeholder="Cole aqui a última evolução do PEC (o sistema puxará os diagnósticos da Avaliação anterior para as #, atualizará a # MUC tirando remédios suspensos e verificará no Subjetivo se o paciente manteve uso de medicação suspensa)..." autocomplete="off"></textarea>
       </div>
 
-      <!-- ANOTAÇÕES RÁPIDAS -->
+      <!-- ANOTAÇÕES RÁPIDAS (COM DETECÇÃO AUTOMÁTICA DE EXAMES LABORATORIAIS E DE IMAGEM) -->
       <div style="margin-bottom: 12px;">
-        <label style="font-size: 12.5px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px;">
-          ✍️ Anotações Rápidas / Sinais Vitais / Controles de PA e HGT (opcional):
-        </label>
-        <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, Controle de HGT/PA ou anotações livres..." autocomplete="off"></textarea>
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;">
+          <label style="font-size: 12.5px; font-weight: 700; color: var(--text-muted);">
+            ✍️ Anotações Rápidas / Sinais Vitais / Colar Exames Lab ou Imagem (opcional):
+          </label>
+          <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+            <span id="quickNotesExamBadge" style="display: none; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc;"></span>
+            <button type="button" class="btn btn-primary" id="btnFormatNotesExamNow" style="display: none; padding: 3px 9px; font-size: 11px; background: #0284c7;" title="Formata imediatamente os exames colados/escritos nas Anotações Rápidas sem parar a gravação">
+              ⚡ Formatar Exame das Notas na Hora
+            </button>
+          </div>
+        </div>
+        <textarea id="quickNotesInput" class="textarea-box" rows="2" placeholder="PA, Peso, Controle de HGT/PA, ou cole/escreva aqui exames laboratoriais (vai p/ - LABS: ... | ...) ou de imagem (vai p/ - EXAME: texto corrido)..." autocomplete="off"></textarea>
       </div>
 
       <div style="display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap;">
@@ -750,9 +758,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261030_18"></script>
-  <script src="zscore.js?v=20261030_18"></script>
-  <script src="db.js?v=20261030_18"></script>
-  <script src="app.js?v=20261030_18"></script>
+  <script src="templates.js?v=20261102_19"></script>
+  <script src="zscore.js?v=20261102_19"></script>
+  <script src="db.js?v=20261102_19"></script>
+  <script src="app.js?v=20261102_19"></script>
 </body>
 </html>

@@ -397,9 +397,45 @@
   }
 
   // Transcreve os PDFs/imagens anexados IMEDIATAMENTE durante a consulta (sem precisar finalizar a gravação!)
+  function updateQuickNotesExamBadge() {
+    const quickNotesInput = document.getElementById('quickNotesInput');
+    const badge = document.getElementById('quickNotesExamBadge');
+    const btnFormat = document.getElementById('btnFormatNotesExamNow');
+    const raw = quickNotesInput ? quickNotesInput.value : '';
+    const detected = window.detectExamsInText ? window.detectExamsInText(raw) : { hasLab: false, hasImaging: false, hasAny: false };
+
+    if (!badge || !btnFormat) return;
+    if (!detected.hasAny) {
+      badge.style.display = 'none';
+      btnFormat.style.display = 'none';
+      return;
+    }
+
+    badge.style.display = 'inline-flex';
+    btnFormat.style.display = 'inline-flex';
+    if (detected.hasLab && detected.hasImaging) {
+      badge.textContent = '🧪🖥️ Exames Laboratorial + Imagem detectados (irão formatados p/ EXAMES COMPLEMENTARES)';
+      badge.style.background = '#f0fdf4';
+      badge.style.color = '#166534';
+      badge.style.borderColor = '#86efac';
+    } else if (detected.hasLab) {
+      badge.textContent = '🧪 Exame Laboratorial detectado -> formato: - LABS DD/MM/AAAA: ... | ...';
+      badge.style.background = '#e0f2fe';
+      badge.style.color = '#0369a1';
+      badge.style.borderColor = '#7dd3fc';
+    } else {
+      badge.textContent = '🖥️ Exame de Imagem detectado -> formato: - EXAME DD/MM/AAAA: texto corrido';
+      badge.style.background = '#f3e8ff';
+      badge.style.color = '#6b21a8';
+      badge.style.borderColor = '#d8b4fe';
+    }
+  }
+
   async function transcribePendingExamsNow() {
-    if (!state.pendingExamFiles || state.pendingExamFiles.length === 0) {
-      showToast('📎 Anexe um PDF ou imagem de exame primeiro.');
+    const quickNotesVal = document.getElementById('quickNotesInput')?.value.trim() || '';
+    const hasAttachedFiles = state.pendingExamFiles && state.pendingExamFiles.length > 0;
+    if (!hasAttachedFiles && !quickNotesVal) {
+      showToast('📎 Anexe um PDF/foto de exame ou cole o exame nas Anotações Rápidas primeiro.');
       return;
     }
     const apiKey = getSavedApiKey();
@@ -409,14 +445,19 @@
     }
 
     const btnNow = document.getElementById('btnTranscribeExamsNow');
+    const btnNotesNow = document.getElementById('btnFormatNotesExamNow');
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     const liveEditor = document.getElementById('liveExamTranscriptionEditor');
 
     if (liveBox) liveBox.style.display = 'block';
-    if (liveEditor) liveEditor.value = '⏳ Lendo e transcrevendo os exames anexados (a gravação da consulta continua normalmente)...';
+    if (liveEditor) liveEditor.value = '⏳ Lendo e formatando os exames no padrão Laboratorial (- LABS ... | ...) / Imagem (- EXAME: texto corrido)...';
     if (btnNow) {
       btnNow.disabled = true;
       btnNow.textContent = '⏳ Transcrevendo...';
+    }
+    if (btnNotesNow) {
+      btnNotesNow.disabled = true;
+      btnNotesNow.textContent = '⏳ Formatando...';
     }
 
     try {
@@ -433,7 +474,7 @@
           }
         }
       }
-      parts.push({ text: window.buildInstantExamTranscriptionPrompt() });
+      parts.push({ text: window.buildInstantExamTranscriptionPrompt(quickNotesVal) });
 
       const requestBody = {
         contents: [{ role: 'user', parts }],
@@ -457,13 +498,17 @@
       }
 
       addDailyTokenUsage(responseJson?.usageMetadata?.totalTokenCount || 800);
-      showToast('🧪 Exames transcritos na hora! Você já pode ler/copiar sem parar a gravação.');
+      showToast('🧪 Exames formatados na hora! Você já pode ler/copiar e eles entrarão em EXAMES COMPLEMENTARES.');
     } catch (err) {
-      if (liveEditor) liveEditor.value = `⚠️ Erro ao transcrever anexo: ${err.message}`;
+      if (liveEditor) liveEditor.value = `⚠️ Erro ao formatar exames: ${err.message}`;
     } finally {
       if (btnNow) {
         btnNow.disabled = false;
         btnNow.textContent = '⚡ Transcrever Anexo na Hora';
+      }
+      if (btnNotesNow) {
+        btnNotesNow.disabled = false;
+        btnNotesNow.textContent = '⚡ Formatar Exame das Notas na Hora';
       }
     }
   }
@@ -969,6 +1014,7 @@
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
+    updateQuickNotesExamBadge();
     showToast(`📂 ${files.length} áudio(s) importado(s) para a fila!`);
     await refreshQueueSidebar();
     if (lastCreatedId) {
@@ -1030,6 +1076,7 @@
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
+    updateQuickNotesExamBadge();
     showToast('📄 Laudos / Notas enviados para a fila de estruturação!');
     await refreshQueueSidebar();
     await selectConsultationToView(consultId);
@@ -2454,6 +2501,7 @@
     if (chkZ) chkZ.checked = false;
     updateZScoreLivePreview();
     updatePrenatalLivePreview();
+    updateQuickNotesExamBadge();
   }
 
   function getSavedApiKey() {
@@ -2882,8 +2930,13 @@
 
     document.getElementById('btnProcessNotesOnly')?.addEventListener('click', handleProcessNotesOrExamsOnly);
 
-    // Transcrição instantânea de exames anexados sem precisar finalizar a gravação
+    // Transcrição instantânea de exames anexados ou colados nas Anotações Rápidas sem precisar finalizar a gravação
     document.getElementById('btnTranscribeExamsNow')?.addEventListener('click', transcribePendingExamsNow);
+    document.getElementById('btnFormatNotesExamNow')?.addEventListener('click', transcribePendingExamsNow);
+    document.getElementById('quickNotesInput')?.addEventListener('input', updateQuickNotesExamBadge);
+    document.getElementById('quickNotesInput')?.addEventListener('paste', () => {
+      setTimeout(updateQuickNotesExamBadge, 20);
+    });
     document.getElementById('btnCopyLiveExams')?.addEventListener('click', () => {
       const txt = document.getElementById('liveExamTranscriptionEditor')?.value || '';
       copyToClipboard(txt, '📋 Resultado dos exames copiado!');

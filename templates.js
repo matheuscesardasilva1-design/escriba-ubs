@@ -365,10 +365,34 @@ Ciente, concordante e sem dúvidas`
 };
 
 // ============================================================================
+// DETECTOR INTELIGENTE DE EXAMES LABORATORIAIS E DE IMAGEM NAS ANOTAÇÕES RÁPIDAS
+// ============================================================================
+window.detectExamsInText = function(rawText) {
+  const txt = String(rawText || '').trim();
+  if (!txt) {
+    return { hasLab: false, hasImaging: false, hasAny: false };
+  }
+
+  const labRegex = /\b(?:hb|ht|hemoglobina|hemat[oó]crito|hemacias|hem[aá]cias|eritr[oó]citos|vcm|hcm|rdw|leuc[oó]citos|leuco|plaquetas|plaq|glicose|glicemia\s+de\s+jejum|gj|hba1c|hemoglobina\s+glicada|glicada|creatinina|creat|ureia|tfg|ckd-epi|s[oó]dio|pot[aá]ssio|c[aá]lcio|magn[eé]sio|f[oó]sforo|[aá]cido\s+[uú]rico|tgo|tgp|ast|alt|ggt|gama\s*gt|fosfatase\s+alcalina|bilirrubina|colesterol|ct\s+\d|hdl|ldl|vldl|triglicer[ií]deos|triglic[eé]rides|tag\s+\d|tsh|t4\s*l|t4\s+livre|t3|vitamina\s+[bd]|vit\.?\s*b12|vit\.?\s*d|ferritina|ferro\s+s[eé]rico|transferrina|psa|pcr|vhs|equ|eas|urina\s+tipo|urocultura|parasitol[oó]gico|epf|sangue\s+oculto|vdrl|fta-abs|hiv|hbsag|anti-hbs|anti-hcv|toxoplasmose|rub[eé]ola|cmv|beta-hcg|hemograma|lipidograma|coagulograma|tap|inr|ttpa|labs)\b|(?:mg\/dl|g\/dl|meq\/l|uui\/ml|mui\/ml|ng\/ml|pg\/ml|\/mm3|\/ul)/i;
+
+  const imagingRegex = /\b(?:usg|ultrassom|ultrassonografia|ecografia|eco\s+(?:abdominal|abdome|obst[eé]trica|mam[aá]ria|tireoide|pelvica|p[eé]lvica|transvaginal|pr[oó]stata|vias\s+urin[aá]rias|rins|partes\s+moles|ombro|joelho|punho|cotovelo|tornozelo|cervical)|ecocardio|ecocardiograma|raio-x|raio\s+x|rx\s+(?:de\s+)?(?:t[oó]rax|coluna|seios|abdome|joelho|ombro|bacia|m[aã]o|punho|p[eé])|radiografia|tomografia|tc\s+(?:de\s+)?(?:cr[aâ]nio|t[oó]rax|abdome|coluna|seios)|angiotc|resson[aâ]ncia|rm\s+(?:de\s+)?(?:cr[aâ]nio|coluna|joelho|ombro|pelve|abdome)|rmn|mamografia|mmg|bi-?rads|ti-?rads|densitometria|dmo|endoscopia|eda|colonoscopia|retossigmoidoscopia|doppler|duplex|ecg|eletrocardiograma|holter|teste\s+ergom[eé]trico|ergometria|espirometria|eletroneuromiografia|enmg|eletroencefalograma|eeg|cintilografia|pet-ct|colposcopia|citopatol[oó]gico|papanicolau|anatomopatol[oó]gico|bi[oó]psia)\b/i;
+
+  const hasLab = labRegex.test(txt);
+  const hasImaging = imagingRegex.test(txt);
+  return {
+    hasLab,
+    hasImaging,
+    hasAny: hasLab || hasImaging
+  };
+};
+
+// ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
 window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText) {
   const todayStr = new Date().toLocaleDateString('pt-BR');
+  const notesExamDetection = window.detectExamsInText(quickNotes);
+  const hasAnyExamsToFormat = Boolean(hasExamFiles || preTranscribedExamsText || notesExamDetection.hasAny);
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
 Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS E SEQUENCIAIS:
 ETAPA 1: Ouvir o áudio anexado e transcrever literalmente APENAS o que foi dito de verdade no campo "transcricao_literal_do_audio" do JSON (identificando "[MÉDICO]:" e "[PACIENTE]:").
@@ -414,16 +438,21 @@ Data de referência de hoje: ${todayStr}.
    - Mantenha apenas "BEG, LOC, MUC" e inclua SOMENTE a PA/sinais vitais aferidos no momento do exame físico e os achados do exame físico que foram EFETIVAMENTE ditos no áudio ou nas notas rápidas!
    - Se o médico NÃO falou nada sobre aparelho respiratório, cardiovascular ou abdome, NÃO coloque AP, AC ou ABD no Objetivo!
 
-4. REGRA ESTRITA DE EXAMES COMPLEMENTARES (ZERO OMISSÃO E PROIBIDO "N/R"):
-   - ${hasExamFiles || preTranscribedExamsText ? 'Há exames complementares anexados/transcritos! Crie o bloco "EXAMES COMPLEMENTARES" logo após o OBJETIVO e antes da AVALIAÇÃO e inclua TODOS os exames.' : 'Se NÃO houver PDF de exame anexado E o médico NÃO tiver falado nenhum resultado de exame complementar laboratorial/imagem no áudio/notas, NÃO CRIE e NÃO ESCREVA o título "EXAMES COMPLEMENTARES" na evolução!'}
-   - Quando houver exames complementares (por PDF anexado ou ditados no áudio/notas), siga RIGOROSAMENTE estas 3 regras:
-     a) TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF: Varra todas as páginas do documento e inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma/enzimas hepáticas, perfil lipídico, tireoide, hormônios, vitaminas, cinética de ferro, marcadores inflamatórios, sorologias, urina/EQU, urocultura, parasitológico, fezes, etc.). NUNCA omita exames extras que foram realizados no laudo!
-     b) PROIBIDO ESCREVER "N/R", "Não realizado" OU EXAMES QUE NÃO CONSTAM NO LAUDO: Se um exame (por exemplo, T4L, Ferritina, etc.) NÃO estiver presente no PDF, NÃO escreva "T4L N/R" — simplesmente NÃO inclua esse exame na linha! Só escreva exames que efetivamente possuem resultado no documento.
-     c) FORMATO EXATO:
-        * LABORATORIAIS (todos os exames da mesma data na mesma linha, separados por " | ", usando abreviações médicas limpas + valor):
+4. REGRA ESTRITA DE EXAMES COMPLEMENTARES (PDF/IMAGEM ANEXADOS, ÁUDIO OU COLADOS/ESCRITOS NAS ANOTAÇÕES RÁPIDAS):
+   - ${hasAnyExamsToFormat ? 'Há exames complementares presentes (anexados, transcritos ou colados/escritos nas Anotações Rápidas)! Crie OBRIGATORIAMENTE o bloco "EXAMES COMPLEMENTARES" logo após o OBJETIVO e antes da AVALIAÇÃO e inclua TODOS os exames formatados.' : 'Se NÃO houver PDF de exame anexado E o médico NÃO tiver falado nem colado/escrito nenhum resultado de exame complementar laboratorial ou de imagem no áudio ou nas Anotações Rápidas, NÃO CRIE e NÃO ESCREVA o título "EXAMES COMPLEMENTARES" na evolução!'}
+   - DETECÇÃO AUTOMÁTICA DE EXAMES COLADOS OU ESCRITOS NAS ANOTAÇÕES RÁPIDAS ("=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ==="):
+     * Se o médico colou ou escreveu resultados de exames no campo de Anotações Rápidas (seja um laudo copiado do sistema de laboratório/PEC cheio de linhas e valores de referência, seja digitado abreviado como "hb 13,2 ht 39 leuco 6500 gj 95 tsh 2,1" ou "USG abdome: colelitíase"), você DEVE detectar automaticamente cada exame, separá-lo de outras anotações clínicas (como PA/Peso de hoje) e colocá-lo dentro do bloco "EXAMES COMPLEMENTARES" seguindo o formato exato de Laboratorial vs. Imagem abaixo!
+     * JAMAIS jogue exames laboratoriais ou de imagem colados nas Anotações Rápidas de forma bruta/desformatada dentro do SUBJETIVO ou do OBJETIVO! Eles pertencem SEMPRE ao bloco "EXAMES COMPLEMENTARES".
+   - Quando houver exames complementares (por PDF/foto anexado, ditados no áudio ou colados/escritos nas Anotações Rápidas), siga RIGOROSAMENTE estas 3 regras:
+     a) TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF OU NAS ANOTAÇÕES RÁPIDAS: Varra todas as páginas/linhas e inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma/enzimas hepáticas, perfil lipídico, tireoide, hormônios, vitaminas, cinética de ferro, marcadores inflamatórios, sorologias, urina/EQU, urocultura, parasitológico, fezes, exames de imagem, etc.). NUNCA omita exames extras que foram realizados!
+     b) PROIBIDO ESCREVER "N/R", "Não realizado" OU EXAMES QUE NÃO CONSTAM NO LAUDO/NOTAS: Se um exame (por exemplo, T4L, Ferritina, etc.) NÃO estiver presente, NÃO escreva "T4L N/R" — simplesmente NÃO inclua esse exame na linha! Só escreva exames que efetivamente possuem resultado.
+     c) FORMATO EXATO (DIFERENCIANDO EXAME LABORATORIAL DE EXAME DE IMAGEM):
+        * SE FOR EXAME LABORATORIAL (todos os exames laboratoriais da mesma data na mesma linha, iniciando com "- LABS [DD/MM/AAAA]: " ou "- LABS: " se sem data, separados por " | ", usando abreviações médicas limpas + valor, removendo valores de referência do laboratório):
           Exemplo: - LABS 17/08/2026: Hb 15,3 | Ht 43,7 | Leuco 6.990 | Plaq 303.000 | GJ 90,9 | HbA1c 4,4% | Creat 0,97 | Ureia 22,2 | Sódio 140 | K 4,6 | Ác. Úrico 5,4 | TGO 18 | TGP 18 | GGT 35,1 | FA 68 | BT 0,7 | CT 195,1 | HDL 33,8 | LDL 143,6 | TAG 74 | TSH 0,81 | Vit B12 390 | Vit D 31,2 | Testo Total 842 | Testo Livre 23,07 | EQU: pH 6,0, Densidade 1.020, Leucócitos 25/uL, Flora Bacteriana Moderada
-        * EXAMES DE IMAGEM E MÉTODOS GRÁFICOS (em texto corrido conciso, sem tópicos soltos):
-          Exemplo: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.
+        * SE FOR EXAME DE IMAGEM OU MÉTODO GRÁFICO (USG/Ecografia, Raio-X/RX, Tomografia/TC, Ressonância/RM, Ecocardiograma, Mamografia, Densitometria, Endoscopia/EDA, Colonoscopia, Doppler, ECG, etc. -> iniciando com "- [MODALIDADE E REGIÃO EM MAIÚSCULO] [DD/MM/AAAA se houver]: " em texto corrido conciso, sem tópicos soltos):
+          Exemplo 1: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.
+          Exemplo 2: - USG ABDOME TOTAL 12/09/2026: Fígado com dimensões normais e aumento difuso da ecogenicidade compatível com esteatose hepática leve. Vesícula biliar, vias biliares, pâncreas, baço e rins sem alterações.
+          Exemplo 3: - RX TÓRAX PA/PERFIL 02/11/2026: Transparência pulmonar preservada, seios costofrênicos livres e área cardíaca dentro dos limites da normalidade.
 
 5. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
    - Na seção AVALIAÇÃO da "evolucao_completa", escreva APENAS o nome clínico das hipóteses diagnósticas / condições avaliadas, uma por linha, SEM traço ("- ") no início da linha! (Exemplo: escreva "Erisipela" e na linha de baixo "Cefaleia", sem "- ").
@@ -488,7 +517,7 @@ ${previousConsultationText ? `
 === ÚLTIMA EVOLUÇÃO / CONSULTA ANTERIOR DO PACIENTE (PARA COMPARAÇÃO E ATUALIZAÇÃO) ===
 ${previousConsultationText}
 ` : ''}${previousEvolutionContext ? `\n11. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - O médico já havia gravado e transcrito a primeira parte desta consulta e agora gravou uma continuação para o MESMO paciente.\n   - Integre perfeitamente as novas informações faladas neste áudio (novas queixas, exame físico, exames ou condutas/prescrições finais) com a evolução já iniciada abaixo, mantendo uma única evolução completa, coesa e atualizada:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES JÁ TRANSCRITOS NESTA CONSULTA (INCLUA NO BLOCO EXAMES COMPLEMENTARES) ===\n${preTranscribedExamsText}\n` : ''}
-=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ===
+=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ${notesExamDetection.hasAny ? `(ATENÇÃO: FORAM DETECTADOS EXAMES ${notesExamDetection.hasLab && notesExamDetection.hasImaging ? 'LABORATORIAIS E DE IMAGEM' : (notesExamDetection.hasLab ? 'LABORATORIAIS' : 'DE IMAGEM')} ABAIXO -> FORMATE-OS OBRIGATORIAMENTE NO BLOCO "EXAMES COMPLEMENTARES": LABORATORIAL EM LINHA ÚNICA "- LABS DD/MM/AAAA: ... | ..." E IMAGEM EM "- NOME DO EXAME DD/MM/AAAA: texto corrido conciso")` : ''} ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===\n' + zScoreSummary : ''}
 
@@ -507,20 +536,21 @@ Responda em JSON válido contendo exatamente estas chaves (preencha "transcricao
 };
 
 // ============================================================================
-// GERADOR DE PROMPT PARA TRANSCRIÇÃO INSTANTÂNEA DE EXAMES (DURANTE A GRAVAÇÃO)
+// GERADOR DE PROMPT PARA TRANSCRIÇÃO INSTANTÂNEA DE EXAMES (ANEXOS OU NOTAS RÁPIDAS)
 // ============================================================================
-window.buildInstantExamTranscriptionPrompt = function() {
+window.buildInstantExamTranscriptionPrompt = function(notesText) {
   return `Você é um Médico de Família e Comunidade na APS/UBS.
-Analise TODOS os arquivos de exames complementares (PDFs / imagens de laudos laboratoriais ou de imagem) anexados e transcreva 100% dos resultados no formato padrão de prontuário abaixo.
-
+Analise TODOS os exames complementares fornecidos (sejam arquivos PDF/imagens anexados E/OU exames colados/escritos nas Anotações Rápidas abaixo) e converta 100% dos resultados de exames para o formato padrão de prontuário abaixo.
+${notesText ? `\n=== TEXTO COLADO / ESCRITO NAS ANOTAÇÕES RÁPIDAS ===\n${notesText}\n` : ''}
 REGRAS OBRIGATÓRIAS:
-1. TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF: Varra todas as páginas do documento e inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma, perfil lipídico, tireoide, hormônios, vitaminas, ferro/ferritina, sorologias, urina/EQU, urocultura, parasitológico, imagem, etc.).
-2. PROIBIDO ESCREVER "N/R" OU "Não realizado": Só inclua exames que efetivamente possuem resultado no documento.
-3. FORMATO EXATO:
-   - LABORATORIAIS (todos os exames da mesma data na mesma linha, separados por " | ", usando abreviações médicas limpas + valor):
+1. TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF OU NO TEXTO COLADO: Inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma, perfil lipídico, tireoide, hormônios, vitaminas, ferro/ferritina, sorologias, urina/EQU, urocultura, parasitológico, exames de imagem, etc.). Ignore valores de referência do laboratório e cabeçalhos burocráticos.
+2. PROIBIDO ESCREVER "N/R" OU "Não realizado": Só inclua exames que efetivamente possuem resultado informado.
+3. FORMATO EXATO (DIFERENCIANDO EXAME LABORATORIAL DE EXAME DE IMAGEM):
+   - SE FOR EXAME LABORATORIAL (todos os exames da mesma data na mesma linha, iniciando com "- LABS [DD/MM/AAAA]: " ou "- LABS: " se não houver data, separados por " | ", usando abreviações médicas limpas + valor):
      Exemplo: - LABS 17/08/2026: Hb 15,3 | Ht 43,7 | Leuco 6.990 | Plaq 303.000 | GJ 90,9 | HbA1c 4,4% | Creat 0,97 | Ureia 22,2 | Sódio 140 | K 4,6 | TGO 18 | TGP 18 | CT 195,1 | HDL 33,8 | LDL 143,6 | TAG 74 | TSH 0,81 | EQU: pH 6,0, Leucócitos 25/uL
-   - EXAMES DE IMAGEM / MÉTODOS GRÁFICOS (em texto corrido conciso por data):
-     Exemplo: - USG ABDOME TOTAL 12/09/2026: Fígado com dimensões normais e aumento difuso da ecogenicidade compatível com esteatose hepática leve. Demais estruturas sem alterações.
+   - SE FOR EXAME DE IMAGEM / MÉTODOS GRÁFICOS (iniciando com "- [MODALIDADE E REGIÃO EM MAIÚSCULO] [DD/MM/AAAA se houver]: " em texto corrido conciso na mesma linha, sem tópicos soltos):
+     Exemplo 1: - USG ABDOME TOTAL 12/09/2026: Fígado com dimensões normais e aumento difuso da ecogenicidade compatível com esteatose hepática leve. Demais estruturas sem alterações.
+     Exemplo 2: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.
 
 Responda APENAS com as linhas formatadas dos exames, prontas para copiar e colar no prontuário, sem títulos extras ou comentários.`;
 };
