@@ -34,20 +34,63 @@
     selectedMicDeviceId: localStorage.getItem('ubs_selected_mic') || ''
   };
 
-  // Usa EXCLUSIVAMENTE o modelo Gemini 2.5 Flash oficial de produção:
-  // - Evita "gemini-2.0-flash" / "gemini-1.5-flash" (descontinuados que geram erro 404 NotFound no Google AI Studio)
-  // - Evita "gemini-3-flash-preview" / "exp" (instáveis que geram erro 503 ServiceUnavailable e limite de 2 RPM)
-  // - Evita "gemini-2.5-flash-lite" (que ignora partes do áudio e regras de formatação)
+  // Descoberta inteligente e auto-adaptativa do modelo Gemini Flash ativo na chave do usuário:
+  // - Chaves novas (2026+) usam a geração Gemini 3 Flash (ex.: gemini-3.8-flash / gemini-3.0-flash / gemini-3-flash-preview) e bloqueiam gemini-2.5-flash com "no longer available to new users".
+  // - O sistema descobre automaticamente qual Flash principal (NUNCA "lite") está ativo na chave, memoriza no navegador o modelo que funciona e bloqueia permanentemente qualquer modelo descontinuado para não gerar erros 404!
   const GEMINI_MODELS = [
+    'gemini-3.8-flash',
+    'gemini-3.0-flash',
+    'gemini-3-flash-preview',
     'gemini-2.5-flash'
   ];
 
   let cachedDiscoveredModels = null;
 
-  async function getActiveGeminiModels(apiKey) {
-    if (cachedDiscoveredModels && cachedDiscoveredModels.length > 0) {
-      return cachedDiscoveredModels;
+  function getDisabledModelsForKey() {
+    try {
+      return JSON.parse(localStorage.getItem('ubs_disabled_gemini_models_v1') || '[]');
+    } catch (_) {
+      return [];
     }
+  }
+
+  function markModelAsDisabledForKey(modelName) {
+    const clean = String(modelName || '').replace(/^models\//, '').trim();
+    if (!clean) return;
+    const list = getDisabledModelsForKey();
+    if (!list.includes(clean)) {
+      list.push(clean);
+      localStorage.setItem('ubs_disabled_gemini_models_v1', JSON.stringify(list));
+    }
+    if (cachedDiscoveredModels) {
+      cachedDiscoveredModels = cachedDiscoveredModels.filter(m => m !== clean);
+    }
+    if (localStorage.getItem('ubs_working_gemini_model_v1') === clean) {
+      localStorage.removeItem('ubs_working_gemini_model_v1');
+    }
+  }
+
+  function rememberWorkingModelForKey(modelName) {
+    const clean = String(modelName || '').replace(/^models\//, '').trim();
+    if (clean) {
+      localStorage.setItem('ubs_working_gemini_model_v1', clean);
+    }
+  }
+
+  async function getActiveGeminiModels(apiKey) {
+    const disabled = getDisabledModelsForKey();
+    const remembered = localStorage.getItem('ubs_working_gemini_model_v1') || '';
+
+    if (cachedDiscoveredModels && cachedDiscoveredModels.length > 0) {
+      const filtered = cachedDiscoveredModels.filter(m => !disabled.includes(m));
+      if (filtered.length > 0) {
+        if (remembered && !disabled.includes(remembered)) {
+          return [remembered, ...filtered.filter(m => m !== remembered)];
+        }
+        return filtered;
+      }
+    }
+
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
       if (res.ok) {
@@ -55,27 +98,50 @@
         const available = (data.models || [])
           .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map(m => m.name.replace(/^models\//, ''))
+          // PROIBIDO modelos "lite" (que ignoram partes do áudio e regras) ou modelos de imagem/voz/embedding
           .filter(name =>
-            name === 'gemini-2.5-flash' ||
-            (name.startsWith('gemini-2.5-flash') &&
-             !name.includes('lite') &&
-             !name.includes('preview') &&
-             !name.includes('exp') &&
-             !name.includes('tts') &&
-             !name.includes('image'))
+            name.includes('gemini') &&
+            name.includes('flash') &&
+            !name.includes('lite') &&
+            !name.includes('embedding') &&
+            !name.includes('imagen') &&
+            !name.includes('veo') &&
+            !name.includes('tts') &&
+            !name.includes('image') &&
+            !name.includes('audio') &&
+            !name.includes('thinking') &&
+            !name.includes('1.5') &&
+            !name.includes('2.0') &&
+            !disabled.includes(name)
           );
 
-        if (available.includes('gemini-2.5-flash')) {
-          cachedDiscoveredModels = ['gemini-2.5-flash'];
+        // Ordena priorizando a versão mais nova do Gemini Flash (ex.: 3.8 / 3.0 / 3-flash antes de 2.5-flash)
+        const extractVersionScore = (name) => {
+          const m = name.match(/gemini-(\d+(?:\.\d+)?)/);
+          const ver = m ? parseFloat(m[1]) : 0;
+          const isStable = !name.includes('preview') && !name.includes('exp') ? 0.05 : 0;
+          return ver + isStable;
+        };
+        available.sort((a, b) => extractVersionScore(b) - extractVersionScore(a));
+
+        if (remembered && !disabled.includes(remembered)) {
+          const withRemembered = [remembered, ...available.filter(m => m !== remembered)];
+          cachedDiscoveredModels = withRemembered.slice(0, 4);
           return cachedDiscoveredModels;
         }
+
         if (available.length > 0) {
-          cachedDiscoveredModels = [available[0]];
+          cachedDiscoveredModels = available.slice(0, 4);
           return cachedDiscoveredModels;
         }
       }
     } catch (_) {}
-    return GEMINI_MODELS;
+
+    const fallback = GEMINI_MODELS.filter(m => !disabled.includes(m));
+    if (remembered && !disabled.includes(remembered) && !fallback.includes(remembered)) {
+      fallback.unshift(remembered);
+    }
+    return fallback.length > 0 ? fallback : ['gemini-3.8-flash', 'gemini-3-flash-preview'];
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
@@ -106,7 +172,7 @@
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v9');
+    const saved = localStorage.getItem('ubs_custom_templates_v10');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -118,7 +184,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v9', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v10', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -1634,7 +1700,12 @@
               }
             }
 
-            // 2) Se o campo estrutural tem sub-linhas na evolução anterior (ex.: "# G01PV0PC0A0" -> "- Gestação atual não planejada", ou "# Histórico do parto" -> "- Idade por capurro...", ou "# Triagem neonatal:" -> ">> Orelhinha..."), garante que todas as sub-linhas preenchidas sejam mantidas na ordem original!
+            // 2) Se na evolução anterior havia a paridade preenchida (ex.: "# G01PV0PC0A0") e na nova ficou o esqueleto em branco "# G PV PC A", substitui pela paridade real da paciente!
+            if (/^#\s*G\d/i.test(mainUpper) && /^#\s*G\s+PV\s+PC\s+A\s*$/im.test(headerPart)) {
+              headerPart = headerPart.replace(/^#\s*G\s+PV\s+PC\s+A\s*$/im, block.main);
+            }
+
+            // 3) Se o campo estrutural tem sub-linhas na evolução anterior (ex.: "# G01PV0PC0A0" -> "- Gestação atual não planejada", ou "# Histórico do parto" -> "- Idade por capurro...", ou "# Triagem neonatal:" -> ">> Orelhinha..."), garante que todas as sub-linhas preenchidas sejam mantidas na ordem original!
             if (block.subs.length > 0 && /^#\s*(?:G\d|HIST[ÓO]RICO\s+DO\s+PARTO|TRIAGEM\s+NEONATAL|VACINAS|SOROLOGIAS)/i.test(mainUpper)) {
               const keyPrefixMatch = block.main.match(/^#\s*(G\d\S*|HIST[ÓO]RICO\s+DO\s+PARTO[^\n]*|TRIAGEM\s+NEONATAL[^\n]*|VACINAS\s*:|SOROLOGIAS\s*:)/i);
               if (keyPrefixMatch) {
@@ -1849,11 +1920,12 @@
 
   async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate) {
     let lastError = null;
-    const modelsToTry = await getActiveGeminiModels(apiKey);
+    const modelsToTry = [...(await getActiveGeminiModels(apiKey))];
 
     for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
       const model = modelsToTry[mIdx];
       const maxAttempts = 3;
+      let disableThinkingForThisModel = false;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -1862,14 +1934,14 @@
           }
 
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-          // Otimização de velocidade: limita o thinkingBudget no Gemini 2.5 Flash para evitar esperas de 2 minutos
+          // Otimização de velocidade: limita o thinkingBudget para evitar esperas de 2 minutos
           const bodyForModel = {
             ...requestBody,
             generationConfig: {
               ...(requestBody.generationConfig || {})
             }
           };
-          if (model.startsWith('gemini-2.5') && !bodyForModel.generationConfig.thinkingConfig) {
+          if (!disableThinkingForThisModel && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
             bodyForModel.generationConfig.thinkingConfig = { thinkingBudget: 512 };
           }
 
@@ -1881,6 +1953,7 @@
 
           if (res.ok) {
             const responseJson = await res.json();
+            rememberWorkingModelForKey(model);
             updateTokenMonitorUI();
             return { responseJson, modelUsed: model };
           }
@@ -1897,8 +1970,26 @@
             throw new Error('Credencial de API inválida. Clique em "Credencial API" no topo para verificar.');
           }
 
-          // Se o modelo não estiver disponível na conta (404 ou "no longer available"), pula imediatamente para o próximo modelo!
+          // Caso um modelo específico não aceite thinkingConfig, reenvia imediatamente sem thinkingConfig
+          if (res.status === 400 && !disableThinkingForThisModel && /thinking/i.test(errMsg)) {
+            disableThinkingForThisModel = true;
+            attempt--;
+            continue;
+          }
+
+          // Se o modelo não estiver disponível na conta (404 ou "no longer available to new users"):
+          // 1) Marca como desativado permanentemente no navegador para NUNCA mais gerar erro 404
+          // 2) Se a mensagem do Google indicar o modelo substituto (ex.: "use models/gemini-3.8-flash"), usa-o imediatamente!
           if (res.status === 404 || errMsg.toLowerCase().includes('no longer available') || errMsg.toLowerCase().includes('not found')) {
+            markModelAsDisabledForKey(model);
+            const suggestedMatch = errMsg.match(/use\s+(?:models\/)?(gemini-[a-z0-9.-]+)/i);
+            if (suggestedMatch && suggestedMatch[1]) {
+              const suggestedModel = suggestedMatch[1].replace(/\.$/, '').trim();
+              if (suggestedModel && !modelsToTry.includes(suggestedModel)) {
+                modelsToTry.splice(mIdx + 1, 0, suggestedModel);
+                rememberWorkingModelForKey(suggestedModel);
+              }
+            }
             lastError = new Error(errMsg);
             break;
           }
@@ -3570,7 +3661,7 @@
     });
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
       if (confirm('Restaurar todos os 7 modelos para o texto original padrão?')) {
-        localStorage.removeItem('ubs_custom_templates_v9');
+        localStorage.removeItem('ubs_custom_templates_v10');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();
         showToast('🔄 Modelos originais restaurados!');

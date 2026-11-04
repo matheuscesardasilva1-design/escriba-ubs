@@ -38,7 +38,7 @@ Ciente, concordante e sem dúvidas`
     icon: '🤰',
     description: 'Acompanhamento de Pré-Natal de Risco Habitual ou Alto Risco na UBS.',
     templateText: `## CONSULTA DE PRÉ-NATAL ##
-# G01PV0PC0A0
+# G PV PC A
 # IG  POR ECO COM  SEM EM 
 # TS: 
 # TOXO: 
@@ -67,6 +67,7 @@ MF:
 Edema em membros inferiores: 
 Peso: 
 PA:  mmHg
+ABD: Globoso, indolor a palpação superficial e profunda
 
 AVALIAÇÃO
 Gestação de risco habitual em curso ou alto risco
@@ -617,7 +618,8 @@ Data de referência de hoje: ${todayStr}.
    - PRESERVAÇÃO ABSOLUTA DE TODAS AS "#" E SUB-ITENS COM TRAÇO ("- " ou "> ") ENTRE AS HASHTAGS (EM TODOS OS MODELOS):
      * Se houver evolução prévia (ou informações ditadas), você DEVE MANTER 100% DE TODAS AS LINHAS "#" (ex.: "# ovolactovegetariana", "# Histórico de bulimia na infância", "# Apendicectomia em 2017 ou 2018", comorbidades, cirurgias prévias) E TODAS AS INFORMAÇÕES COMPLEMENTARES COM TRAÇO ("- ...") ABAIXO DAS "#" (ex.: "- Gestação atual não planejada" abaixo de "# G01PV0PC0A0", ou "- Fatores de risco..." abaixo de "# Risco aumentado para pré-eclâmpsia"). JAMAIS apague linhas "#" extras ou sub-linhas com "-"!
    - PADRÃO OBRIGATÓRIO DO HISTÓRICO OBSTÉTRICO (PARIDADE) NO PRÉ-NATAL:
-     * Escreva SEMPRE no formato compacto sem espaços com 2 dígitos após o G: exemplo "# G01PV0PC0A0" (ou "# G02PV1PC0A0"), mantendo na linha de baixo qualquer observação com traço "- " que já existia (ex.: "- Gestação atual não planejada").
+     * NUNCA assuma "G01" como padrão se a paridade não foi informada!
+     * Quando a paridade constar na evolução anterior, nas notas ou for falada no áudio, escreva SEMPRE no formato compacto sem espaços com 2 dígitos após o G: exemplo "# G01PV0PC0A0", "# G02PV1PC0A0", "# G03PV1PC1A0", mantendo na linha de baixo qualquer observação com traço "- " que já existia (ex.: "- Gestação atual não planejada"). Se a paridade não foi informada em lugar nenhum, mantenha "# G PV PC A" em branco para o médico preencher.
    - PADRÃO OBRIGATÓRIO DA IDADE GESTACIONAL ("# IG") E PRESERVAÇÃO DOS DADOS DA ECOGRAFIA:
      * Escreva SEMPRE a IG atual logo após "# IG" no formato "[SEMANAS]+[DIAS]", mantendo obrigatoriamente a informação da ecografia (quantas semanas tinha na eco e a data em que foi realizada):
        Padrão exato: "# IG 16+2 POR ECO COM 08 SEM EM 26/08/2026" (ou "# IG 17+6 POR DUM EM DD/MM/AAAA").
@@ -655,9 +657,10 @@ Data de referência de hoje: ${todayStr}.
      * "Controle de HGT: [todos os valores e horários/períodos + parecer final do médico]."
      * "Controle de PA: [todos os valores e horários/períodos + parecer final do médico]."
 
-3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — NÃO INVENTE DADOS NÃO FALADOS:
-   - NUNCA invente sinais físicos que o médico não falou e NUNCA copie o exame físico (PA, Peso, AU, BCF) da consulta antiga como se fosse o de hoje!
-   - No OBJETIVO de hoje, inclua apenas os achados e medidas efetivamente realizados/falados na consulta de HOJE!
+3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — EXAME DO ABDÔMEN E ACRÉSCIMO OBRIGATÓRIO DE QUALQUER EXAME FÍSICO FALADO OU DESCRITO (EM TODOS OS 7 MODELOS!):
+   - No Pré-Natal, mantenha a linha "ABD: Globoso, indolor a palpação superficial e profunda" (ou atualize-a caso o médico descreva dor à palpação, contrações/dinâmica uterina, Giordano, etc.).
+   - ACRÉSCIMO OBRIGATÓRIO DE QUALQUER ACHADO ADICIONAL: Em TODOS os 7 modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER item adicional de exame físico além do esqueleto básico (ex.: ausculta pulmonar "AP: MVUD, SRA", ausculta cardíaca "AC: BNF, 2T, RR, SS", exame abdominal, exame especular, toque vaginal / avaliação de colo uterino, exame das mamas, Giordano / punho-percussão lombar, oroscopia, otoscopia, exame de membros/panturrilhas, pele, exame neurológico, etc.), você DEVE INCLUIR e descrever todas essas linhas adicionais dentro do bloco "OBJETIVO"!
+   - NUNCA copie o exame físico antigo (PA, Peso, AU, BCF da consulta passada) como se fosse o de hoje, e NUNCA invente medidas não faladas hoje!
 
 4. REGRA ESTRITA DE EXAMES COMPLEMENTARES E ULTRASSONOGRAFIA (MANTER EXAMES ANTERIORES + INCLUIR NOVOS + SEPARAR LABS DE ULTRASSONOGRAFIA):
    - ${hasAnyExamsToFormat ? 'Há exames complementares (atuais e/ou da evolução anterior)! Inclua-os logo após o OBJETIVO e antes da AVALIAÇÃO.' : 'Se NÃO houver exames atuais nem exames na evolução anterior, não crie o bloco EXAMES COMPLEMENTARES.'}
