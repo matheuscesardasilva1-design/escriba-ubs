@@ -54,6 +54,7 @@
   ];
 
   const cachedDiscoveredModelsByKey = {};
+  const modelOutputTokenLimits = {};
 
   function getKeyShortHash(apiKey) {
     const k = String(apiKey || '').trim();
@@ -140,6 +141,12 @@
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
       if (res.ok) {
         const data = await res.json();
+        (data.models || []).forEach(m => {
+          const shortName = (m.name || '').replace(/^models\//, '');
+          if (shortName && m.outputTokenLimit) {
+            modelOutputTokenLimits[shortName] = m.outputTokenLimit;
+          }
+        });
         const allCapable = (data.models || [])
           .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map(m => m.name.replace(/^models\//, ''))
@@ -781,12 +788,15 @@
     if (state.isRecording) return;
 
     try {
+      // Configuração de alta sensibilidade para consultório médico:
+      // - echoCancellation: false evita que o Chrome corte/abafe a voz mais baixa do(a) paciente sentado(a) mais longe
+      //   quando o médico fala "Uhum/Tá" ou digita no teclado (já que não há som saindo da caixa de som durante a gravação).
+      // - autoGainControl: true amplifica automaticamente falas baixas ou distantes do microfone.
       const audioConstraints = {
-        echoCancellation: true,
+        echoCancellation: false,
         noiseSuppression: true,
         autoGainControl: true,
-        channelCount: 1,
-        sampleRate: 16000
+        channelCount: 1
       };
       if (state.selectedMicDeviceId) {
         audioConstraints.deviceId = { exact: state.selectedMicDeviceId };
@@ -798,8 +808,8 @@
 
       const mimeType = getSupportedAudioMimeType();
       const recorderOptions = mimeType
-        ? { mimeType, audioBitsPerSecond: 32000 }
-        : { audioBitsPerSecond: 32000 };
+        ? { mimeType, audioBitsPerSecond: 64000 }
+        : { audioBitsPerSecond: 64000 };
 
       const recorder = new MediaRecorder(stream, recorderOptions);
       state.mediaRecorder = recorder;
@@ -1687,21 +1697,9 @@
     const isPrenatalConsult = consultation.templateId === 'prenatal';
     const hasNotesExams = window.detectExamsInText ? window.detectExamsInText(consultation.quickNotes).hasAny : false;
 
-    const promptText = window.buildMedicalEvolutionPrompt(
-      tpl,
-      consultation.quickNotes,
-      consultation.zScoreSummary,
-      examFiles.length > 0 || Boolean(preExams) || hasNotesExams || (isPrenatalConsult && Boolean(consultation.previousConsultationText)),
-      consultation.previousEvolutionText || '',
-      consultation.previousConsultationText || '',
-      preExams,
-      soapSubtypeHeader
-    );
-
-    const parts = [];
-
-    // 1. Inclui o Áudio da consulta (local, na nuvem via remoteFileUri, ou transcrição literal salva)
+    // 1. Prepara o Áudio da consulta (local, na nuvem via remoteFileUri, ou transcrição literal salva)
     let hasAudioAttached = false;
+    let audioPart = null;
     if (consultation.chunkCount > 0 && !consultation.audioDeleted) {
       const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
       if (audioBlob && audioBlob.size > 0) {
@@ -1710,30 +1708,110 @@
         if (audioBlob.size > 12 * 1024 * 1024) {
           if (onProgressMilestone) onProgressMilestone(14, '☁️ Enviando arquivo de áudio longo...');
           const fileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
-          parts.push({ fileData: { mimeType: cleanMime, fileUri } });
+          audioPart = { fileData: { mimeType: cleanMime, fileUri } };
         } else {
           const base64Audio = await blobToBase64(audioBlob);
-          parts.push({ inlineData: { mimeType: cleanMime, data: base64Audio } });
+          audioPart = { inlineData: { mimeType: cleanMime, data: base64Audio } };
         }
       }
     }
     if (!hasAudioAttached && consultation.remoteFileUri) {
       hasAudioAttached = true;
-      parts.push({
+      audioPart = {
         fileData: {
           mimeType: consultation.mimeType || 'audio/webm',
           fileUri: consultation.remoteFileUri
         }
-      });
+      };
     }
-    if (!hasAudioAttached && consultation.rawTranscript) {
-      parts.push({ text: `=== TRANSCRIÇÃO LITERAL DO ÁUDIO SALVA ANTERIORMENTE ===\n${consultation.rawTranscript}` });
+
+    let totalTokensUsed = 0;
+    let lastModelUsed = '';
+    let verbatimTranscript = '';
+
+    // =========================================================================
+    // ETAPA 1 DE 2 (DEDICADA EXCLUSIVAMENTE À TRANSCRIÇÃO LITERAL DE 100% DO ÁUDIO):
+    // Quando o modelo faz apenas a transcrição em texto puro (sem dividir tokens nem
+    // atenção com as 150 linhas de regras da máscara SOAP e sem JSON), ele transcreve
+    // PALAVRA POR PALAVRA do segundo 00:00 até o fim sem resumir e sem pular queixas!
+    // =========================================================================
+    if (hasAudioAttached && audioPart && window.buildVerbatimAudioTranscriptionPrompt) {
+      if (onProgressMilestone) {
+        onProgressMilestone(22, '🎙️ Etapa 1/2: Transcrevendo 100% do áudio palavra por palavra...');
+      }
+      try {
+        const verbatimPrompt = window.buildVerbatimAudioTranscriptionPrompt(consultation.durationSeconds);
+        const stage1Body = {
+          contents: [{
+            role: 'user',
+            parts: [
+              audioPart,
+              { text: verbatimPrompt }
+            ]
+          }],
+          generationConfig: {
+            temperature: 0.0,
+            maxOutputTokens: 65536
+          }
+        };
+        const stage1Res = await callGeminiWithFallbackAndRetry(stage1Body, apiKey, (statusMsg) => {
+          if (onProgressMilestone) {
+            onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
+          }
+        });
+        const stage1Text = (stage1Res.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        totalTokensUsed += stage1Res.responseJson?.usageMetadata?.totalTokenCount || 0;
+        lastModelUsed = stage1Res.modelUsed || lastModelUsed;
+
+        if (stage1Text && stage1Text.length >= 15) {
+          verbatimTranscript = consultation.previousRawTranscript
+            ? `${consultation.previousRawTranscript}\n\n--- CONTINUAÇÃO DO ATENDIMENTO ---\n${stage1Text}`
+            : stage1Text;
+          // Salva imediatamente a transcrição literal completa no banco de dados local!
+          consultation.rawTranscript = fixBrazilianMedicationSpelling(verbatimTranscript);
+          await window.ScribeDB.saveConsultation(consultation);
+        }
+      } catch (stage1Err) {
+        console.warn('Etapa 1 (transcrição dedicada) falhou, seguindo com envio multimodal direto na Etapa 2:', stage1Err);
+      }
+    }
+
+    if (!verbatimTranscript && consultation.rawTranscript) {
+      verbatimTranscript = consultation.rawTranscript;
+    }
+
+    // =========================================================================
+    // ETAPA 2 DE 2 (ESTRUTURAÇÃO CLÍNICA COMPLETA A PARTIR DA TRANSCRIÇÃO INTEGRAL):
+    // Com toda a conversa já transcrita palavra por palavra em texto, o modelo lê
+    // cada linha do diálogo e converte 100% das queixas, história, exame físico e
+    // condutas para a máscara clínica sem omitir absolutamente nada!
+    // =========================================================================
+    const hasPreTranscribedDialogue = Boolean(verbatimTranscript && verbatimTranscript.length >= 15);
+    const promptText = window.buildMedicalEvolutionPrompt(
+      tpl,
+      consultation.quickNotes,
+      consultation.zScoreSummary,
+      examFiles.length > 0 || Boolean(preExams) || hasNotesExams || (isPrenatalConsult && Boolean(consultation.previousConsultationText)),
+      consultation.previousEvolutionText || '',
+      consultation.previousConsultationText || '',
+      preExams,
+      soapSubtypeHeader,
+      hasPreTranscribedDialogue
+    );
+
+    const parts = [];
+    if (hasPreTranscribedDialogue) {
+      parts.push({
+        text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE (LEIA DO INÍCIO AO FIM E INCLUA 100% DAS QUEIXAS, INTERROGATÓRIO, HISTÓRIA, EXAME FÍSICO E CONDUTAS NA EVOLUÇÃO!) ===\n${verbatimTranscript}`
+      });
+    } else if (hasAudioAttached && audioPart) {
+      parts.push(audioPart);
     }
 
     // 2. Inclui PDFs / Imagens de Exames (se já não tiverem sido transcritos na hora durante a consulta)
     if (!preExams) {
       if (examFiles.length > 0 && onProgressMilestone) {
-        onProgressMilestone(18, '📄 Preparando PDFs / imagens de exames anexados...');
+        onProgressMilestone(60, '📄 Lendo PDFs / imagens de exames anexados...');
       }
       for (const exam of examFiles) {
         if (exam.blob && exam.blob.size > 0) {
@@ -1756,12 +1834,18 @@
       contents: [{ role: 'user', parts }],
       generationConfig: {
         temperature: 0.1,
+        maxOutputTokens: 65536,
         responseMimeType: 'application/json'
       }
     };
 
     if (onProgressMilestone) {
-      onProgressMilestone(24, '🎙️ Transcrevendo diálogo completo da consulta...');
+      onProgressMilestone(
+        hasPreTranscribedDialogue ? 66 : 24,
+        hasPreTranscribedDialogue
+          ? '📋 Etapa 2/2: Organizando 100% da transcrição no modelo clínico...'
+          : '🎙️ Transcrevendo e estruturando diálogo completo da consulta...'
+      );
     }
 
     const { responseJson, modelUsed } = await callGeminiWithFallbackAndRetry(requestBody, apiKey, (statusMsg) => {
@@ -1771,15 +1855,17 @@
     });
 
     if (onProgressMilestone) {
-      onProgressMilestone(95, '🏷️ Validando cabeçalho #, exames anteriores e CIAP-2 / CID-10...', '');
+      onProgressMilestone(95, '🏷️ Validando cabeçalho #, exames e CIAP-2 / CID-10...', '');
     }
 
     const rawText = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    let tokensUsed = responseJson?.usageMetadata?.totalTokenCount || Math.round((consultation.durationSeconds || 60) * 32 + 1200);
+    totalTokensUsed += responseJson?.usageMetadata?.totalTokenCount || 0;
+    let tokensUsed = totalTokensUsed || Math.round((consultation.durationSeconds || 60) * 32 + 1200);
+    lastModelUsed = modelUsed || lastModelUsed;
 
     let parsed = parseGeminiEvolutionResponse(rawText);
     let finalEvolution = (parsed.evolucao_completa || '').trim();
-    const transcriptCandidate = (parsed.transcricao_literal_do_audio || '').trim();
+    const transcriptCandidate = (verbatimTranscript || parsed.transcricao_literal_do_audio || '').trim();
 
     // AUTOCORREÇÃO AUTOMÁTICA: Se por qualquer motivo a IA devolveu apenas a transcrição bruta sem o modelo SOAP estruturado
     // (mas sem ser o alerta de áudio sem conteúdo clínico), faz uma passagem rápida de estruturação!
@@ -1849,7 +1935,7 @@
     return {
       evolutionText: cleanText,
       cidCiapCodes: codes,
-      rawTranscript: fixBrazilianMedicationSpelling(parsed.transcricao_literal_do_audio || ''),
+      rawTranscript: fixBrazilianMedicationSpelling(transcriptCandidate || parsed.transcricao_literal_do_audio || ''),
       soapParts: {
         subjetivo: extractSectionFromText(cleanText, 'subjetivo'),
         objetivo: extractSectionFromText(cleanText, 'objetivo'),
@@ -1860,7 +1946,7 @@
       auditAlerts: Array.isArray(parsed.alertas_auditoria) ? parsed.alertas_auditoria : [],
       suggestedSpecialty: parsed.especialidade_sugerida_encaminhamento || '',
       tokensUsed,
-      modelUsed
+      modelUsed: lastModelUsed
     };
   }
 
@@ -2330,6 +2416,7 @@
         const model = modelsToTry[mIdx];
         const maxAttempts = 2;
         let disableThinkingForThisModel = false;
+        let fallbackMaxTokens = null;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
@@ -2338,11 +2425,13 @@
             }
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(currentKey)}`;
-            // Otimização de velocidade: limita o thinkingBudget para evitar esperas de 2 minutos
+            // Garante maxOutputTokens no teto do modelo (65536) para NUNCA truncar ou resumir falas longas
+            const maxSupported = fallbackMaxTokens || modelOutputTokenLimits[model] || 65536;
             const bodyForModel = {
               ...requestBody,
               generationConfig: {
-                ...(requestBody.generationConfig || {})
+                ...(requestBody.generationConfig || {}),
+                maxOutputTokens: Math.min(requestBody.generationConfig?.maxOutputTokens || 65536, maxSupported)
               }
             };
             if (!disableThinkingForThisModel && !model.includes('lite') && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
@@ -2380,6 +2469,13 @@
             // Caso um modelo específico não aceite thinkingConfig, reenvia imediatamente sem thinkingConfig
             if (res.status === 400 && !disableThinkingForThisModel && /thinking/i.test(errMsg)) {
               disableThinkingForThisModel = true;
+              attempt--;
+              continue;
+            }
+
+            // Caso um modelo tenha limite menor de maxOutputTokens (ex: 8192), ajusta imediatamente e reenvia
+            if (res.status === 400 && !fallbackMaxTokens && /max_output_tokens|maxOutputTokens|token/i.test(errMsg)) {
+              fallbackMaxTokens = 8192;
               attempt--;
               continue;
             }

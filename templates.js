@@ -572,9 +572,35 @@ window.parsePreviousConsultationData = function(prevRawText) {
 };
 
 // ============================================================================
+// ETAPA 1 DEDICADA: TRANSCRIÇÃO LITERAL PALAVRA POR PALAVRA DE 100% DO ÁUDIO
+// ============================================================================
+window.buildVerbatimAudioTranscriptionPrompt = function(durationSeconds) {
+  const approxMin = durationSeconds ? Math.max(1, Math.round(durationSeconds / 60)) : null;
+  return `Você é um transcritor médico forense especialista em consultas da Atenção Primária à Saúde (UBS / SUS).
+Sua ÚNICA tarefa nesta etapa é ouvir o áudio anexado do segundo 00:00 até o último segundo${approxMin ? ` (duração aproximada: ${approxMin} min)` : ''} e transcrever LITERALMENTE, PALAVRA POR PALAVRA, 100% de tudo o que foi dito na consulta.
+
+REGRAS OBRIGATÓRIAS E INEGOCIÁVEIS DE TRANSCRIÇÃO INTEGRAL:
+1. PROIBIÇÃO ABSOLUTA DE RESUMIR, ABREVIAR OU PULAR TRECHOS:
+   - É TERMINANTEMENTE PROIBIDO resumir falas, omitir perguntas ou respostas, agrupar assuntos ou pular o meio/final da gravação!
+   - Transcreva CADA FRASE falada do início ao fim da gravação, na ordem cronológica exata em que foi dita.
+2. IDENTIFICAÇÃO DOS INTERLOCUTORES:
+   - Inicie cada mudança de fala com "[MÉDICO]: ", "[PACIENTE]: " ou "[ACOMPANHANTE]: " (uma fala por linha para facilitar a leitura completa).
+3. CAPTAÇÃO TOTAL DE DETALHES CLÍNICOS (NÃO DEIXE ESCAPAR NADA!):
+   - Transcreva todas as queixas, dores, sintomas, história da doença atual e tempo de evolução relatados pelo(a) paciente (mesmo que a voz do paciente esteja mais baixa ou distante do microfone!).
+   - Transcreva todas as perguntas feitas pelo médico e todas as confirmações ou negativas do paciente (ex.: se o médico perguntar sobre febre, sangramento, perda de líquido, disúria, cefaleia, escotomas, movimentos fetais, etc., transcreva a pergunta e a resposta!).
+   - Transcreva integralmente qualquer relato de passagem por Emergência / Pronto Atendimento / Hospital / Maternidade / UPA, incluindo o que sentiu, quando foi, quais exames ou medicações fez lá.
+   - Transcreva todos os nomes de medicamentos citados, dosagens (mg, mcg, UI), posologias, adesão ou efeitos colaterais.
+   - Transcreva todos os valores ditados de pressão arterial (PA), glicemia capilar (HGT), peso, estatura, altura uterina (AU), batimentos cardiofetais (BCF), perímetro cefálico e qualquer achado de exame físico falado pelo médico.
+   - Transcreva todos os resultados de exames laboratoriais ou ultrassonografias lidos em voz alta durante a consulta.
+   - Transcreva todas as orientações finais, receitas/prescrições, exames solicitados, encaminhamentos, atestados, sinais de alarme e prazo de retorno falados pelo médico até o último segundo do áudio.
+
+Responda APENAS com a transcrição literal completa, linha por linha, do início ao fim do áudio (sem blocos markdown e sem comentários extras).`;
+};
+
+// ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader) {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader, hasPreTranscribedAudio = false) {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   const notesExamDetection = window.detectExamsInText(quickNotes);
   const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
@@ -594,15 +620,20 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
   }
 
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
-Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS E SEQUENCIAIS:
+${hasPreTranscribedAudio
+  ? `Sua tarefa agora é ler minuciosamente CADA LINHA da "TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE" fornecida abaixo (do início ao fim, sem ignorar nenhuma fala!) e construir uma "evolucao_completa" médica extremamente completa, fiel e detalhada, integrando 100% do que foi conversado na consulta com as notas rápidas, os exames anexados e os dados permanentes da evolução anterior.`
+  : `Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS E SEQUENCIAIS:
 ETAPA 1 (TRANSCRIÇÃO INTEGRAL DE 100% DO ÁUDIO): Ouvir o áudio anexado do primeiro ao último segundo (00:00 até o fim) e transcrever literalmente TUDO o que foi dito na chave "transcricao_literal_do_audio" do JSON (identificando "[MÉDICO]:" e "[PACIENTE]:"). É TERMINANTEMENTE PROIBIDO pular, resumir ou ignorar falas da paciente (especialmente relatos de ida à emergência/hospital e todas as queixas relatadas!).
-ETAPA 2 (EVOLUÇÃO CLÍNICA ESTRUTURADA): Preencher "evolucao_completa" usando 100% dos fatos reais presentes na sua "transcricao_literal_do_audio", nas notas rápidas, nos exames anexados e nos dados permanentes da evolução anterior.
+ETAPA 2 (EVOLUÇÃO CLÍNICA ESTRUTURADA): Preencher "evolucao_completa" usando 100% dos fatos reais presentes na sua "transcricao_literal_do_audio", nas notas rápidas, nos exames anexados e nos dados permanentes da evolução anterior.`}
 
 Data de referência de hoje: ${todayStr}.
 
-=== REGRA 0 (LEI SUPREMA ANTI-ALUCINAÇÃO E DE CAPTAÇÃO INTEGRAL DO ÁUDIO!) ===
-- É TERMINANTEMENTE PROIBIDO inventar nomes de pacientes, nomes de enfermeiros/ACS, nomes de familiares, queixas, história clínica, medicações (MUC), doses, sinais vitais ou exames que NÃO tenham sido efetivamente falados no áudio ou escritos nas notas/evolução prévia!
-- PROIBIÇÃO ABSOLUTA DE OMITIR QUEIXAS OU FALAS DA PACIENTE: Tudo o que a paciente relatar no áudio DEVE entrar na "transcricao_literal_do_audio" e ser descrito detalhadamente no "SUBJETIVO" da evolução de hoje!
+=== REGRA 0 (LEI SUPREMA ANTI-ALUCINAÇÃO E DE CAPTAÇÃO INTEGRAL DE TUDO O QUE FOI DITO NA CONSULTA!) ===
+- É TERMINANTEMENTE PROIBIDO inventar nomes de pacientes, nomes de enfermeiros/ACS, nomes de familiares, queixas, história clínica, medicações (MUC), doses, sinais vitais ou exames que NÃO tenham sido efetivamente falados na consulta ou escritos nas notas/evolução prévia!
+- PROIBIÇÃO ABSOLUTA DE OMITIR INFORMAÇÕES DITAS NA CONSULTA:
+  * Você DEVE incluir no "SUBJETIVO" absolutamente TODAS as queixas relatadas pelo(a) paciente, história completa de cada sintoma, evolução, fatores de melhora/piora, como está usando cada medicação, todas as negativas pertinentes perguntadas pelo médico no interrogatório sintomatológico, hábitos de vida e contexto familiar/social mencionados!
+  * Você DEVE incluir no "OBJETIVO" absolutamente TODOS os sinais vitais e achados de exame físico ditados pelo médico ou anotados!
+  * Você DEVE incluir na "AVALIAÇÃO" e na "CONDUTA" absolutamente TODOS os problemas avaliados, todas as medicações prescritas/mantidas/ajustadas/suspensas com doses e posologias, todos os exames solicitados, encaminhamentos e orientações feitas pelo médico!
 - ATENÇÃO MÁXIMA A ATENDIMENTO EM EMERGÊNCIA / PRONTO ATENDIMENTO / HOSPITAL:
   * Se a paciente relatar no áudio (ou nas notas) que esteve na Emergência / Pronto Atendimento / Maternidade / Hospital entre as consultas, você DEVE relatar detalhadamente no SUBJETIVO: motivo/queixas que a levaram à emergência, data/local se citados, avaliação realizada, medicações administradas e exames feitos na urgência!
   * E se ela realizou exames laboratoriais ou de imagem na Emergência/Urgência, ao colocá-los em EXAMES COMPLEMENTARES / ULTRASSONOGRAFIA, identifique explicitamente "(REALIZADO NA EMERGÊNCIA / URGÊNCIA)" ao lado da data do exame — JAMAIS jogue exames ou avaliações feitas na emergência como se tivessem sido realizados de forma eletiva na UBS!
@@ -727,10 +758,9 @@ ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / CÁLCULO OBSTÉTRICO 
 ${effectiveTemplateText}
 
 === FORMATO DE RESPOSTA (JSON OBRIGATÓRIO) ===
-Responda em JSON válido contendo exatamente estas chaves (preencha "transcricao_literal_do_audio" PRIMEIRO transcrevendo 100% do áudio do início ao fim sem omitir nenhuma queixa da paciente, e em seguida preencha "evolucao_completa"):
+Responda em JSON válido contendo exatamente estas chaves:
 {
-  "transcricao_literal_do_audio": "Transcrição fiel e INTEGRAL de 100% do que foi falado no áudio do início ao fim separando [MÉDICO]: e [PACIENTE]: (incluindo todas as queixas, relatos de emergência e explicações!)",
-  "evolucao_completa": "Texto completo da evolução estruturada seguindo fielmente o MODELO DE REFERÊNCIA e mantendo todas as #, sub-linhas '-' e exames anteriores com quebras de linha \\n",
+  ${hasPreTranscribedAudio ? '' : '"transcricao_literal_do_audio": "Transcrição fiel e INTEGRAL de 100% do que foi falado no áudio do início ao fim separando [MÉDICO]: e [PACIENTE]: (incluindo todas as queixas, relatos de emergência e explicações!)",\n  '}"evolucao_completa": "Texto completo e detalhado da evolução estruturada seguindo fielmente o MODELO DE REFERÊNCIA, incluindo 100% de tudo o que foi dito na consulta e mantendo todas as #, sub-linhas '-' e regras de exames com quebras de linha \\n",
   "codigos_cid_ciap": ["Lista com os códigos CIAP-2 e CID-10 sugeridos para digitar fora da evolução no PEC (ou [] se não houver diagnóstico)"],
   "especialidade_sugerida_encaminhamento": "Se durante a consulta foi citado encaminhamento, informe a especialidade, caso contrário deixe string vazia",
   "alertas_auditoria": ["Lista curta apenas se faltou algum dado crítico obrigatório"]
