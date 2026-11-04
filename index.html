@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
-  <link rel="stylesheet" href="styles.css?v=20261102_20" />
+  <link rel="stylesheet" href="styles.css?v=20261103_21" />
 </head>
 <body>
 
@@ -73,6 +73,31 @@
       <button type="button" class="btn btn-secondary" id="btnChangeTemplateModel" style="padding: 5px 10px; font-size: 12px;">
         🔄 Trocar Tipo de Atendimento
       </button>
+    </div>
+
+    <!-- PAINEL ESPECÍFICO 0: CONSULTA GERAL SOAP (SELETOR DE MODALIDADE DO CABEÇALHO) -->
+    <div id="geralSoapSubtypeBox" style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="font-weight: 800; font-size: 13px; color: #0f172a;">
+          🩺 Modalidade da Consulta SOAP (Título no Topo da Evolução):
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: #1e293b; cursor: pointer;">
+            <input type="radio" name="soapVisitSubtype" value="DEMANDA ESPONTÂNEA" checked />
+            <span>## DEMANDA ESPONTÂNEA ##</span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: #1e293b; cursor: pointer;">
+            <input type="radio" name="soapVisitSubtype" value="CONSULTA AGENDADA" />
+            <span>## CONSULTA AGENDADA -</span>
+            <input type="text" id="soapScheduledTime" value="0800" maxlength="8" style="width: 56px; padding: 2px 6px; font-size: 12px; font-weight: 800; border: 1px solid #94a3b8; border-radius: 5px; text-align: center;" title="Horário da consulta agendada (ex: 0800, 0830, 1400)" autocomplete="off" />
+            <span>##</span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: #1e293b; cursor: pointer;">
+            <input type="radio" name="soapVisitSubtype" value="RETORNO MÉDICO" />
+            <span>## RETORNO MÉDICO ##</span>
+          </label>
+        </div>
+      </div>
     </div>
 
     <!-- PAINEL ESPECÍFICO 1: PUERICULTURA (Z-SCORE COM IDADE CORRIGIDA P/ PREMATURO + ALEITAMENTO) -->
@@ -766,9 +791,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261102_20"></script>
-  <script src="zscore.js?v=20261102_20"></script>
-  <script src="db.js?v=20261102_20"></script>
-  <script src="app.js?v=20261102_20"></script>
+  <script src="templates.js?v=20261103_21"></script>
+  <script src="zscore.js?v=20261103_21"></script>
+  <script src="db.js?v=20261103_21"></script>
+  <script src="app.js?v=20261103_21"></script>
 </body>
 </html>

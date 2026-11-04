@@ -8,8 +8,10 @@ window.DEFAULT_TEMPLATES = {
     name: 'Consulta Geral (SOAP)',
     badge: 'Clínica / APS',
     icon: '🩺',
-    description: 'Demanda espontânea, agendada, Hiperdia, Saúde Mental e intercorrências agudas.',
-    templateText: `#
+    description: 'Demanda espontânea, agendada, retorno médico, Hiperdia, Saúde Mental e intercorrências agudas.',
+    templateText: `## DEMANDA ESPONTÂNEA ##
+
+#
 # MUC:
 # Tabagista:
 # Alergias:
@@ -36,15 +38,22 @@ Ciente, concordante e sem dúvidas`
     icon: '🤰',
     description: 'Acompanhamento de Pré-Natal de Risco Habitual ou Alto Risco na UBS.',
     templateText: `## CONSULTA DE PRÉ-NATAL ##
-
-# G P V PC A
-# IG POR ECO COM  SEM EM 
+# G01PV0PC0A0
+# IG  POR ECO COM  SEM EM 
 # TS: 
 # TOXO: 
 # SOROLOGIAS:
-# VACINAS: 
-# CONSULTA ODONTOLOGIA: 
+- 
+# VACINAS:
+- DT: 
+- DTPA: 
+- VSR: 
+- Hepatite B: 
+- Influenza: 
+- COVID: 
+# Consulta odontologia: 
 # MUC: 
+# Tabagista: 
 # Alergias: 
 
 SUBJETIVO
@@ -52,11 +61,11 @@ Paciente vem em consulta de pré-natal. Paciente refere estar bem, sem queixas. 
 
 OBJETIVO
 BEG, LOC, MUC
-AU: CM
-BCF: BPM
-MF:
+AU:  CM
+BCF:  BPM
+MF: 
 Edema em membros inferiores: 
-Peso:
+Peso: 
 PA:  mmHg
 
 AVALIAÇÃO
@@ -387,148 +396,328 @@ window.detectExamsInText = function(rawText) {
 };
 
 // ============================================================================
+// EXTRATOR E ESTRUTURADOR DETERMINÍSTICO DA EVOLUÇÃO ANTERIOR (BLINDAGEM DE #,
+// SUB-ITENS "-", IG POR ECO, VACINAS, SOROLOGIAS E HISTÓRICO DE EXAMES)
+// ============================================================================
+window.parsePreviousConsultationData = function(prevRawText) {
+  const raw = String(prevRawText || '').trim();
+  if (!raw) return null;
+
+  const lines = raw.split(/\r?\n/);
+  const headerLines = [];
+  const headerGroups = []; // Cada grupo: { hashLine: '# ...', subLines: ['- ...', '> ...'] }
+  const labExamLines = [];
+  const usgExamLines = [];
+  const avaliacaoLines = [];
+  const condutaLines = [];
+
+  let currentSection = 'header';
+  let currentGroup = null;
+  let currentUsgEntry = [];
+
+  const flushUsgEntry = () => {
+    if (currentUsgEntry.length > 0) {
+      usgExamLines.push(currentUsgEntry.join('\n').trim());
+      currentUsgEntry = [];
+    }
+  };
+
+  const now = new Date();
+  const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (/^##.*##$/.test(trimmed)) continue;
+
+    if (/^(?:\d+\.\s*)?SUBJETIVO\b/i.test(trimmed)) {
+      currentSection = 'subjetivo';
+      continue;
+    }
+    if (/^(?:\d+\.\s*)?OBJETIVO\b/i.test(trimmed)) {
+      currentSection = 'objetivo';
+      continue;
+    }
+    if (/^(?:\d+\.\s*)?EXAMES\s+COMPLEMENTARES\b/i.test(trimmed)) {
+      flushUsgEntry();
+      currentSection = 'exames_labs';
+      continue;
+    }
+    if (/^(?:\d+\.\s*)?(?:ULTRASSONOGRAFIA|ECOGRAFIA|EXAMES\s+DE\s+IMAGEM)\b/i.test(trimmed)) {
+      flushUsgEntry();
+      currentSection = 'exames_usg';
+      continue;
+    }
+    if (/^(?:\d+\.\s*)?AVALIA[ÇC][ÃA]O\b/i.test(trimmed)) {
+      flushUsgEntry();
+      currentSection = 'avaliacao';
+      continue;
+    }
+    if (/^(?:\d+\.\s*)?CONDUTA\b/i.test(trimmed)) {
+      flushUsgEntry();
+      currentSection = 'conduta';
+      continue;
+    }
+
+    if (currentSection === 'header') {
+      if (!trimmed) continue;
+      let processedLine = trimmed;
+
+      // Atualiza automaticamente a IG se houver linha "# IG ... POR ECO COM X SEM EM DD/MM/AAAA" mantendo os dados da Eco intactos!
+      const igEcoMatch = processedLine.match(/^#\s*IG\s*(?:(\d+)\s*(?:\+|sem\w*|s)\s*(\d+)?)?\s*POR\s+ECO\s+COM\s+(\d+)\s*SEM[A-Z]*(?:\s*E\s*(\d+)\s*DIAS?)?\s+EM\s+(\d{2})\/(\d{2})\/(\d{4})(.*)$/i);
+      if (igEcoMatch) {
+        const ecoW = parseInt(igEcoMatch[3], 10);
+        const ecoD = parseInt(igEcoMatch[4] || '0', 10);
+        const dd = parseInt(igEcoMatch[5], 10);
+        const mm = parseInt(igEcoMatch[6], 10);
+        const yyyy = parseInt(igEcoMatch[7], 10);
+        const tail = igEcoMatch[8] || '';
+        const ecoDate = new Date(yyyy, mm - 1, dd, 12, 0, 0);
+        if (!isNaN(ecoDate.getTime()) && ecoDate <= todayNoon) {
+          const daysElapsed = Math.round((todayNoon - ecoDate) / 86400000);
+          const totalDays = (ecoW * 7 + ecoD) + daysElapsed;
+          const curW = Math.floor(totalDays / 7);
+          const curD = totalDays % 7;
+          const ecoWStr = igEcoMatch[3];
+          const ecoDStr = igEcoMatch[4] ? ` E ${igEcoMatch[4]} DIAS` : '';
+          processedLine = `# IG ${curW}+${curD} POR ECO COM ${ecoWStr} SEM${ecoDStr} EM ${igEcoMatch[5]}/${igEcoMatch[6]}/${igEcoMatch[7]}${tail}`;
+        }
+      }
+
+      headerLines.push(processedLine);
+      if (processedLine.startsWith('#')) {
+        currentGroup = { hashLine: processedLine, subLines: [] };
+        headerGroups.push(currentGroup);
+      } else if ((processedLine.startsWith('-') || processedLine.startsWith('>')) && currentGroup) {
+        currentGroup.subLines.push(processedLine);
+      }
+    } else if (currentSection === 'exames_labs') {
+      if (!trimmed) continue;
+      if (/^-\s*(?:US|USG|ECO|ECOCARDIO|RX|RAIO|TC|TOMOGRAFIA|RM|RESSON|MAMOGRAFIA)/i.test(trimmed)) {
+        flushUsgEntry();
+        currentSection = 'exames_usg';
+        currentUsgEntry.push(trimmed);
+      } else if (trimmed.startsWith('-')) {
+        labExamLines.push(trimmed);
+      } else if (labExamLines.length > 0) {
+        labExamLines[labExamLines.length - 1] += ' ' + trimmed;
+      }
+    } else if (currentSection === 'exames_usg') {
+      if (!trimmed) continue;
+      if (trimmed.startsWith('-')) {
+        flushUsgEntry();
+        currentUsgEntry.push(trimmed);
+      } else if (currentUsgEntry.length > 0) {
+        currentUsgEntry.push(trimmed);
+      }
+    } else if (currentSection === 'avaliacao') {
+      if (trimmed) avaliacaoLines.push(trimmed);
+    } else if (currentSection === 'conduta') {
+      if (trimmed) condutaLines.push(trimmed);
+    }
+  }
+  flushUsgEntry();
+
+  // Identifica diagnósticos da Avaliação anterior para puxar para as "#" do cabeçalho atual
+  const diagnosesToPromote = [];
+  for (let i = 0; i < avaliacaoLines.length; i++) {
+    const rawAv = avaliacaoLines[i];
+    if (rawAv.startsWith('>') || rawAv.startsWith('-')) {
+      if (diagnosesToPromote.length > 0) {
+        diagnosesToPromote[diagnosesToPromote.length - 1].subLines.push(rawAv.replace(/^>\s*/, '- '));
+      }
+      continue;
+    }
+    const cleanDiag = rawAv.replace(/^\d+[\.\)]\s*/, '').trim();
+    if (!cleanDiag) continue;
+    if (/^(?:Gesta[çc][ãa]o\s+de\s+risco\s+habitual|Crian[çc]a\s+em\s+desenvolvimento|Vacinas\s+desatualizadas|Rotina\b|Puericultura\b)/i.test(cleanDiag)) {
+      continue;
+    }
+    diagnosesToPromote.push({ hashLine: `# ${cleanDiag}`, subLines: [] });
+  }
+
+  const updatedIgGroup = headerGroups.find(g => /^#\s*IG\b/i.test(g.hashLine));
+  const promotedFlatLines = [];
+  for (const d of diagnosesToPromote) {
+    promotedFlatLines.push(d.hashLine);
+    for (const s of d.subLines) promotedFlatLines.push(s);
+  }
+
+  return {
+    headerText: headerLines.join('\n'),
+    headerLines,
+    headerGroups,
+    updatedIgLine: updatedIgGroup ? updatedIgGroup.hashLine : '',
+    diagnosesToPromote,
+    promotedFromAvaliacao: promotedFlatLines,
+    labExamLines,
+    labLines: labExamLines,
+    usgExamLines,
+    usgLines: usgExamLines,
+    avaliacaoText: avaliacaoLines.join('\n'),
+    condutaText: condutaLines.join('\n'),
+    hasPreviousExams: labExamLines.length > 0 || usgExamLines.length > 0
+  };
+};
+
+// ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText) {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader) {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   const notesExamDetection = window.detectExamsInText(quickNotes);
-  const hasAnyExamsToFormat = Boolean(hasExamFiles || preTranscribedExamsText || notesExamDetection.hasAny);
+  const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
+  const hasAnyExamsToFormat = Boolean(
+    hasExamFiles ||
+    preTranscribedExamsText ||
+    notesExamDetection.hasAny ||
+    (parsedPrev && parsedPrev.hasPreviousExams)
+  );
+
+  // Ajusta o título do modelo SOAP Geral conforme a modalidade selecionada (Demanda Espontânea, Consulta Agendada - 0800 ou Retorno Médico)
+  let effectiveTemplateText = templateObj.templateText;
+  if (templateObj.id === 'geral' && soapSubtypeHeader) {
+    effectiveTemplateText = effectiveTemplateText.replace(/^##.*##\s*\n+/m, '');
+    effectiveTemplateText = `${soapSubtypeHeader}\n\n${effectiveTemplateText.trim()}`;
+  }
+
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
 Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS E SEQUENCIAIS:
-ETAPA 1: Ouvir o áudio anexado e transcrever literalmente APENAS o que foi dito de verdade no campo "transcricao_literal_do_audio" do JSON (identificando "[MÉDICO]:" e "[PACIENTE]:").
-ETAPA 2: Preencher "evolucao_completa" usando EXCLUSIVAMENTE os fatos reais presentes na sua "transcricao_literal_do_audio", nas notas rápidas e nos exames anexados.
+ETAPA 1 (TRANSCRIÇÃO INTEGRAL DE 100% DO ÁUDIO): Ouvir o áudio anexado do primeiro ao último segundo (00:00 até o fim) e transcrever literalmente TUDO o que foi dito na chave "transcricao_literal_do_audio" do JSON (identificando "[MÉDICO]:" e "[PACIENTE]:"). É TERMINANTEMENTE PROIBIDO pular, resumir ou ignorar falas da paciente (especialmente relatos de ida à emergência/hospital e todas as queixas relatadas!).
+ETAPA 2 (EVOLUÇÃO CLÍNICA ESTRUTURADA): Preencher "evolucao_completa" usando 100% dos fatos reais presentes na sua "transcricao_literal_do_audio", nas notas rápidas, nos exames anexados e nos dados permanentes da evolução anterior.
 
 Data de referência de hoje: ${todayStr}.
 
-=== REGRA 0 (LEI SUPREMA ANTI-ALUCINAÇÃO — PROIBIÇÃO ABSOLUTA DE INVENTAR CONSULTA FALSA!) ===
-- É TERMINANTEMENTE PROIBIDO inventar nomes de pacientes, nomes de enfermeiros/ACS, nomes de familiares, queixas, história clínica, medicações (MUC), doses, sinais vitais ou exames que NÃO tenham sido efetivamente falados no áudio ou escritos nas notas!
-- JAMAIS copie palavras, nomes ou remédios citados nas regras deste prompt como se fossem do paciente!
-- Se um campo do modelo (# MUC:, # Tabagista:, # Alergias:, Enfermeiro(a):, ACS:, Familiar:, etc.) NÃO foi falado no áudio, deixe-o VAZIO em branco (ex.: "# MUC: " sem escrever nada depois e sem escrever "Não informado").
+=== REGRA 0 (LEI SUPREMA ANTI-ALUCINAÇÃO E DE CAPTAÇÃO INTEGRAL DO ÁUDIO!) ===
+- É TERMINANTEMENTE PROIBIDO inventar nomes de pacientes, nomes de enfermeiros/ACS, nomes de familiares, queixas, história clínica, medicações (MUC), doses, sinais vitais ou exames que NÃO tenham sido efetivamente falados no áudio ou escritos nas notas/evolução prévia!
+- PROIBIÇÃO ABSOLUTA DE OMITIR QUEIXAS OU FALAS DA PACIENTE: Tudo o que a paciente relatar no áudio DEVE entrar na "transcricao_literal_do_audio" e ser descrito detalhadamente no "SUBJETIVO" da evolução de hoje!
+- ATENÇÃO MÁXIMA A ATENDIMENTO EM EMERGÊNCIA / PRONTO ATENDIMENTO / HOSPITAL:
+  * Se a paciente relatar no áudio (ou nas notas) que esteve na Emergência / Pronto Atendimento / Maternidade / Hospital entre as consultas, você DEVE relatar detalhadamente no SUBJETIVO: motivo/queixas que a levaram à emergência, data/local se citados, avaliação realizada, medicações administradas e exames feitos na urgência!
+  * E se ela realizou exames laboratoriais ou de imagem na Emergência/Urgência, ao colocá-los em EXAMES COMPLEMENTARES / ULTRASSONOGRAFIA, identifique explicitamente "(REALIZADO NA EMERGÊNCIA / URGÊNCIA)" ao lado da data do exame — JAMAIS jogue exames ou avaliações feitas na emergência como se tivessem sido realizados de forma eletiva na UBS!
+- Se um campo do modelo (# Tabagista:, # Alergias:, Enfermeiro(a):, ACS:, Familiar:, etc.) NÃO foi falado no áudio nem consta na evolução prévia, deixe-o VAZIO em branco (sem escrever "Não informado").
 - TRAVA OBRIGATÓRIA PARA ÁUDIO DE TESTE / NADA A VER / SILÊNCIO:
-  Se o áudio anexado NÃO for uma consulta médica real (por exemplo: se a pessoa falou algo aleatório/nada a ver com consulta, fez apenas um teste rápido, ou se houver apenas ruído/silêncio) e não houver notas clínicas nem PDF de exame anexado:
-  * NÃO GERE UMA CONSULTA FALSA!
+  Se o áudio anexado NÃO for uma consulta médica real (por exemplo: teste rápido ou ruído/silêncio) e não houver notas clínicas, evolução prévia nem PDF de exame anexado:
   * Escreva no campo "evolucao_completa" EXATAMENTE:
     "⚠️ Áudio sem conteúdo de consulta médica identificado.\nTranscrição captada no microfone: \"[coloque aqui apenas o que foi falado literalmente no áudio]\""
   * E deixe "codigos_cid_ciap": [].
 
-=== REGRAS CRÍTICAS E OBRIGATÓRIAS (QUANDO HOUVER CONSULTA REAL NO ÁUDIO) ===
+=== REGRAS CRÍTICAS E OBRIGATÓRIAS (VALEM PARA O PRÉ-NATAL E TODOS OS 7 MODELOS!) ===
 
-1. RESPEITO ABSOLUTO À MÁSCARA / MODELO DE EVOLUÇÃO SELECIONADO, REGRA ESTRITA DO "# MUC:", ACOMPANHANTE E PROIBIÇÃO DE CONTRADIÇÕES:
-   - Você DEVE manter a estrutura IDÊNTICA ao "MODELO DE REFERÊNCIA A SER SEGUIDO" abaixo! JAMAIS coloque a transcrição bruta do áudio dentro de "evolucao_completa" — o campo "evolucao_completa" DEVE SEMPRE conter o prontuário médico estruturado com # Cabeçalho, SUBJETIVO, OBJETIVO, AVALIAÇÃO e CONDUTA!
-   - REGRA ESTRITA DA "# MUC:" (MEDICAÇÕES EM USO NO MOMENTO DA CONSULTA — PROIBIDO INCLUIR MEDICAÇÕES PRESCRITAS HOJE!):
-     * O campo "# MUC:" (ou "Medicações em uso:") deve listar EXCLUSIVAMENTE as medicações que o paciente JÁ ESTAVA EM USO antes/no momento em que entrou na consulta médica de hoje (se faladas no áudio ou presentes na evolução prévia)! Se nenhuma MUC foi falada, deixe "# MUC:" em branco!
-     * É TERMINANTEMENTE PROIBIDO colocar na "# MUC:" medicações que estão sendo prescritas ou iniciadas no atendimento de hoje! Toda medicação prescrita ou iniciada no dia de hoje deve entrar APENAS no bloco "CONDUTA" (nunca na "# MUC:" da consulta de hoje).
+1. PADRÃO ESTRITO DO CABEÇALHO "#" (CONDIÇÕES DE SAÚDE, SUB-LINHAS COM TRAÇO "-", GPVPCA, IG POR ECO, VACINAS, SOROLOGIAS, TOXO E MUC):
+   - PRESERVAÇÃO ABSOLUTA DE TODAS AS "#" E SUB-ITENS COM TRAÇO ("- " ou "> ") ENTRE AS HASHTAGS (EM TODOS OS MODELOS):
+     * Se houver evolução prévia (ou informações ditadas), você DEVE MANTER 100% DE TODAS AS LINHAS "#" (ex.: "# ovolactovegetariana", "# Histórico de bulimia na infância", "# Apendicectomia em 2017 ou 2018", comorbidades, cirurgias prévias) E TODAS AS INFORMAÇÕES COMPLEMENTARES COM TRAÇO ("- ...") ABAIXO DAS "#" (ex.: "- Gestação atual não planejada" abaixo de "# G01PV0PC0A0", ou "- Fatores de risco..." abaixo de "# Risco aumentado para pré-eclâmpsia"). JAMAIS apague linhas "#" extras ou sub-linhas com "-"!
+   - PADRÃO OBRIGATÓRIO DO HISTÓRICO OBSTÉTRICO (PARIDADE) NO PRÉ-NATAL:
+     * Escreva SEMPRE no formato compacto sem espaços com 2 dígitos após o G: exemplo "# G01PV0PC0A0" (ou "# G02PV1PC0A0"), mantendo na linha de baixo qualquer observação com traço "- " que já existia (ex.: "- Gestação atual não planejada").
+   - PADRÃO OBRIGATÓRIO DA IDADE GESTACIONAL ("# IG") E PRESERVAÇÃO DOS DADOS DA ECOGRAFIA:
+     * Escreva SEMPRE a IG atual logo após "# IG" no formato "[SEMANAS]+[DIAS]", mantendo obrigatoriamente a informação da ecografia (quantas semanas tinha na eco e a data em que foi realizada):
+       Padrão exato: "# IG 16+2 POR ECO COM 08 SEM EM 26/08/2026" (ou "# IG 17+6 POR DUM EM DD/MM/AAAA").
+     * É TERMINANTEMENTE PROIBIDO excluir a informação da ecografia anterior ("POR ECO COM X SEM EM DD/MM/AAAA")!
+   - PADRÃO OBRIGATÓRIO DE "# SOROLOGIAS:" (DIVIDIDAS POR DATA COM "- DD/MM/AAAA:" E SEPARANDO REAGENTE / NÃO REAGENTE):
+     * NUNCA junte datas diferentes de sorologias na mesma linha do título "# SOROLOGIAS:"!
+     * O título "# SOROLOGIAS:" fica sozinho na linha, e abaixo dele coloque UMA LINHA POR DATA iniciando com "- DD/MM/AAAA: ", mantendo as datas anteriores e adicionando as novas datas abaixo, indicando claramente cada exame como "NR" (Não reagente) ou "R" / "Reagente":
+       Exemplo:
+       # SOROLOGIAS:
+       - 29/08/2026: TR HIV NR | Hepatite C: NR | Hepatite B: NR | Sífilis: NR
+       - 27/10/2026: HTLV I/II Não reagente | Toxo IgG NR IgM NR
+   - PADRÃO OBRIGATÓRIO DE "# VACINAS:" NO PRÉ-NATAL (UMA VACINA POR LINHA COM "- "):
+     * É TERMINANTEMENTE PROIBIDO agrupar todas as vacinas na mesma linha separadas por "|" !
+     * Abaixo de "# VACINAS:", escreva OBRIGATORIAMENTE UMA VACINA POR LINHA iniciando com "- ":
+       # VACINAS:
+       - DT: [data ou Pendente]
+       - DTPA: [data ou Pendente]
+       - VSR: [data ou Pendente]
+       - Hepatite B: [data ou Pendente]
+       - Influenza: [data ou Pendente]
+       - COVID: [data ou Pendente]
+   - ATUALIZAÇÃO OBRIGATÓRIA DE "# TOXO:" NO CABEÇALHO:
+     * Se houver exame de Toxoplasmose (IgM e IgG), atualize obrigatoriamente a linha "# TOXO:" no cabeçalho informando se é Suscetível (IgG NR e IgM NR) ou Imune (IgG R e IgM NR) e registrando explicitamente que o IgM e o IgG foram Não Reagentes (NR) com a respectiva data (mantendo a data anterior e acrescentando a nova data, ex.: "# TOXO: Suscetível em labs 29/08/2026 (IgM NR e IgG NR em 27/10/2026)").
+   - REGRA ESTRITA DA "# MUC:" (MEDICAÇÕES EM USO NO MOMENTO DA CONSULTA — SEM MISTURAR DOSES E SEM INCLUIR PRESCRIÇÃO NOVA DE HOJE!):
+     * Liste na "# MUC:" as medicações que o paciente já estava em uso ao chegar na consulta de hoje (incluindo as medicações contínuas prescritas na CONDUTA da última consulta, separadas claramente por vírgula com nome + concentração + posologia exata de cada uma, JAMAIS misturando doses de remédios diferentes!).
+     * NÃO coloque na "# MUC:" medicações que estão sendo prescritas pela primeira vez na consulta de HOJE!
    - PUERICULTURA (ALIMENTAÇÃO APENAS NO SUBJETIVO):
-     * Na Puericultura, NUNCA coloque "# Alimentação:" ou "# Aleitamento:" no cabeçalho "#" inicial! O tópico "Alimentação:" deve ficar exclusivamente dentro do bloco "SUBJETIVO".
-   - REGISTRO DO FAMILIAR / ACOMPANHANTE E GRAU DE PARENTESCO NO SUBJETIVO:
-     * SOMENTE SE um acompanhante/familiar for mencionado no áudio: inclua no início do SUBJETIVO o grau de parentesco e o nome real falado no áudio (ex.: "Paciente vem acompanhado da mãe [nome falado]"). Se ninguém foi citado como acompanhante no áudio, NÃO invente acompanhante!
-   - PROIBIDO CONTRADIÇÃO NO PRÉ-NATAL, PUERICULTURA, VISITA DOMICILIAR E DEMAIS MODELOS:
-     * Se a gestante (no Pré-Natal), a mãe/criança (na Puericultura) ou o paciente (na Visita Domiciliar / Consulta Geral) relatar QUALQUER queixa, dor, sintoma, intercorrência ou sinal de alarme no áudio, você DEVE REMOVER IMEDIATAMENTE as frases padrão "Paciente refere estar bem, sem queixas", "Familiar relata que paciente está bem", "Nega intercorrências" e "Sem demais queixas"!
-     * Se a gestante/paciente referir algum sintoma que está listado como negativa padrão no modelo (ex.: se ela tiver cefaleia, escotomas, disúria, sangramento vaginal, perda de líquido ou febre), APAGUE a frase "Nega [aquele sintoma]" e descreva detalhadamente o sintoma que ela está sentindo! Mantenha como "Nega ..." apenas os sintomas que ela realmente negou ou não apresentou.
-   - Mantenha no final da CONDUTA as frases finais padrão do modelo SEM traço no início (ex.: "Orientações gerais\nCiente, concordante e sem dúvidas"). Se o médico orientou sinais de alarme específicos no áudio, descreva esses sinais na linha "Oriento sinais de alarme (...) e na presença emergência. Ciente." e NÃO repita a frase genérica "Oriento sinais de alarme e na presença emergência. Ciente."!
+     * Na Puericultura, NUNCA coloque "# Alimentação:" no cabeçalho "#" inicial! O tópico "Alimentação:" fica dentro do "SUBJETIVO".
+   - REGISTRO DO FAMILIAR / ACOMPANHANTE E PROIBIÇÃO DE CONTRADIÇÕES:
+     * Se um acompanhante for citado no áudio DE HOJE, registre no início do SUBJETIVO (ex.: "Paciente vem acompanhada do esposo [nome]"). Se não foi citado hoje, não copie acompanhante de consulta antiga!
+     * Se a gestante/paciente relatar QUALQUER queixa, dor, sintoma, ida à emergência ou sinal de alarme no áudio, REMOVA IMEDIATAMENTE as frases padrão "Paciente refere estar bem, sem queixas", "Familiar relata que paciente está bem", "Nega intercorrências" e "Sem demais queixas", e apague "Nega [sintoma]" para qualquer sintoma que ela tenha apresentado!
 
 2. CONTROLE DE HGT (GLICEMIA CAPILAR) E CONTROLE DE PA (AFERIÇÕES DE PRESSÃO ARTERIAL) + PARECER FINAL NO SUBJETIVO:
-   - ATENÇÃO MÁXIMA: Sempre que durante a consulta forem falados ou lidos valores de aferições de Glicemia Capilar (HGT / Dextro) ou valores de Pressão Arterial (Controle de PA / MRPA / mapa de PA trazido pelo paciente) — MESMO QUE QUEM ESTEJA LENDO OS VALORES EM VOZ ALTA SEJA O MÉDICO — você DEVE OBRIGATORIAMENTE registrar esses valores dentro do bloco "SUBJETIVO" com linhas dedicadas:
-     * "Controle de HGT: [listar TODOS os valores de glicemia falados e a qual período/horário se referem — ex.: em jejum, pós-café, pré-almoço, pós-almoço, à noite, madrugada — seguido do parecer final/conclusão verbalizado pelo médico sobre o controle glicêmico]."
-     * "Controle de PA: [listar TODOS os valores de PA registrados/trazidos pelo paciente e horários/períodos se citados — seguido do parecer final/conclusão verbalizado pelo médico sobre o controle pressórico]."
-   - Diferencie: a lista de controles trazidos pelo paciente entra no SUBJETIVO ("Controle de HGT:" e "Controle de PA:") com o parecer do médico, enquanto a PA/HGT aferida na hora do exame físico de hoje entra no OBJETIVO.
+   - Sempre que forem falados ou lidos valores de Glicemia Capilar (HGT) ou de Pressão Arterial (Controle de PA residencial) — mesmo que lidos pelo médico — registre no bloco "SUBJETIVO":
+     * "Controle de HGT: [todos os valores e horários/períodos + parecer final do médico]."
+     * "Controle de PA: [todos os valores e horários/períodos + parecer final do médico]."
 
 3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — NÃO INVENTE DADOS NÃO FALADOS:
-   - NUNCA invente sinais físicos que o médico não falou (ex.: se o médico só palpou e perguntou se doía, escreva apenas "Dor à palpação em panturrilha direita", NÃO invente "sinais flogísticos" se o médico não falou isso!).
-   - Mantenha apenas "BEG, LOC, MUC" e inclua SOMENTE a PA/sinais vitais aferidos no momento do exame físico e os achados do exame físico que foram EFETIVAMENTE ditos no áudio ou nas notas rápidas!
-   - Se o médico NÃO falou nada sobre aparelho respiratório, cardiovascular ou abdome, NÃO coloque AP, AC ou ABD no Objetivo!
+   - NUNCA invente sinais físicos que o médico não falou e NUNCA copie o exame físico (PA, Peso, AU, BCF) da consulta antiga como se fosse o de hoje!
+   - No OBJETIVO de hoje, inclua apenas os achados e medidas efetivamente realizados/falados na consulta de HOJE!
 
-4. REGRA ESTRITA DE EXAMES COMPLEMENTARES (PDF/IMAGEM ANEXADOS, ÁUDIO OU COLADOS/ESCRITOS NAS ANOTAÇÕES RÁPIDAS):
-   - ${hasAnyExamsToFormat ? 'Há exames complementares presentes (anexados, transcritos ou colados/escritos nas Anotações Rápidas)! Crie OBRIGATORIAMENTE o bloco "EXAMES COMPLEMENTARES" logo após o OBJETIVO e antes da AVALIAÇÃO e inclua TODOS os exames formatados.' : 'Se NÃO houver PDF de exame anexado E o médico NÃO tiver falado nem colado/escrito nenhum resultado de exame complementar laboratorial ou de imagem no áudio ou nas Anotações Rápidas, NÃO CRIE e NÃO ESCREVA o título "EXAMES COMPLEMENTARES" na evolução!'}
-   - DETECÇÃO AUTOMÁTICA DE EXAMES COLADOS OU ESCRITOS NAS ANOTAÇÕES RÁPIDAS ("=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ==="):
-     * Se o médico colou ou escreveu resultados de exames no campo de Anotações Rápidas (seja um laudo copiado do sistema de laboratório/PEC cheio de linhas e valores de referência, seja digitado abreviado como "hb 13,2 ht 39 leuco 6500 gj 95 tsh 2,1" ou "USG abdome: colelitíase"), você DEVE detectar automaticamente cada exame, separá-lo de outras anotações clínicas (como PA/Peso de hoje) e colocá-lo dentro do bloco "EXAMES COMPLEMENTARES" seguindo o formato exato de Laboratorial vs. Imagem abaixo!
-     * JAMAIS jogue exames laboratoriais ou de imagem colados nas Anotações Rápidas de forma bruta/desformatada dentro do SUBJETIVO ou do OBJETIVO! Eles pertencem SEMPRE ao bloco "EXAMES COMPLEMENTARES".
-   - Quando houver exames complementares (por PDF/foto anexado, ditados no áudio ou colados/escritos nas Anotações Rápidas), siga RIGOROSAMENTE estas 3 regras:
-     a) TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF OU NAS ANOTAÇÕES RÁPIDAS: Varra todas as páginas/linhas e inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma/enzimas hepáticas, perfil lipídico, tireoide, hormônios, vitaminas, cinética de ferro, marcadores inflamatórios, sorologias, urina/EQU, urocultura, parasitológico, fezes, exames de imagem, etc.). NUNCA omita exames extras que foram realizados!
-     b) PROIBIDO ESCREVER "N/R", "Não realizado" OU EXAMES QUE NÃO CONSTAM NO LAUDO/NOTAS: Se um exame (por exemplo, T4L, Ferritina, etc.) NÃO estiver presente, NÃO escreva "T4L N/R" — simplesmente NÃO inclua esse exame na linha! Só escreva exames que efetivamente possuem resultado.
-     c) FORMATO EXATO (DIFERENCIANDO EXAME LABORATORIAL DE EXAME DE IMAGEM):
-        * SE FOR EXAME LABORATORIAL (todos os exames laboratoriais da mesma data na mesma linha, iniciando com "- LABS [DD/MM/AAAA]: " ou "- LABS: " se sem data, separados por " | ", usando abreviações médicas limpas + valor, removendo valores de referência do laboratório):
-          Exemplo: - LABS 17/08/2026: Hb 15,3 | Ht 43,7 | Leuco 6.990 | Plaq 303.000 | GJ 90,9 | HbA1c 4,4% | Creat 0,97 | Ureia 22,2 | Sódio 140 | K 4,6 | Ác. Úrico 5,4 | TGO 18 | TGP 18 | GGT 35,1 | FA 68 | BT 0,7 | CT 195,1 | HDL 33,8 | LDL 143,6 | TAG 74 | TSH 0,81 | Vit B12 390 | Vit D 31,2 | Testo Total 842 | Testo Livre 23,07 | EQU: pH 6,0, Densidade 1.020, Leucócitos 25/uL, Flora Bacteriana Moderada
-        * SE FOR EXAME DE IMAGEM OU MÉTODO GRÁFICO (USG/Ecografia, Raio-X/RX, Tomografia/TC, Ressonância/RM, Ecocardiograma, Mamografia, Densitometria, Endoscopia/EDA, Colonoscopia, Doppler, ECG, etc. -> iniciando com "- [MODALIDADE E REGIÃO EM MAIÚSCULO] [DD/MM/AAAA se houver]: " em texto corrido conciso, sem tópicos soltos):
-          Exemplo 1: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.
-          Exemplo 2: - USG ABDOME TOTAL 12/09/2026: Fígado com dimensões normais e aumento difuso da ecogenicidade compatível com esteatose hepática leve. Vesícula biliar, vias biliares, pâncreas, baço e rins sem alterações.
-          Exemplo 3: - RX TÓRAX PA/PERFIL 02/11/2026: Transparência pulmonar preservada, seios costofrênicos livres e área cardíaca dentro dos limites da normalidade.
+4. REGRA ESTRITA DE EXAMES COMPLEMENTARES E ULTRASSONOGRAFIA (MANTER EXAMES ANTERIORES + INCLUIR NOVOS + SEPARAR LABS DE ULTRASSONOGRAFIA):
+   - ${hasAnyExamsToFormat ? 'Há exames complementares (atuais e/ou da evolução anterior)! Inclua-os logo após o OBJETIVO e antes da AVALIAÇÃO.' : 'Se NÃO houver exames atuais nem exames na evolução anterior, não crie o bloco EXAMES COMPLEMENTARES.'}
+   - MANUTENÇÃO OBRIGATÓRIA DOS EXAMES DA EVOLUÇÃO ANTIGA + ADIÇÃO DOS NOVOS:
+     * Quando houver evolução prévia com exames registrados, você DEVE MANTER TODOS OS EXAMES ANTERIORES ("- LABS [data antiga]: ..." e "- US ... [data antiga]: ...") E INCLUIR OS EXAMES NOVOS LOGO ABAIXO DELES em ordem cronológica! JAMAIS apague os exames anteriores!
+   - SEPARAÇÃO ESTRITA ENTRE EXAMES LABORATORIAIS E ULTRASSONOGRAFIA / IMAGEM:
+     * NUNCA misture exames laboratoriais com laudos de ultrassonografia no mesmo bloco!
+     * Coloque todos os exames laboratoriais (sangue, urina/EQU, urocultura, sorologias, bioquímica, hormônios) sob o título:
+       EXAMES COMPLEMENTARES
+       - LABS [DD/MM/AAAA]: [todos os exames daquela data na mesma linha separados por " | "]
+       (Se o exame foi feito em pronto-socorro/hospital, escreva: "- LABS [DD/MM/AAAA] (REALIZADO NA EMERGÊNCIA / HOSPITAL): ...")
+     * Coloque todas as ultrassonografias / ecografias (e exames de imagem) sob o título separado logo abaixo:
+       ULTRASSONOGRAFIA
+       - US OBSTÉTRICA [DD/MM/AAAA]: [descrição completa do laudo e conclusão com biometria/IG estimada]
+       - US MORFOLÓGICA [DD/MM/AAAA]: [descrição completa do laudo e conclusão]
+   - PROIBIDO ESCREVER "N/R" OU "Não realizado" para exames que não constam no laudo.
 
 5. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
-   - Na seção AVALIAÇÃO da "evolucao_completa", escreva APENAS o nome clínico das hipóteses diagnósticas / condições avaliadas, uma por linha, SEM traço ("- ") no início da linha! (Exemplo: escreva "Erisipela" e na linha de baixo "Cefaleia", sem "- ").
-   - É TERMINANTEMENTE PROIBIDO colocar códigos CID-10 ou CIAP-2 dentro do texto da evolução!
-   - Os códigos CID-10 e CIAP-2 correspondentes devem ser informados SEPARADAMENTE apenas no campo JSON "codigos_cid_ciap" (ex.: ["CIAP-2: K86 | CID-10: I10 — Hipertensão essencial"]).
+   - Na seção AVALIAÇÃO da "evolucao_completa", escreva as hipóteses diagnósticas / problemas avaliados na consulta de hoje, sem códigos CID-10/CIAP-2 no texto (os códigos vão apenas no array JSON "codigos_cid_ciap").
 
 6. REGRA ESTRITA DA CONDUTA E ORTOGRAFIA FARMACOLÓGICA OFICIAL DO BRASIL (DCB / ANVISA / RENAME):
-   - NÃO coloque traços ("- ") no início das linhas da CONDUTA! Escreva cada item diretamente em uma linha limpa.
-   - ORTOGRAFIA FARMACOLÓGICA OFICIAL (DCB / ANVISA — PROIBIDO GRAFIA EM INGLÊS!):
-     * Escreva SEMPRE os nomes dos medicamentos com a grafia oficial brasileira (DCB/RENAME):
-       - Escreva "Sinvastatina" (COM "N", JAMAIS escreva "Simvastatina" com M!)
-       - Escreva "Anlodipino" (COM "N", JAMAIS escreva "Amlodipino")
-       - Escreva "Hidroclorotiazida" (COM "I", JAMAIS escreva "Hydroclorotiazida")
-       - Escreva "Levotiroxina" (JAMAIS "Levothyroxina"), "Amoxicilina" (JAMAIS "Amoxycilina"), "Omeprazol", "Losartana", "Enalapril", "Metformina", "Gliclazida", "Glibenclamida", "Dapagliflozina", "Rosuvastatina", "Atorvastatina", "Espironolactona", "Furosemida", "Ácido Acetilsalicílico", "Clopidogrel", "Sertralina", "Fluoxetina", "Escitalopram", "Amitriptilina", "Nortriptilina", "Venlafaxina", "Duloxetina", "Pregabalina", "Gabapentina", "Clonazepam", "Cefalexina", "Azitromicina", "Ciprofloxacino", "Ibuprofeno", "Dipirona", "Paracetamol".
-   - TRANSCRIÇÃO INTEGRAL DO USO DOS REMÉDIOS E ORIENTAÇÕES: Você DEVE transcrever absolutamente TUDO o que o médico falou e orientou sobre cada medicação e sobre o tratamento:
-     * Nome de cada medicamento prescrito, concentração (mg, mcg, ml, UI, %), forma farmacêutica (comprimido, cápsula, gotas, xarope, pomada, creme, spray nasal, injetável), via de administração (VO, IM, IV, tópico, inalatório), dose exata, intervalo/frequência (ex.: de 8/8h, de 12/12h, 1x ao dia, em jejum, após o almoço, à noite) e duração do tratamento (por X dias ou uso contínuo).
-     * Se o médico orientou COMO tomar ou usar o remédio (ex.: "tomar só se tiver dor ou febre", "tomar com bastante água", "aplicar uma camada fina 2x ao dia após o banho", "fazer lavagem nasal com soro fisiológico antes", "tomar 30 minutos antes do café"), INCLUA TODAS ESSAS ORIENTAÇÕES DE USO detalhadamente na linha da medicação!
-     * AUTOCORREÇÃO DO MÉDICO NA FALA: Se o médico falar uma posologia/dose e em seguida corrigir na mesma fala (ex.: "de 8 em 8 horas... de 12 em 12"), registre a ÚLTIMA posologia definida pelo médico!
-     * Se alterou ou ajustou dose: "Altero / Ajusto dose de [Nome do remédio] de [...] para [...] + orientações de uso"
-     * Se suspendeu medicação: "Suspendo o uso de [Nome do remédio] devido a [...]"
-     * Se renovou/manteve receita: "Renovo / Mantenho prescrição de [Nome dos remédios e doses]"
-     * Inclua também todas as medidas não-farmacológicas orientadas pelo médico (repouso, elevação de membro, compressas, hidratação, alimentação, cuidados locais, prazo de retorno) e todos os exames solicitados ou encaminhamentos feitos.
-   - SINAIS DE ALARME (PROIBIDO DUPLICAR!):
-     * Se o médico orientou sinais de alarme no áudio (ou se houver sinais de alarme específicos citados), descreva-os na própria linha de sinais de alarme (ex.: "Oriento sinais de alarme ([descrever os sinais orientados]) e na presença procurar emergência. Ciente.") e REMOVA a frase genérica "Oriento sinais de alarme e na presença emergência. Ciente." para não ficar repetido!
-     * Se o médico não especificou quais sinais de alarme, mantenha apenas a frase padrão "Oriento sinais de alarme e na presença emergência. Ciente.".
+   - NÃO coloque traços ("- ") no início das linhas da CONDUTA.
+   - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
+   - Transcreva integralmente todas as medicações prescritas/ajustadas/suspensas hoje, doses, posologias, orientações de uso, exames solicitados, encaminhamentos e sinais de alarme orientados.
 
 7. REGRAS ESPECÍFICAS DE PUERICULTURA (PROIBIÇÃO ABSOLUTA DE INVENTAR Z-SCORE!), PRÉ-NATAL E VISITA DOMICILIAR:
-   - PROIBIÇÃO ABSOLUTA DE CALCULAR OU INVENTAR Z-SCORE NA PUERICULTURA (SEGURANÇA DO PACIENTE / PREMATURIDADE):
-     * É TERMINANTEMENTE PROIBIDO que você (IA) calcule, estime ou invente valores numéricos ou classificações de Z-Score por conta própria! A criança pode ser prematura (exigindo idade corrigida / curva Intergrowth-21st) e cálculos estimados por IA geram erros graves (como classificar baixo peso como aumentado).
-     * Nas linhas "Peso:", "Altura:", "PC:" e "IMC:" do OBJETIVO da Puericultura, registre APENAS as medidas antropométricas exatas faladas ou digitadas (ex.: "Peso: 7.400 g", "Altura: 66 cm", "PC: 43 cm").
-     * SOMENTE escreva Z-Score ou classificação da curva se:
-       1) O próprio [MÉDICO] verbalizou explicitamente no áudio qual foi o Z-Score ou a posição na curva (neste caso, transcreva fielmente a classificação dita pelo médico!), OU
-       2) O valor já vier calculado abaixo na seção "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===" (e mesmo assim, se no áudio ou no "# Histórico do parto" constar prematuridade / Capurro < 37 semanas sem idade corrigida, NÃO aplique Z-Score de termo!).
-     * Extraia também do áudio da Puericultura os Marcos do Desenvolvimento, Ortolani, Barlow, Otoscopia/Oroscopia (se falados) e todos os detalhes da "Alimentação:" dentro do bloco SUBJETIVO (se SME, complementado, misto ou fórmula infantil — especificando qual fórmula, quantidade em ml, medidas e horários).
-   - No PRÉ-NATAL: extraia diretamente do áudio e da seção "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===" todos os dados do cabeçalho (# G P V PC A, # DUM / # IG POR DUM / # IG POR ECO COM X SEM EM DD/MM/AAAA / # DPP conforme o cálculo obstétrico oficial FEBRASGO/MS, # TS, # TOXO, # SOROLOGIAS, # VACINAS) e todos os dados do OBJETIVO falados pelo médico ou digitados (AU em cm, BCF em bpm, MF presentes/ausentes, Edema em MMII, Peso em kg e PA em mmHg), além de qualquer exame físico adicional falado!
+   - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
    - Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
-8. BLINDAGEM ABSOLUTA CONTRA INTERRUPÇÕES DE ENFERMAGEM / DISCUSSÃO DE OUTRO PACIENTE NO MEIO DA CONSULTA:
-   - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'ESTE ATENDIMENTO NÃO É UMA INTERCONSULTA DE TERCEIROS! Portanto, você DEVE identificar quem é o PACIENTE PRINCIPAL que está sendo atendido na consulta e FILTRAR/DESCARTAR COMPLETAMENTE qualquer conversa paralela ou interrupção em que a enfermagem/equipe entre na sala para falar de outro paciente (ex.: mudanças bruscas para falar de "um paciente lá no acolhimento", "dona fulana", "licença doutor, só tirar uma dúvida de um caso", ou queixas/receitas de terceira pessoa sem relação com o paciente em consulta).'}
-   - JAMAIS misture sintomas, pressão arterial, exames, diagnósticos ou medicações de um caso discutido com a enfermagem durante uma interrupção dentro do prontuário ("evolucao_completa") do paciente que está sendo atendido!
-   - Se você detectar que houve uma interrupção externa discutindo outro paciente no meio do áudio, exclua esses dados da "evolucao_completa" e apenas avise em "alertas_auditoria": "Interrupção externa/interconsulta de terceiro detectada no áudio e isolada automaticamente para não contaminar este prontuário."
+8. BLINDAGEM CONTRA INTERRUPÇÕES DE ENFERMAGEM E DIFERENCIAÇÃO VOZ DO MÉDICO VS. PACIENTE:
+   - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'Filtre e descarte qualquer interrupção paralela de terceiros/enfermagem falando de outro paciente.'}
+   - Quando o [MÉDICO] estiver explicando alterações de exames para o paciente, JAMAIS escreva no SUBJETIVO que "Paciente refere tal alteração".
+${parsedPrev ? `
+9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR (VALE PARA PRÉ-NATAL E TODOS OS 7 MODELOS):
+   - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo, (B) os Diagnósticos da Avaliação anterior que devem entrar nas "#", (C) os Exames Laboratoriais e Ultrassonografias anteriores, e (D) a Avaliação e Conduta da última consulta.
+   - ATENÇÃO: O SUBJETIVO e o OBJETIVO antigos foram removidos propositalmente para que você construa o SUBJETIVO e o OBJETIVO de hoje 100% a partir do ÁUDIO DE HOJE!
+   - Siga obrigatoriamente:
+     1) Copie TODAS as linhas "#" e TODAS as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo (mantendo "# G01PV0PC0A0", "- Gestação atual não planejada", "# IG ... POR ECO COM ... EM ...", "# ovolactovegetariana", "# Histórico de...", "# Apendicectomia...", "# TS:", "# TOXO:", "# SOROLOGIAS:" por data, "# VACINAS:" uma por linha com "-", "# Consulta odontologia:", "# Tabagista:", "# Alergias:"), acrescentando também nas "#" os diagnósticos listados em "DIAGNÓSTICOS DA AVALIAÇÃO ANTERIOR PARA INCLUIR NAS #"!
+     2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se a paciente não tomou ou manteve medicação suspensa, relate no SUBJETIVO.
+     3) Mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje logo abaixo deles!
 
-9. DIFERENCIAÇÃO ESTRITA ENTRE A VOZ DO MÉDICO E A VOZ DO PACIENTE:
-   - No SUBJETIVO: registre as queixas, sintomas, história da doença atual e respostas fornecidas pelo PACIENTE (ou acompanhante), além dos controles trazidos pelo paciente ("Controle de HGT:" e "Controle de PA:" com o parecer do médico).
-   - PROIBIDO NO SUBJETIVO: Quando o [MÉDICO] estiver explicando alterações de exames laboratoriais/imagem para o paciente (ex.: médico dizendo "olha, seu exame mostrou colesterol alto / infecção de urina / gordura no fígado"), JAMAIS escreva no SUBJETIVO que "Paciente refere alteração em exame / refere colesterol alto"!
-${previousConsultationText ? `
-10. COMPARAÇÃO EVOLUTIVA COM A ÚLTIMA CONSULTA / EVOLUÇÃO PRÉVIA (VALE PARA TODOS OS 7 MODELOS!):
-   - O médico colou abaixo a ÚLTIMA EVOLUÇÃO (evolução prévia) deste paciente. Você DEVE cruzar a evolução prévia com o áudio/dados da consulta de hoje seguindo RIGOROSAMENTE estas 4 regras:
-   a) ATUALIZAR AS "#" (COMORBIDADES / PROBLEMAS ATIVOS NO CABEÇALHO):
-      * Mantenha nas linhas "#" do topo todas as comorbidades/condições crônicas que já estavam nas "#" da última evolução, E PUXE DA "AVALIAÇÃO" DA ÚLTIMA CONSULTA (e da consulta de hoje) os diagnósticos novos/crônicos firmados para que passem a constar nas "#" do cabeçalho atual!
-   b) ATUALIZAR A "# MUC:" (MEDICAÇÕES EM USO NO MOMENTO DA CONSULTA ATUAL):
-      * Atualize a linha "# MUC:" (ou "Medicações em uso:") refletindo o que o paciente estava em uso ao chegar na consulta de hoje:
-      * Se uma medicação foi SUSPENSA na última consulta e o paciente parou de tomar -> EXCLUA essa medicação da "# MUC:"!
-      * Se uma medicação de uso contínuo já havia sido iniciada ou ajustada na ÚLTIMA consulta e o paciente está em uso -> inclua/atualize na "# MUC:".
-      * ATENÇÃO: NÃO coloque na "# MUC:" medicações que estão sendo prescritas pela primeira vez na consulta de HOJE! Medicações prescritas hoje ficam apenas na CONDUTA de hoje.
-   c) CHECAGEM DE ADESÃO E MEDICAÇÃO SUSPENSA NO "SUBJETIVO":
-      * Verifique se na CONDUTA da última evolução alguma medicação havia sido suspensa, trocada ou ajustada.
-      * Se no áudio de hoje o paciente relatar que CONTINUA TOMANDO uma medicação que já havia sido suspensa/retirada na consulta anterior (ou se tomou na dose errada / não iniciou o que foi prescrito), você DEVE REGISTRAR ISSO EXPLICITAMENTE NO SUBJETIVO (ex.: "Paciente refere manter o uso de [Nome da medicação], apesar da suspensão orientada na última consulta" ou "Paciente refere não ter ajustado/iniciado [Nome da medicação] conforme conduta prévia").
-   d) DADOS PERMANENTES DO CABEÇALHO:
-      * Aproveite da evolução prévia os dados permanentes já preenchidos (# Tabagista, # Alergias, # G P V PC A / TS / Sorologias no Pré-Natal, # Histórico do parto / Triagem neonatal na Puericultura, ou Identificação/Documentação no modelo LGBT), atualizando tudo o que mudou na consulta de hoje!
+=== (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR (MANTER TODAS AS LINHAS "#" E SUB-LINHAS "-"!) ===
+${parsedPrev.headerText || 'Nenhum cabeçalho anterior.'}
 
-=== ÚLTIMA EVOLUÇÃO / CONSULTA ANTERIOR DO PACIENTE (PARA COMPARAÇÃO E ATUALIZAÇÃO) ===
-${previousConsultationText}
-` : ''}${previousEvolutionContext ? `\n11. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - O médico já havia gravado e transcrito a primeira parte desta consulta e agora gravou uma continuação para o MESMO paciente.\n   - Integre perfeitamente as novas informações faladas neste áudio (novas queixas, exame físico, exames ou condutas/prescrições finais) com a evolução já iniciada abaixo, mantendo uma única evolução completa, coesa e atualizada:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES JÁ TRANSCRITOS NESTA CONSULTA (INCLUA NO BLOCO EXAMES COMPLEMENTARES) ===\n${preTranscribedExamsText}\n` : ''}
-=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO ${notesExamDetection.hasAny ? `(ATENÇÃO: FORAM DETECTADOS EXAMES ${notesExamDetection.hasLab && notesExamDetection.hasImaging ? 'LABORATORIAIS E DE IMAGEM' : (notesExamDetection.hasLab ? 'LABORATORIAIS' : 'DE IMAGEM')} ABAIXO -> FORMATE-OS OBRIGATORIAMENTE NO BLOCO "EXAMES COMPLEMENTARES": LABORATORIAL EM LINHA ÚNICA "- LABS DD/MM/AAAA: ... | ..." E IMAGEM EM "- NOME DO EXAME DD/MM/AAAA: texto corrido conciso")` : ''} ===
+=== (B) DIAGNÓSTICOS DA AVALIAÇÃO ANTERIOR PARA INCLUIR NAS "#" DO CABEÇALHO ===
+${parsedPrev.diagnosesToPromote.length > 0 ? parsedPrev.diagnosesToPromote.map(d => [d.hashLine, ...d.subLines].join('\n')).join('\n') : 'Nenhum diagnóstico crônico novo a promover.'}
+
+=== (C) EXAMES ANTERIORES DA EVOLUÇÃO ANTIGA (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
+${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES:\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
+${parsedPrev.usgExamLines.length > 0 ? '\nULTRASSONOGRAFIAS / IMAGEM ANTERIORES:\n' + parsedPrev.usgExamLines.join('\n\n') : ''}
+
+=== (D) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (PARA ATUALIZAR # MUC E CHECAR ADESÃO) ===
+AVALIAÇÃO ANTERIOR:
+${parsedPrev.avaliacaoText || 'Não informada.'}
+CONDUTA ANTERIOR:
+${parsedPrev.condutaText || 'Não informada.'}
+` : ''}${previousEvolutionContext ? `\n10. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - Integre as novas informações faladas neste áudio com a 1ª parte já transcrita deste mesmo paciente:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES NOVOS JÁ TRANSCRITOS HOJE (INCLUA ABAIXO DOS ANTERIORES SEPARANDO LABS E ULTRASSONOGRAFIA) ===\n${preTranscribedExamsText}\n` : ''}
+=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO HOJE ${notesExamDetection.hasAny ? `(ATENÇÃO: FORAM DETECTADOS EXAMES ${notesExamDetection.hasLab && notesExamDetection.hasImaging ? 'LABORATORIAIS E DE IMAGEM' : (notesExamDetection.hasLab ? 'LABORATORIAIS' : 'DE IMAGEM')} ABAIXO -> FORMATE-OS OBRIGATORIAMENTE EM "EXAMES COMPLEMENTARES" PARA LABS E "ULTRASSONOGRAFIA" PARA ECO/IMAGEM)` : ''} ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
-${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===\n' + zScoreSummary : ''}
+${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / CÁLCULO OBSTÉTRICO DE HOJE ===\n' + zScoreSummary : ''}
 
 === MODELO DE REFERÊNCIA A SER SEGUIDO ===
-${templateObj.templateText}
+${effectiveTemplateText}
 
 === FORMATO DE RESPOSTA (JSON OBRIGATÓRIO) ===
-Responda em JSON válido contendo exatamente estas chaves (preencha "transcricao_literal_do_audio" PRIMEIRO para ancorar 100% no áudio real, e em seguida preencha "evolucao_completa" sem inventar nada que não esteja na transcrição!):
+Responda em JSON válido contendo exatamente estas chaves (preencha "transcricao_literal_do_audio" PRIMEIRO transcrevendo 100% do áudio do início ao fim sem omitir nenhuma queixa da paciente, e em seguida preencha "evolucao_completa"):
 {
-  "transcricao_literal_do_audio": "Transcrição fiel APENAS do que foi efetivamente falado no áudio separando [MÉDICO]: e [PACIENTE]: (se o áudio estiver em silêncio ou tiver apenas uma frase avulsa, escreva exatamente o que ouviu, sem inventar diálogo!)",
-  "evolucao_completa": "Texto completo da evolução estruturada seguindo fielmente o MODELO DE REFERÊNCIA acima com quebras de linha \\n baseado EXCLUSIVAMENTE no que foi falado (ou aviso '⚠️ Áudio sem conteúdo de consulta médica identificado' se o áudio não for uma consulta real!)",
+  "transcricao_literal_do_audio": "Transcrição fiel e INTEGRAL de 100% do que foi falado no áudio do início ao fim separando [MÉDICO]: e [PACIENTE]: (incluindo todas as queixas, relatos de emergência e explicações!)",
+  "evolucao_completa": "Texto completo da evolução estruturada seguindo fielmente o MODELO DE REFERÊNCIA e mantendo todas as #, sub-linhas '-' e exames anteriores com quebras de linha \\n",
   "codigos_cid_ciap": ["Lista com os códigos CIAP-2 e CID-10 sugeridos para digitar fora da evolução no PEC (ou [] se não houver diagnóstico)"],
   "especialidade_sugerida_encaminhamento": "Se durante a consulta foi citado encaminhamento, informe a especialidade, caso contrário deixe string vazia",
   "alertas_auditoria": ["Lista curta apenas se faltou algum dado crítico obrigatório"]

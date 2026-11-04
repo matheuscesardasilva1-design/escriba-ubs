@@ -18,7 +18,7 @@
     chunkIndex: 0,
     pendingExamFiles: [], // PDFs/Imagens de exames anexados para a consulta atual
     preTranscribedExamsText: '', // Resultado dos exames transcritos na hora durante a gravação
-    autoCloudSync: localStorage.getItem('ubs_auto_cloud_sync') !== 'false',
+    autoCloudSync: localStorage.getItem('ubs_auto_cloud_sync') === 'true',
     mediaRecorder: null,
     mediaStream: null,
     audioContext: null,
@@ -34,12 +34,10 @@
     selectedMicDeviceId: localStorage.getItem('ubs_selected_mic') || ''
   };
 
-  // Prioriza os modelos FLASH COMPLETOS (muito mais precisos em áudio médico e prescrições do que o Lite!)
+  // Usa EXCLUSIVAMENTE os modelos Flash completos de produção (rápidos, cota alta e máxima precisão clínica — NUNCA usa modelos "lite" ou "preview" lentos!)
   const GEMINI_MODELS = [
     'gemini-2.5-flash',
-    'gemini-3-flash-preview',
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite'
+    'gemini-2.0-flash'
   ];
 
   let cachedDiscoveredModels = null;
@@ -55,33 +53,35 @@
         const available = (data.models || [])
           .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map(m => m.name.replace(/^models\//, ''))
-          .filter(name => name.includes('gemini') && !name.includes('embedding') && !name.includes('imagen') && !name.includes('veo') && !name.includes('tts'));
+          // PROIBIDO modelos "lite" (que ignoram partes do áudio e regras), "preview"/"exp" (que têm limite de 2 RPM) ou "pro" (que demoram 2 minutos)
+          .filter(name =>
+            name.includes('gemini') &&
+            name.includes('flash') &&
+            !name.includes('lite') &&
+            !name.includes('preview') &&
+            !name.includes('exp') &&
+            !name.includes('embedding') &&
+            !name.includes('imagen') &&
+            !name.includes('veo') &&
+            !name.includes('tts') &&
+            !name.includes('thinking')
+          );
 
-        // Prioriza os modelos Flash completos (não-lite) primeiro para máxima precisão clínica!
         const preferredOrder = [
           'gemini-2.5-flash',
-          'gemini-3-flash',
-          'gemini-3-flash-preview',
-          'gemini-3.5-flash',
-          'gemini-2.5-pro',
-          'gemini-3.5-flash-lite'
+          'gemini-2.0-flash'
         ];
         const sorted = [];
         preferredOrder.forEach(pref => {
-          const match = available.find(a => a === pref || (a.startsWith(pref) && !a.includes('lite')));
+          const match = available.find(a => a === pref);
           if (match && !sorted.includes(match)) sorted.push(match);
         });
-        // Adiciona outros flash não-lite
         available.forEach(a => {
-          if (a.includes('flash') && !a.includes('lite') && !sorted.includes(a)) sorted.push(a);
-        });
-        // Deixa os modelos lite apenas como último fallback de segurança
-        available.forEach(a => {
-          if (a.includes('lite') && !sorted.includes(a)) sorted.push(a);
+          if (!sorted.includes(a)) sorted.push(a);
         });
 
         if (sorted.length > 0) {
-          cachedDiscoveredModels = sorted.slice(0, 6);
+          cachedDiscoveredModels = sorted.slice(0, 3);
           return cachedDiscoveredModels;
         }
       }
@@ -117,20 +117,11 @@
   });
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v8');
+    const saved = localStorage.getItem('ubs_custom_templates_v9');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         state.templates = { ...window.DEFAULT_TEMPLATES, ...parsed };
-        if (state.templates.puericultura && state.templates.puericultura.templateText) {
-          state.templates.puericultura.templateText = state.templates.puericultura.templateText
-            .replace(/^#\s*(?:Aleitamento\s*\/\s*)?Alimenta[çc][ãa]o:[^\n]*\n/gim, '')
-            .replace(/\s*\(Z-Score[^)]*\)/gi, '');
-        }
-        if (state.templates.visita_domiciliar && state.templates.visita_domiciliar.templateText) {
-          state.templates.visita_domiciliar.templateText = state.templates.visita_domiciliar.templateText
-            .replace(/Visita domiciliar realizada acompanhada do\(a\) Enfermeiro\(a\) \[nome\][^\n]*/i, 'Visita domiciliar realizada');
-        }
         return;
       } catch (_) {}
     }
@@ -138,7 +129,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v8', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v9', JSON.stringify(state.templates));
   }
 
   function getTodayKey() {
@@ -315,9 +306,26 @@
     togglePuericulturaZScorePanel();
   }
 
+  function getSelectedSoapSubtypeHeader() {
+    const selectedRadio = document.querySelector('input[name="soapVisitSubtype"]:checked');
+    const mode = selectedRadio ? selectedRadio.value : 'DEMANDA ESPONTÂNEA';
+    if (mode === 'CONSULTA AGENDADA') {
+      const timeVal = (document.getElementById('soapScheduledTime')?.value || '0800').trim() || '0800';
+      return `## CONSULTA AGENDADA - ${timeVal} ##`;
+    }
+    if (mode === 'RETORNO MÉDICO') {
+      return '## RETORNO MÉDICO ##';
+    }
+    return '## DEMANDA ESPONTÂNEA ##';
+  }
+
   function togglePuericulturaZScorePanel() {
+    const soapPanel = document.getElementById('geralSoapSubtypeBox');
     const pueriPanel = document.getElementById('puericulturaZScoreBox');
     const pnPanel = document.getElementById('prenatalObjectiveBox');
+    if (soapPanel) {
+      soapPanel.style.display = state.selectedTemplateId === 'geral' ? 'block' : 'none';
+    }
     if (pueriPanel) {
       pueriPanel.style.display = state.selectedTemplateId === 'puericultura' ? 'block' : 'none';
     }
@@ -550,8 +558,8 @@
 
       const mimeType = getSupportedAudioMimeType();
       const recorderOptions = mimeType
-        ? { mimeType, audioBitsPerSecond: 16000 }
-        : { audioBitsPerSecond: 16000 };
+        ? { mimeType, audioBitsPerSecond: 32000 }
+        : { audioBitsPerSecond: 32000 };
 
       const recorder = new MediaRecorder(stream, recorderOptions);
       state.mediaRecorder = recorder;
@@ -573,6 +581,7 @@
           if (prevConsultInput && prevConsultInput.value.trim()) {
             existing.previousConsultationText = prevConsultInput.value.trim();
           }
+          existing.soapSubtypeHeader = getSelectedSoapSubtypeHeader();
           await window.ScribeDB.deleteAudioChunksOnly(consultId);
           existing.status = 'recording';
           existing.chunkCount = 0;
@@ -589,6 +598,7 @@
           templateId: tpl.id,
           templateName: tpl.name,
           templateIcon: tpl.icon,
+          soapSubtypeHeader: getSelectedSoapSubtypeHeader(),
           createdAt: now,
           updatedAt: now,
           status: 'recording',
@@ -827,6 +837,9 @@
     await new Promise((resolve) => {
       state.mediaRecorder.onstop = () => resolve();
       try {
+        if (state.mediaRecorder.state === 'recording') {
+          state.mediaRecorder.requestData();
+        }
         state.mediaRecorder.stop();
       } catch (_) {
         resolve();
@@ -868,6 +881,7 @@
       consult.templateId = currentTpl.id;
       consult.templateName = currentTpl.name;
       consult.templateIcon = currentTpl.icon;
+      consult.soapSubtypeHeader = getSelectedSoapSubtypeHeader();
       consult.durationSeconds = finalSeconds;
       consult.examFileCount = attachedExams.length;
       consult.quickNotes = currentNotes;
@@ -1026,6 +1040,7 @@
         templateId: tpl.id,
         templateName: tpl.name,
         templateIcon: tpl.icon,
+        soapSubtypeHeader: getSelectedSoapSubtypeHeader(),
         createdAt: now,
         updatedAt: now,
         status: 'queued',
@@ -1095,6 +1110,7 @@
       templateId: tpl.id,
       templateName: tpl.name,
       templateIcon: tpl.icon,
+      soapSubtypeHeader: getSelectedSoapSubtypeHeader(),
       createdAt: now,
       updatedAt: now,
       status: 'queued',
@@ -1255,15 +1271,17 @@
     const tpl = state.templates[consultation.templateId] || window.DEFAULT_TEMPLATES.geral;
     const examFiles = await window.ScribeDB.getExamFilesForConsultation(consultation.id);
     const preExams = consultation.preTranscribedExamsText || '';
+    const soapSubtypeHeader = consultation.soapSubtypeHeader || getSelectedSoapSubtypeHeader();
 
     const promptText = window.buildMedicalEvolutionPrompt(
       tpl,
       consultation.quickNotes,
       consultation.zScoreSummary,
-      examFiles.length > 0 || Boolean(preExams),
+      examFiles.length > 0 || Boolean(preExams) || Boolean(consultation.previousConsultationText),
       consultation.previousEvolutionText || '',
       consultation.previousConsultationText || '',
-      preExams
+      preExams,
+      soapSubtypeHeader
     );
 
     const parts = [];
@@ -1349,10 +1367,11 @@
         tpl,
         consultation.quickNotes,
         consultation.zScoreSummary,
-        Boolean(preExams),
+        Boolean(preExams) || Boolean(consultation.previousConsultationText),
         consultation.previousEvolutionText || '',
         consultation.previousConsultationText || '',
-        preExams
+        preExams,
+        soapSubtypeHeader
       );
       const rescueBody = {
         contents: [{
@@ -1387,15 +1406,17 @@
       finalEvolution = rawText;
     }
 
-    // Se não houve exames complementares anexados nem citados, garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
-    if (examFiles.length === 0 && !preExams) {
+    // Se não houve exames complementares anexados nem citados nem exames anteriores, garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
+    if (examFiles.length === 0 && !preExams && !consultation.previousConsultationText) {
       finalEvolution = finalEvolution.replace(/\n*EXAMES COMPLEMENTARES\s*\n\s*-\s*(?:Sem novos exames[^\n]*)?\n*/gi, '\n\n');
     }
 
     const { cleanText, codes } = cleanAndExtractCidFromEvolution(
       finalEvolution,
       Array.isArray(parsed.codigos_cid_ciap) ? parsed.codigos_cid_ciap : [],
-      consultation.templateId
+      consultation.templateId,
+      consultation.previousConsultationText || '',
+      soapSubtypeHeader
     );
 
     return {
@@ -1495,8 +1516,271 @@
     return { evolucao_completa: cleaned };
   }
 
-  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId) {
+  // Garante deterministicamente via código que NENHUMA condição de saúde anterior ("#"), NENHUMA sub-linha ("- "),
+  // NENHUMA informação de Ecografia na IG, NENHUM exame anterior e NENHUMA formatação de Vacinas/Sorologias/Paridade sejam perdidos!
+  function enforcePreviousHeaderAndExams(evolutionText, previousConsultationText, templateId, soapSubtypeHeader) {
+    let text = String(evolutionText || '');
+    if (!text || /Áudio sem conteúdo de consulta médica/i.test(text)) return text;
+
+    // 1. Garante o cabeçalho da modalidade na Consulta Geral (SOAP):
+    // ## CONSULTA AGENDADA - 0800 ## | ## RETORNO MÉDICO ## | ## DEMANDA ESPONTÂNEA ##
+    if (templateId === 'geral' && soapSubtypeHeader) {
+      if (/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##/i.test(text)) {
+        text = text.replace(/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##/i, soapSubtypeHeader);
+      } else {
+        text = `${soapSubtypeHeader}\n\n${text.trimStart()}`;
+      }
+    }
+
+    // 2. Padroniza a paridade obstétrica para o formato compacto "# G01PV0PC0A0" (sem espaços entre G, PV, PC, A)
+    text = text.replace(/^#\s*G\s*0*(\d+)\s*P?\s*V?\s*0*(\d+)\s*P?\s*C\s*0*(\d+)\s*A\s*0*(\d+)\b/gim, (_, g, pv, pc, a) => {
+      const gPad = String(parseInt(g, 10)).padStart(2, '0');
+      return `# G${gPad}PV${parseInt(pv, 10)}PC${parseInt(pc, 10)}A${parseInt(a, 10)}`;
+    });
+    // Caso a IA tenha escrito "# G1 P0 V0 PC0 A0" (com P e V separados)
+    text = text.replace(/^#\s*G\s*0*(\d+)\s+P\s*0*(\d+)\s+V\s*0*(\d+)\s+PC\s*0*(\d+)\s+A\s*0*(\d+)\b/gim, (_, g, p, v, pc, a) => {
+      const gPad = String(parseInt(g, 10)).padStart(2, '0');
+      const pvVal = Math.max(parseInt(p, 10) || 0, parseInt(v, 10) || 0);
+      return `# G${gPad}PV${pvVal}PC${parseInt(pc, 10)}A${parseInt(a, 10)}`;
+    });
+
+    // 3. Padroniza "# IG POR ECO COM X SEM E Y DIAS EM DD/MM/AAAA: 33 sem e 0 dias..." -> "# IG 33+0 POR ECO COM 08 SEM E 3 DIAS EM 15/05/2026"
+    text = text.replace(/^#\s*IG\s+(?:(\d+\+\d+)\s+)?(POR\s+ECO\s+COM\s+[^\n:]+?)(?:\s*(?::|->)\s*(\d+)\s*sem(?:anas?)?(?:\s*e\s*(\d+)\s*d(?:ias?)?)?[^\n]*)?$/gim, (full, igPrefix, porEcoPart, wAfter, dAfter) => {
+      if (igPrefix) {
+        return `# IG ${igPrefix} ${porEcoPart.trim()}`;
+      }
+      if (wAfter !== undefined) {
+        const dNum = dAfter !== undefined ? parseInt(dAfter, 10) : 0;
+        return `# IG ${parseInt(wAfter, 10)}+${dNum} ${porEcoPart.trim()}`;
+      }
+      return full;
+    });
+
+    // 4. Desagrupa "# VACINAS: DT: 15/10/2026 | DTPA: Pendente | ..." em linhas individuais "- Vacina: status"
+    text = text.replace(/^#\s*VACINAS:\s*([^\n]+)$/gim, (full, inlineContent) => {
+      const trimmed = inlineContent.trim();
+      if (!trimmed) return '# VACINAS:';
+      if (trimmed.includes('|')) {
+        const items = trimmed.split('|').map(s => s.trim()).filter(Boolean);
+        return '# VACINAS:\n' + items.map(it => (it.startsWith('-') ? it : `- ${it}`)).join('\n');
+      }
+      // Se separou várias vacinas por vírgula na mesma linha (ex.: "Hep B, DT, Influenza, COVID, VSR (01/10/26), DTPA (04/08/26)")
+      if (/,/.test(trimmed) && /(?:DT|DTPA|VSR|Hep|Influenza|COVID)/i.test(trimmed)) {
+        const items = trimmed.split(/\s*,\s*/).map(s => s.trim()).filter(Boolean);
+        if (items.length >= 2) {
+          return '# VACINAS:\n' + items.map(it => (it.startsWith('-') ? it : `- ${it}`)).join('\n');
+        }
+      }
+      return `# VACINAS:\n- ${trimmed.replace(/^-\s*/, '')}`;
+    });
+
+    // 5. Desagrupa "# SOROLOGIAS: 29/08/2026: TR HIV NR | ... | 27/10/2026: HTLV..." em uma linha "- DD/MM/AAAA: ..." por data
+    text = text.replace(/^#\s*SOROLOGIAS:\s*([^\n]+)$/gim, (full, inlineContent) => {
+      const trimmed = inlineContent.trim();
+      if (!trimmed) return '# SOROLOGIAS:';
+      // Quebra sempre que houver "| DD/MM/AAAA:" (nova data de sorologia na mesma linha)
+      const splitByDate = trimmed.replace(/\s*\|\s*(?=\d{2}\/\d{2}\/\d{2,4}\s*:)/g, '\n');
+      const dateLines = splitByDate.split('\n').map(s => s.trim()).filter(Boolean);
+      return '# SOROLOGIAS:\n' + dateLines.map(dl => (dl.startsWith('-') ? dl : `- ${dl.replace(/^-\s*/, '')}`)).join('\n');
+    });
+
+    // 6. Se houver Evolução Anterior colada, garante que NENHUMA "#" anterior, NENHUMA sub-linha "- " e NENHUM exame anterior tenham sido omitidos
+    const parsedPrev = (previousConsultationText && window.parsePreviousConsultationData)
+      ? window.parsePreviousConsultationData(previousConsultationText)
+      : null;
+
+    if (parsedPrev) {
+      // 6a. Garante que se a evolução anterior tinha "# IG ... POR ECO COM ... EM DD/MM/AAAA" e a IA omitiu a parte da ECO, ela seja restaurada
+      if (parsedPrev.updatedIgLine) {
+        if (/^#\s*IG\b[^\n]*$/im.test(text)) {
+          text = text.replace(/^#\s*IG\b[^\n]*$/im, (currentIgLine) => {
+            if (!/POR\s+ECO/i.test(currentIgLine) && /POR\s+ECO/i.test(parsedPrev.updatedIgLine)) {
+              return parsedPrev.updatedIgLine;
+            }
+            return currentIgLine;
+          });
+        }
+      }
+
+      // 6b. Verifica todas as condições "#" e sub-linhas "- " do cabeçalho anterior + diagnósticos promovidos da AVALIAÇÃO anterior
+      const subjSplit = text.match(/^([\s\S]*?)(\n\s*(?:\d+\.\s*)?SUBJETIVO\b[\s\S]*)$/i);
+      if (subjSplit) {
+        let headerPart = subjSplit[1];
+        const restPart = subjSplit[2];
+
+        const normalizeCompare = (s) => s
+          .toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]/g, '');
+
+        // Agrupa o cabeçalho anterior em blocos: cada linha "#" + suas sub-linhas "- " imediatamente abaixo
+        const prevSourceLines = [
+          ...(parsedPrev.headerLines || []),
+          ...(parsedPrev.promotedFromAvaliacao || [])
+        ];
+        const prevBlocks = [];
+        for (const line of prevSourceLines) {
+          const t = line.trim();
+          if (!t) continue;
+          if (t.startsWith('#')) {
+            prevBlocks.push({ main: t, subs: [] });
+          } else if ((t.startsWith('-') || t.startsWith('>')) && prevBlocks.length > 0) {
+            prevBlocks[prevBlocks.length - 1].subs.push(t.replace(/^>\s*/, '- '));
+          }
+        }
+
+        for (const block of prevBlocks) {
+          const mainUpper = block.main.toUpperCase();
+          // Campos estruturais que já existem no cabeçalho (G/P, IG, TS, TOXO, SOROLOGIAS, VACINAS, MUC, TABAGISTA, ALERGIAS, ODONTO)
+          const isStructuralKey = /^#\s*(?:G\d|IG\b|TS\b|TOXO\b|SOROLOGIAS\b|VACINAS\b|MUC\b|TABAGIS|ALERGIA|CONSULTA\s+ODONTO|DUM\b|$)/i.test(mainUpper);
+
+          if (isStructuralKey) {
+            // Mesmo em campos estruturais (como # G01PV0PC0A0), se havia sub-linhas "- Gestação atual não planejada" e a IA tirou, restaura!
+            if (/^#\s*G\d/i.test(mainUpper) && block.subs.length > 0) {
+              for (const sub of block.subs) {
+                const subNorm = normalizeCompare(sub);
+                if (subNorm && !normalizeCompare(headerPart).includes(subNorm)) {
+                  headerPart = headerPart.replace(/^(#\s*G\d[^\n]*)$/im, `$1\n${sub}`);
+                }
+              }
+            }
+            continue;
+          }
+
+          // É uma condição clínica/cirúrgica/hábito (ex.: "# ovolactovegetariana", "# Histórico de bulimia na infância", "# Apendicectomia em 2017 ou 2018", "# Risco aumentado para pré-eclâmpsia")
+          const mainNorm = normalizeCompare(block.main);
+          if (mainNorm && !normalizeCompare(headerPart).includes(mainNorm)) {
+            const fullBlockText = [block.main, ...block.subs].join('\n');
+            // Insere antes de # TS: ou antes de # MUC: ou no final do cabeçalho #
+            if (/^#\s*TS:/im.test(headerPart)) {
+              headerPart = headerPart.replace(/^(#\s*TS:)/im, `${fullBlockText}\n$1`);
+            } else if (/^#\s*MUC:/im.test(headerPart)) {
+              headerPart = headerPart.replace(/^(#\s*MUC:)/im, `${fullBlockText}\n$1`);
+            } else {
+              headerPart = `${headerPart.trimEnd()}\n${fullBlockText}\n`;
+            }
+          } else if (block.subs.length > 0) {
+            // A condição "#" existe, mas verifica se alguma sub-linha "- " abaixo dela foi omitida
+            for (const sub of block.subs) {
+              const subNorm = normalizeCompare(sub);
+              if (subNorm && !normalizeCompare(headerPart).includes(subNorm)) {
+                const escapedMain = block.main.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const reMain = new RegExp(`^(${escapedMain}[^\\n]*)$`, 'im');
+                if (reMain.test(headerPart)) {
+                  headerPart = headerPart.replace(reMain, `$1\n${sub}`);
+                }
+              }
+            }
+          }
+        }
+
+        text = `${headerPart}${restPart}`;
+      }
+    }
+
+    // 7. Separa rigorosamente EXAMES COMPLEMENTARES (- LABS) de ULTRASSONOGRAFIA (- US) e restaura exames anteriores se omitidos
+    const hasPrevLabs = parsedPrev && parsedPrev.labLines && parsedPrev.labLines.length > 0;
+    const hasPrevUsg = parsedPrev && parsedPrev.usgLines && parsedPrev.usgLines.length > 0;
+
+    // Se a IA colocou linhas "- US ..." ou "- USG ..." dentro de EXAMES COMPLEMENTARES sem criar o bloco ULTRASSONOGRAFIA, separa!
+    const evalHeaderRegex = /\n(\s*(?:\d+\.\s*)?AVALIAÇÃO\b)/i;
+    if (evalHeaderRegex.test(text)) {
+      const beforeEvalSplit = text.split(evalHeaderRegex);
+      let preEval = beforeEvalSplit[0];
+      const evalAndAfter = text.slice(preEval.length);
+
+      // Extrai blocos EXAMES COMPLEMENTARES e ULTRASSONOGRAFIA atuais no final de preEval
+      const examSectionRegex = /\n*EXAMES COMPLEMENTARES\s*\n([\s\S]*?)$/i;
+      const examMatch = preEval.match(examSectionRegex);
+
+      if (examMatch || hasPrevLabs || hasPrevUsg) {
+        const bodyBeforeExams = examMatch ? preEval.slice(0, examMatch.index) : preEval;
+        const rawExamArea = examMatch ? examMatch[1] : '';
+
+        const currentLabLines = [];
+        const currentUsgLines = [];
+        let inUsgSubblock = false;
+
+        for (const rawL of rawExamArea.split('\n')) {
+          const t = rawL.trim();
+          if (!t || t === '-') continue;
+          if (/^ULTRASSONOGRAFIA\b/i.test(t)) {
+            inUsgSubblock = true;
+            continue;
+          }
+          if (/^EXAMES COMPLEMENTARES\b/i.test(t)) {
+            inUsgSubblock = false;
+            continue;
+          }
+          const isUsgLine = /^-\s*(?:US\b|USG\b|ECO\b|ECOGRAFIA|ULTRASSOM|ULTRASSONOGRAFIA)/i.test(t)
+            || /\b(?:DMSG|CCN|saco gestacional|feto único|placenta|líquido amniótico|biometria fetal)\b/i.test(t);
+
+          if (inUsgSubblock || isUsgLine) {
+            currentUsgLines.push(t);
+          } else {
+            currentLabLines.push(t);
+          }
+        }
+
+        const normLineKey = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+        // Mescla exames laboratoriais anteriores + atuais sem duplicar
+        const finalLabs = [];
+        if (hasPrevLabs) {
+          for (const pl of parsedPrev.labLines) {
+            finalLabs.push(pl.trim());
+          }
+        }
+        for (const cl of currentLabLines) {
+          const dateMatch = cl.match(/\b(\d{2}\/\d{2}\/\d{2,4})\b/);
+          const alreadyHasSameLine = finalLabs.some(existing => normLineKey(existing) === normLineKey(cl));
+          if (!alreadyHasSameLine) {
+            // Se tem a mesma data de um LAB anterior e o anterior já está mais completo, evita duplicar a mesma linha
+            if (dateMatch && finalLabs.some(existing => existing.includes(dateMatch[1]) && existing.length >= cl.length)) {
+              continue;
+            }
+            finalLabs.push(cl);
+          }
+        }
+
+        // Mescla ultrassonografias anteriores + atuais sem duplicar
+        const finalUsgs = [];
+        if (hasPrevUsg) {
+          for (const pu of parsedPrev.usgLines) {
+            finalUsgs.push(pu.trim());
+          }
+        }
+        for (const cu of currentUsgLines) {
+          const dateMatch = cu.match(/\b(\d{2}\/\d{2}\/\d{2,4})\b/);
+          const alreadyHasSameUsg = finalUsgs.some(existing => normLineKey(existing) === normLineKey(cu));
+          if (!alreadyHasSameUsg) {
+            if (dateMatch && finalUsgs.some(existing => existing.includes(dateMatch[1]) && existing.length >= cu.length)) {
+              continue;
+            }
+            finalUsgs.push(cu);
+          }
+        }
+
+        const rebuiltSections = [];
+        if (finalLabs.length > 0) {
+          rebuiltSections.push(`EXAMES COMPLEMENTARES\n${finalLabs.join('\n')}`);
+        }
+        if (finalUsgs.length > 0) {
+          rebuiltSections.push(`ULTRASSONOGRAFIA\n${finalUsgs.join('\n')}`);
+        }
+
+        if (rebuiltSections.length > 0) {
+          text = `${bodyBeforeExams.trimEnd()}\n\n${rebuiltSections.join('\n\n')}${evalAndAfter}`;
+        }
+      }
+    }
+
+    return text;
+  }
+
+  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId, previousConsultationText = '', soapSubtypeHeader = '') {
     let text = fixBrazilianMedicationSpelling(evolutionText || '');
+    text = enforcePreviousHeaderAndExams(text, previousConsultationText, templateId, soapSubtypeHeader);
     const extractedCodes = Array.isArray(existingCodes) ? [...existingCodes] : [];
 
     // Na Puericultura, garante que nunca apareça "# Alimentação:" ou "# Aleitamento:" no cabeçalho "#" inicial
@@ -1530,7 +1814,7 @@
         cleanedLines.push(rawLine);
         continue;
       }
-      if (/^(?:\d+\.\s*)?(?:SUBJETIVO|OBJETIVO|EXAMES COMPLEMENTARES|RASTREAMENTOS|SOROLOGIAS)/i.test(trimmed)) {
+      if (/^(?:\d+\.\s*)?(?:SUBJETIVO|OBJETIVO|EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA|RASTREAMENTOS|SOROLOGIAS)/i.test(trimmed)) {
         inAvaliacaoOrConduta = false;
       }
       if (inAvaliacaoOrConduta) {
@@ -1561,10 +1845,21 @@
           }
 
           const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+          // Otimização de velocidade: limita o thinkingBudget no Gemini 2.5 Flash para evitar esperas de 2 minutos
+          const bodyForModel = {
+            ...requestBody,
+            generationConfig: {
+              ...(requestBody.generationConfig || {})
+            }
+          };
+          if (model.startsWith('gemini-2.5') && !bodyForModel.generationConfig.thinkingConfig) {
+            bodyForModel.generationConfig.thinkingConfig = { thinkingBudget: 512 };
+          }
+
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify(bodyForModel)
           });
 
           if (res.ok) {
@@ -2459,13 +2754,15 @@
       const cycleNote = dumResult.cycleDays !== 28
         ? ` (Ciclo de ${dumResult.cycleDays}d -> ajuste ovulatório de ${dumResult.cycleAdjustment > 0 ? '+' : ''}${dumResult.cycleAdjustment}d; sem ajuste 28d seria ${dumResult.rawIG.shortText})`
         : ' (Ciclo regular 28 dias)';
-      previewLines.push(`📅 Pela DUM (${dumResult.dumDateBR})${cycleNote}: IG Hoje = ${dumResult.adjustedIG.longText} (${dumResult.adjustedIG.shortText}) | DPP (DUM) = ${dumResult.dppAdjustedBR}`);
-      headerLines.push(`# DUM: ${dumResult.dumDateBR} (Ciclo: ${dumResult.cycleDays} dias) -> IG por DUM: ${dumResult.adjustedIG.longText} | DPP por DUM: ${dumResult.dppAdjustedBR}`);
+      previewLines.push(`📅 Pela DUM (${dumResult.dumDateBR})${cycleNote}: IG Hoje = ${dumResult.adjustedIG.longText} (${dumResult.adjustedIG.w}+${dumResult.adjustedIG.d}) | DPP (DUM) = ${dumResult.dppAdjustedBR}`);
+      headerLines.push(`# IG ${dumResult.adjustedIG.w}+${dumResult.adjustedIG.d} POR DUM EM ${dumResult.dumDateBR}${dumResult.cycleDays !== 28 ? ` (CICLO ${dumResult.cycleDays} DIAS)` : ''}`);
     }
 
     if (usgResult) {
-      previewLines.push(`🖥️ Pela Ecografia (${usgResult.usgDateBR} com ${usgResult.usgAtExamLong}): IG Hoje = ${usgResult.currentIG.longText} (${usgResult.currentIG.shortText}) | DPP (Eco) = ${usgResult.dppUsgBR}`);
-      headerLines.push(`# IG POR ECO COM ${usgResult.usgW} SEM E ${usgResult.usgD} DIAS EM ${usgResult.usgDateBR} -> IG hoje por Eco: ${usgResult.currentIG.longText} | DPP por Eco: ${usgResult.dppUsgBR}`);
+      const usgWPad = String(usgResult.usgW).padStart(2, '0');
+      const usgDaysPart = usgResult.usgD > 0 ? ` E ${usgResult.usgD} DIAS` : '';
+      previewLines.push(`🖥️ Pela Ecografia (${usgResult.usgDateBR} com ${usgResult.usgAtExamLong}): IG Hoje = ${usgResult.currentIG.longText} (${usgResult.currentIG.w}+${usgResult.currentIG.d}) | DPP (Eco) = ${usgResult.dppUsgBR}`);
+      headerLines.push(`# IG ${usgResult.currentIG.w}+${usgResult.currentIG.d} POR ECO COM ${usgWPad} SEM${usgDaysPart} EM ${usgResult.usgDateBR}`);
     }
 
     if (dumResult && usgResult) {
@@ -3253,7 +3550,7 @@
     });
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
       if (confirm('Restaurar todos os 7 modelos para o texto original padrão?')) {
-        localStorage.removeItem('ubs_custom_templates_v8');
+        localStorage.removeItem('ubs_custom_templates_v9');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();
         showToast('🔄 Modelos originais restaurados!');
@@ -3308,8 +3605,8 @@
   function extractSectionFromText(fullText, sectionKey) {
     const mapHeaders = {
       subjetivo: /^([\s\S]*?(?:4\.\s*)?SUBJETIVO\s*\n[\s\S]*?)(?=\n(?:5\.|6\.|\s*OBJETIVO)|\s*$)/i,
-      objetivo: /(?:6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*\n([\s\S]*?)(?=\n(?:EXAMES COMPLEMENTARES|7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
-      exames: /EXAMES COMPLEMENTARES\s*\n([\s\S]*?)(?=\n(?:7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
+      objetivo: /(?:6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*\n([\s\S]*?)(?=\n(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA|7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
+      exames: /((?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\s*\n[\s\S]*?)(?=\n(?:7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
       avaliacao: /(?:9\.\s*)?AVALIAÇÃO[^\n]*\n([\s\S]*?)(?=\n(?:10\.|\s*CONDUTA)|\s*$)/i,
       conduta: /(?:10\.\s*)?CONDUTA\s*\n([\s\S]*?)$/i
     };
