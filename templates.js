@@ -578,11 +578,12 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
   const todayStr = new Date().toLocaleDateString('pt-BR');
   const notesExamDetection = window.detectExamsInText(quickNotes);
   const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
+  const isPrenatalTemplate = templateObj.id === 'prenatal';
   const hasAnyExamsToFormat = Boolean(
     hasExamFiles ||
     preTranscribedExamsText ||
     notesExamDetection.hasAny ||
-    (parsedPrev && parsedPrev.hasPreviousExams)
+    (isPrenatalTemplate && parsedPrev && parsedPrev.hasPreviousExams)
   );
 
   // Ajusta o título do modelo SOAP Geral conforme a modalidade selecionada (Demanda Espontânea, Consulta Agendada - 0800 ou Retorno Médico)
@@ -662,20 +663,20 @@ Data de referência de hoje: ${todayStr}.
    - ACRÉSCIMO OBRIGATÓRIO DE QUALQUER ACHADO ADICIONAL: Em TODOS os 7 modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER item adicional de exame físico além do esqueleto básico (ex.: ausculta pulmonar "AP: MVUD, SRA", ausculta cardíaca "AC: BNF, 2T, RR, SS", exame abdominal, exame especular, toque vaginal / avaliação de colo uterino, exame das mamas, Giordano / punho-percussão lombar, oroscopia, otoscopia, exame de membros/panturrilhas, pele, exame neurológico, etc.), você DEVE INCLUIR e descrever todas essas linhas adicionais dentro do bloco "OBJETIVO"!
    - NUNCA copie o exame físico antigo (PA, Peso, AU, BCF da consulta passada) como se fosse o de hoje, e NUNCA invente medidas não faladas hoje!
 
-4. REGRA ESTRITA DE EXAMES COMPLEMENTARES E ULTRASSONOGRAFIA (MANTER EXAMES ANTERIORES + INCLUIR NOVOS + SEPARAR LABS DE ULTRASSONOGRAFIA):
-   - ${hasAnyExamsToFormat ? 'Há exames complementares (atuais e/ou da evolução anterior)! Inclua-os logo após o OBJETIVO e antes da AVALIAÇÃO.' : 'Se NÃO houver exames atuais nem exames na evolução anterior, não crie o bloco EXAMES COMPLEMENTARES.'}
-   - MANUTENÇÃO OBRIGATÓRIA DOS EXAMES DA EVOLUÇÃO ANTIGA + ADIÇÃO DOS NOVOS:
-     * Quando houver evolução prévia com exames registrados, você DEVE MANTER TODOS OS EXAMES ANTERIORES ("- LABS [data antiga]: ..." e "- US ... [data antiga]: ...") E INCLUIR OS EXAMES NOVOS LOGO ABAIXO DELES em ordem cronológica! JAMAIS apague os exames anteriores!
+4. REGRA ESTRITA DE EXAMES COMPLEMENTARES E ULTRASSONOGRAFIA:
+   - ${hasAnyExamsToFormat ? 'Há exames complementares a registrar! Inclua-os logo após o OBJETIVO e antes da AVALIAÇÃO.' : 'Se NÃO houver exames trazidos/anexados/falados na consulta de HOJE, NÃO crie o bloco EXAMES COMPLEMENTARES e NÃO copie exames da evolução antiga.'}
+   - ${isPrenatalTemplate
+     ? 'NO PRÉ-NATAL (MANUTENÇÃO OBRIGATÓRIA DOS EXAMES DA EVOLUÇÃO ANTIGA + ADIÇÃO DOS NOVOS): Quando houver evolução prévia de Pré-Natal com exames registrados, mantenha todos os exames anteriores ("- LABS [data antiga]: ..." e "- US ... [data antiga]: ...") e inclua os exames novos logo abaixo deles em ordem cronológica.'
+     : 'PROIBIÇÃO ABSOLUTA DE COPIAR EXAMES DA EVOLUÇÃO ANTIGA NO SOAP E DEMAIS CONSULTAS: Nesta modalidade de consulta, É TERMINANTEMENTE PROIBIDO copiar os exames ("- LABS ..." ou "- US ...") que estavam na evolução antiga! Registre em EXAMES COMPLEMENTARES SOMENTE os exames novos avaliados/trazidos na consulta de HOJE. Se não houver exames novos hoje, omita a seção EXAMES COMPLEMENTARES.'}
    - SEPARAÇÃO ESTRITA ENTRE EXAMES LABORATORIAIS E ULTRASSONOGRAFIA / IMAGEM:
      * NUNCA misture exames laboratoriais com laudos de ultrassonografia no mesmo bloco!
      * Coloque todos os exames laboratoriais (sangue, urina/EQU, urocultura, sorologias, bioquímica, hormônios) sob o título:
        EXAMES COMPLEMENTARES
        - LABS [DD/MM/AAAA]: [todos os exames daquela data na mesma linha separados por " | "]
        (Se o exame foi feito em pronto-socorro/hospital, escreva: "- LABS [DD/MM/AAAA] (REALIZADO NA EMERGÊNCIA / HOSPITAL): ...")
-     * Coloque todas as ultrassonografias / ecografias (e exames de imagem) sob o título separado logo abaixo:
+     * Coloque todas as ultrassonografias / ecografias sob o título separado logo abaixo (ou formato de imagem correspondente):
        ULTRASSONOGRAFIA
-       - US OBSTÉTRICA [DD/MM/AAAA]: [descrição completa do laudo e conclusão com biometria/IG estimada]
-       - US MORFOLÓGICA [DD/MM/AAAA]: [descrição completa do laudo e conclusão]
+       - US [TIPO] [DD/MM/AAAA]: [descrição completa do laudo e conclusão]
    - PROIBIDO ESCREVER "N/R" OU "Não realizado" para exames que não constam no laudo.
 
 5. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
@@ -694,25 +695,25 @@ Data de referência de hoje: ${todayStr}.
    - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'Filtre e descarte qualquer interrupção paralela de terceiros/enfermagem falando de outro paciente.'}
    - Quando o [MÉDICO] estiver explicando alterações de exames para o paciente, JAMAIS escreva no SUBJETIVO que "Paciente refere tal alteração".
 ${parsedPrev ? `
-9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR (VALE PARA PRÉ-NATAL E TODOS OS 7 MODELOS):
-   - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo, (B) os Diagnósticos da Avaliação anterior que devem entrar nas "#", (C) os Exames Laboratoriais e Ultrassonografias anteriores, e (D) a Avaliação e Conduta da última consulta.
+9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR:
+   - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo, (B) os Diagnósticos da Avaliação anterior que devem entrar nas "#", ${isPrenatalTemplate ? '(C) os Exames Laboratoriais e Ultrassonografias anteriores do Pré-Natal, e (D)' : 'e (C)'} a Avaliação e Conduta da última consulta.
    - ATENÇÃO: O SUBJETIVO e o OBJETIVO antigos foram removidos propositalmente para que você construa o SUBJETIVO e o OBJETIVO de hoje 100% a partir do ÁUDIO DE HOJE!
    - Siga obrigatoriamente:
-     1) Copie TODAS as linhas "#" e TODAS as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo (mantendo "# G01PV0PC0A0", "- Gestação atual não planejada", "# IG ... POR ECO COM ... EM ...", "# ovolactovegetariana", "# Histórico de...", "# Apendicectomia...", "# TS:", "# TOXO:", "# SOROLOGIAS:" por data, "# VACINAS:" uma por linha com "-", "# Consulta odontologia:", "# Tabagista:", "# Alergias:"), acrescentando também nas "#" os diagnósticos listados em "DIAGNÓSTICOS DA AVALIAÇÃO ANTERIOR PARA INCLUIR NAS #"!
-     2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se a paciente não tomou ou manteve medicação suspensa, relate no SUBJETIVO.
-     3) Mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje logo abaixo deles!
+     1) Copie TODAS as linhas "#" e TODAS as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo, acrescentando também nas "#" os diagnósticos listados em "DIAGNÓSTICOS DA AVALIAÇÃO ANTERIOR PARA INCLUIR NAS #"!
+     2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se o paciente não tomou ou manteve medicação suspensa, relate no SUBJETIVO.
+     ${isPrenatalTemplate ? '3) No Pré-Natal, mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje logo abaixo deles!' : '3) NÃO copie os exames da evolução anterior! Inclua em EXAMES COMPLEMENTARES apenas os exames novos avaliados hoje.'}
 
 === (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR (MANTER TODAS AS LINHAS "#" E SUB-LINHAS "-"!) ===
 ${parsedPrev.headerText || 'Nenhum cabeçalho anterior.'}
 
 === (B) DIAGNÓSTICOS DA AVALIAÇÃO ANTERIOR PARA INCLUIR NAS "#" DO CABEÇALHO ===
 ${parsedPrev.diagnosesToPromote.length > 0 ? parsedPrev.diagnosesToPromote.map(d => [d.hashLine, ...d.subLines].join('\n')).join('\n') : 'Nenhum diagnóstico crônico novo a promover.'}
-
-=== (C) EXAMES ANTERIORES DA EVOLUÇÃO ANTIGA (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
+${isPrenatalTemplate ? `
+=== (C) EXAMES ANTERIORES DO PRÉ-NATAL (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
 ${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES:\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
 ${parsedPrev.usgExamLines.length > 0 ? '\nULTRASSONOGRAFIAS / IMAGEM ANTERIORES:\n' + parsedPrev.usgExamLines.join('\n\n') : ''}
-
-=== (D) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (PARA ATUALIZAR # MUC E CHECAR ADESÃO) ===
+` : ''}
+=== (${isPrenatalTemplate ? 'D' : 'C'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (PARA ATUALIZAR # MUC E CHECAR ADESÃO) ===
 AVALIAÇÃO ANTERIOR:
 ${parsedPrev.avaliacaoText || 'Não informada.'}
 CONDUTA ANTERIOR:

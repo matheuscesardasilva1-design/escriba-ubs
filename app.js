@@ -37,73 +37,123 @@
 
   // Descoberta inteligente e auto-adaptativa do modelo Gemini Flash ativo na chave do usuário:
   // - Chaves novas (2026+) usam a geração Gemini 3 Flash (ex.: gemini-3.8-flash / gemini-3.0-flash / gemini-3-flash-preview) e bloqueiam gemini-2.5-flash com "no longer available to new users".
-  // - O sistema descobre automaticamente qual Flash principal (NUNCA "lite") está ativo na chave, memoriza no navegador o modelo que funciona e bloqueia permanentemente qualquer modelo descontinuado para não gerar erros 404!
+  // Descoberta inteligente e rotação automática entre os modelos com cota ativa no Google AI Studio:
+  // - Gemini 3.5 Flash Lite: 500 requisições/dia (RPD) e 15/min (RPM)
+  // - Gemini 3.1 Flash Lite: 500 requisições/dia (RPD) e 15/min (RPM)
+  // - Gemini 3.8 Flash / 3.6 Flash / 3 Flash: 20 requisições/dia cada (RPD) e 5/min (RPM)
+  // - Gemini 2.5 Flash Lite: 20 requisições/dia (RPD) e 10/min (RPM)
+  // Total combinado na mesma chave: > 1.080 atendimentos por dia!
+  // Modelos com cota 0/0 (Pro, 2.0 Flash, TTS, Image, Live) são filtrados automaticamente.
   const GEMINI_MODELS = [
     'gemini-3.8-flash',
-    'gemini-3.0-flash',
+    'gemini-3.6-flash',
     'gemini-3-flash-preview',
-    'gemini-2.5-flash'
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-2.5-flash-lite'
   ];
 
-  let cachedDiscoveredModels = null;
+  const cachedDiscoveredModelsByKey = {};
 
-  function getDisabledModelsForKey() {
+  function getKeyShortHash(apiKey) {
+    const k = String(apiKey || '').trim();
+    return k ? k.slice(-8) : 'default';
+  }
+
+  function getDisabledModelsForKey(apiKey) {
     try {
-      return JSON.parse(localStorage.getItem('ubs_disabled_gemini_models_v1') || '[]');
+      return JSON.parse(localStorage.getItem('ubs_disabled_models_' + getKeyShortHash(apiKey)) || '[]');
     } catch (_) {
       return [];
     }
   }
 
-  function markModelAsDisabledForKey(modelName) {
+  function markModelAsDisabledForKey(modelName, apiKey) {
     const clean = String(modelName || '').replace(/^models\//, '').trim();
     if (!clean) return;
-    const list = getDisabledModelsForKey();
+    const storageKey = 'ubs_disabled_models_' + getKeyShortHash(apiKey);
+    const list = getDisabledModelsForKey(apiKey);
     if (!list.includes(clean)) {
       list.push(clean);
-      localStorage.setItem('ubs_disabled_gemini_models_v1', JSON.stringify(list));
+      localStorage.setItem(storageKey, JSON.stringify(list));
     }
-    if (cachedDiscoveredModels) {
-      cachedDiscoveredModels = cachedDiscoveredModels.filter(m => m !== clean);
-    }
-    if (localStorage.getItem('ubs_working_gemini_model_v1') === clean) {
-      localStorage.removeItem('ubs_working_gemini_model_v1');
+    const workKey = 'ubs_working_model_' + getKeyShortHash(apiKey);
+    if (localStorage.getItem(workKey) === clean) {
+      localStorage.removeItem(workKey);
     }
   }
 
-  function rememberWorkingModelForKey(modelName) {
+  function getExhaustedModelsForToday(apiKey) {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const storageKey = `ubs_exhausted_${today}_${getKeyShortHash(apiKey)}`;
+      return JSON.parse(localStorage.getItem(storageKey) || '[]');
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function markModelExhaustedForToday(modelName, apiKey) {
+    const clean = String(modelName || '').replace(/^models\//, '').trim();
+    if (!clean) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const storageKey = `ubs_exhausted_${today}_${getKeyShortHash(apiKey)}`;
+    const list = getExhaustedModelsForToday(apiKey);
+    if (!list.includes(clean)) {
+      list.push(clean);
+      localStorage.setItem(storageKey, JSON.stringify(list));
+    }
+    const workKey = 'ubs_working_model_' + getKeyShortHash(apiKey);
+    if (localStorage.getItem(workKey) === clean) {
+      localStorage.removeItem(workKey);
+    }
+  }
+
+  function rememberWorkingModelForKey(modelName, apiKey) {
     const clean = String(modelName || '').replace(/^models\//, '').trim();
     if (clean) {
-      localStorage.setItem('ubs_working_gemini_model_v1', clean);
+      localStorage.setItem('ubs_working_model_' + getKeyShortHash(apiKey), clean);
     }
   }
 
   async function getActiveGeminiModels(apiKey) {
-    const disabled = getDisabledModelsForKey();
-    const remembered = localStorage.getItem('ubs_working_gemini_model_v1') || '';
+    const disabled = getDisabledModelsForKey(apiKey);
+    const exhaustedToday = getExhaustedModelsForToday(apiKey);
+    const workKey = 'ubs_working_model_' + getKeyShortHash(apiKey);
+    const remembered = localStorage.getItem(workKey) || '';
+    const keyHash = getKeyShortHash(apiKey);
 
-    if (cachedDiscoveredModels && cachedDiscoveredModels.length > 0) {
-      const filtered = cachedDiscoveredModels.filter(m => !disabled.includes(m));
-      if (filtered.length > 0) {
-        if (remembered && !disabled.includes(remembered)) {
-          return [remembered, ...filtered.filter(m => m !== remembered)];
-        }
-        return filtered;
+    const filterAndOrder = (rawList) => {
+      const valid = rawList.filter(m => !disabled.includes(m) && !exhaustedToday.includes(m));
+      if (remembered && valid.includes(remembered)) {
+        return [remembered, ...valid.filter(m => m !== remembered)];
       }
+      return valid;
+    };
+
+    if (cachedDiscoveredModelsByKey[keyHash] && cachedDiscoveredModelsByKey[keyHash].length > 0) {
+      const activeFromCache = filterAndOrder(cachedDiscoveredModelsByKey[keyHash]);
+      if (activeFromCache.length > 0) return activeFromCache;
     }
 
     try {
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
       if (res.ok) {
         const data = await res.json();
-        const available = (data.models || [])
+        const allCapable = (data.models || [])
           .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map(m => m.name.replace(/^models\//, ''))
-          // PROIBIDO modelos "lite" (que ignoram partes do áudio e regras) ou modelos de imagem/voz/embedding
           .filter(name =>
-            name.includes('gemini') &&
+            name.startsWith('gemini-') &&
             name.includes('flash') &&
-            !name.includes('lite') &&
+            !name.includes('pro') &&
+            !name.includes('2.0') &&
+            !name.startsWith('gemini-2-flash') &&
+            !name.includes('omni') &&
+            !name.includes('argon') &&
+            !name.includes('banana') &&
+            !name.includes('live') &&
+            !name.includes('transcribe') &&
             !name.includes('embedding') &&
             !name.includes('imagen') &&
             !name.includes('veo') &&
@@ -111,38 +161,40 @@
             !name.includes('image') &&
             !name.includes('audio') &&
             !name.includes('thinking') &&
-            !name.includes('1.5') &&
-            !name.includes('2.0') &&
-            !disabled.includes(name)
+            !name.includes('robotics') &&
+            !name.includes('computer-use') &&
+            !name.includes('1.0') &&
+            !name.includes('1.5')
           );
 
-        // Ordena priorizando a versão mais nova do Gemini Flash (ex.: 3.8 / 3.0 / 3-flash antes de 2.5-flash)
-        const extractVersionScore = (name) => {
+        // Classifica priorizando:
+        // 1) Modelos Flash 3.x (20/dia cada: gemini-3.8-flash, gemini-3.6-flash, gemini-3-flash)
+        // 2) Modelos Flash-Lite 3.5 e 3.1 (500/dia cada e 15 RPM: gemini-3.5-flash-lite, gemini-3.1-flash-lite) + 2.5-flash-lite (20/dia)
+        const scoreModel = (name) => {
           const m = name.match(/gemini-(\d+(?:\.\d+)?)/);
-          const ver = m ? parseFloat(m[1]) : 0;
-          const isStable = !name.includes('preview') && !name.includes('exp') ? 0.05 : 0;
-          return ver + isStable;
+          const ver = m ? parseFloat(m[1]) : 2.5;
+          const isLite = name.includes('lite');
+          const tierScore = isLite ? 50 : 100;
+          const stableBonus = (!name.includes('preview') && !name.includes('exp')) ? 0.2 : 0;
+          return tierScore + ver + stableBonus;
         };
-        available.sort((a, b) => extractVersionScore(b) - extractVersionScore(a));
 
-        if (remembered && !disabled.includes(remembered)) {
-          const withRemembered = [remembered, ...available.filter(m => m !== remembered)];
-          cachedDiscoveredModels = withRemembered.slice(0, 4);
-          return cachedDiscoveredModels;
-        }
+        allCapable.sort((a, b) => scoreModel(b) - scoreModel(a));
 
-        if (available.length > 0) {
-          cachedDiscoveredModels = available.slice(0, 4);
-          return cachedDiscoveredModels;
+        if (allCapable.length > 0) {
+          cachedDiscoveredModelsByKey[keyHash] = allCapable;
+          const ordered = filterAndOrder(allCapable);
+          if (ordered.length > 0) return ordered;
         }
       }
     } catch (_) {}
 
-    const fallback = GEMINI_MODELS.filter(m => !disabled.includes(m));
-    if (remembered && !disabled.includes(remembered) && !fallback.includes(remembered)) {
-      fallback.unshift(remembered);
+    const fallback = filterAndOrder(GEMINI_MODELS);
+    // Se todos foram marcados como esgotados hoje, limpa a lista de esgotados para tentar novamente caso a cota tenha virado
+    if (fallback.length === 0) {
+      return GEMINI_MODELS.filter(m => !disabled.includes(m));
     }
-    return fallback.length > 0 ? fallback : ['gemini-3.8-flash', 'gemini-3-flash-preview'];
+    return fallback;
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
@@ -1632,11 +1684,14 @@
 
     if (onProgressMilestone) onProgressMilestone(8, '📦 Lendo áudio gravado no disco local...');
 
+    const isPrenatalConsult = consultation.templateId === 'prenatal';
+    const hasNotesExams = window.detectExamsInText ? window.detectExamsInText(consultation.quickNotes).hasAny : false;
+
     const promptText = window.buildMedicalEvolutionPrompt(
       tpl,
       consultation.quickNotes,
       consultation.zScoreSummary,
-      examFiles.length > 0 || Boolean(preExams) || Boolean(consultation.previousConsultationText),
+      examFiles.length > 0 || Boolean(preExams) || hasNotesExams || (isPrenatalConsult && Boolean(consultation.previousConsultationText)),
       consultation.previousEvolutionText || '',
       consultation.previousConsultationText || '',
       preExams,
@@ -1739,7 +1794,7 @@
         tpl,
         consultation.quickNotes,
         consultation.zScoreSummary,
-        Boolean(preExams) || Boolean(consultation.previousConsultationText),
+        Boolean(preExams) || hasNotesExams || (isPrenatalConsult && Boolean(consultation.previousConsultationText)),
         consultation.previousEvolutionText || '',
         consultation.previousConsultationText || '',
         preExams,
@@ -1778,8 +1833,8 @@
       finalEvolution = rawText;
     }
 
-    // Se não houve exames complementares anexados nem citados nem exames anteriores, garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
-    if (examFiles.length === 0 && !preExams && !consultation.previousConsultationText) {
+    // Se não houve exames complementares novos (e não é Pré-Natal com exames anteriores), garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
+    if (examFiles.length === 0 && !preExams && !hasNotesExams && (!isPrenatalConsult || !consultation.previousConsultationText)) {
       finalEvolution = finalEvolution.replace(/\n*EXAMES COMPLEMENTARES\s*\n\s*-\s*(?:Sem novos exames[^\n]*)?\n*/gi, '\n\n');
     }
 
@@ -2084,9 +2139,12 @@
       }
     }
 
-    // 7. Separa rigorosamente EXAMES COMPLEMENTARES (- LABS) de ULTRASSONOGRAFIA (- US) e restaura exames anteriores se omitidos (nos 7 modelos!)
-    const hasPrevLabs = parsedPrev && parsedPrev.labLines && parsedPrev.labLines.length > 0;
-    const hasPrevUsg = parsedPrev && parsedPrev.usgLines && parsedPrev.usgLines.length > 0;
+    // 7. Separa rigorosamente EXAMES COMPLEMENTARES (- LABS) de ULTRASSONOGRAFIA (- US):
+    // - No PRÉ-NATAL: mantém cumulativamente os exames anteriores da evolução antiga + inclui os novos abaixo.
+    // - No SOAP GERAL e demais consultas: NUNCA copia os exames da evolução antiga (inclusive remove caso a IA tenha copiado algum exame antigo!).
+    const isPrenatal = (templateId === 'prenatal') || /CONSULTA DE PRÉ-NATAL/i.test(text);
+    const hasPrevLabs = isPrenatal && parsedPrev && parsedPrev.labLines && parsedPrev.labLines.length > 0;
+    const hasPrevUsg = isPrenatal && parsedPrev && parsedPrev.usgLines && parsedPrev.usgLines.length > 0;
 
     // Ancora os blocos de exames antes de "7. RASTREAMENTOS" (nos modelos LGBTQIAP+) ou antes de "AVALIAÇÃO" (nos outros 5 modelos)
     const afterExamsBoundaryRegex = /\n(\s*(?:7\.\s*RASTREAMENTOS|(?:\d+\.\s*)?AVALIAÇÃO)\b)/i;
@@ -2129,8 +2187,24 @@
         }
 
         const normLineKey = (s) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+        const extractExamDate = (s) => {
+          const m = String(s || '').match(/\b(\d{2}\/\d{2}\/\d{2,4})\b/);
+          return m ? m[1] : '';
+        };
+        const prevOldLabKeys = (!isPrenatal && parsedPrev && parsedPrev.labLines)
+          ? parsedPrev.labLines.map(l => normLineKey(l))
+          : [];
+        const prevOldLabDates = (!isPrenatal && parsedPrev && parsedPrev.labLines)
+          ? parsedPrev.labLines.map(extractExamDate).filter(Boolean)
+          : [];
+        const prevOldUsgKeys = (!isPrenatal && parsedPrev && parsedPrev.usgLines)
+          ? parsedPrev.usgLines.map(l => normLineKey(l))
+          : [];
+        const prevOldUsgDates = (!isPrenatal && parsedPrev && parsedPrev.usgLines)
+          ? parsedPrev.usgLines.map(extractExamDate).filter(Boolean)
+          : [];
 
-        // Mescla exames laboratoriais anteriores + atuais sem duplicar
+        // Mescla exames laboratoriais (apenas no Pré-Natal inclui os antigos; no SOAP remove se a IA tiver copiado da evolução antiga)
         const finalLabs = [];
         if (hasPrevLabs) {
           for (const pl of parsedPrev.labLines) {
@@ -2139,9 +2213,11 @@
         }
         for (const cl of currentLabLines) {
           const dateMatch = cl.match(/\b(\d{2}\/\d{2}\/\d{2,4})\b/);
+          if (!isPrenatal && (prevOldLabKeys.includes(normLineKey(cl)) || (dateMatch && prevOldLabDates.includes(dateMatch[1])))) {
+            continue; // Bloqueia cópia de exame antigo no SOAP!
+          }
           const alreadyHasSameLine = finalLabs.some(existing => normLineKey(existing) === normLineKey(cl));
           if (!alreadyHasSameLine) {
-            // Se tem a mesma data de um LAB anterior e o anterior já está mais completo, evita duplicar a mesma linha
             if (dateMatch && finalLabs.some(existing => existing.includes(dateMatch[1]) && existing.length >= cl.length)) {
               continue;
             }
@@ -2149,7 +2225,7 @@
           }
         }
 
-        // Mescla ultrassonografias anteriores + atuais sem duplicar
+        // Mescla ultrassonografias (apenas no Pré-Natal inclui as antigas; no SOAP remove se a IA tiver copiado da evolução antiga)
         const finalUsgs = [];
         if (hasPrevUsg) {
           for (const pu of parsedPrev.usgLines) {
@@ -2158,6 +2234,9 @@
         }
         for (const cu of currentUsgLines) {
           const dateMatch = cu.match(/\b(\d{2}\/\d{2}\/\d{2,4})\b/);
+          if (!isPrenatal && (prevOldUsgKeys.includes(normLineKey(cu)) || (dateMatch && prevOldUsgDates.includes(dateMatch[1])))) {
+            continue; // Bloqueia cópia de USG antigo no SOAP!
+          }
           const alreadyHasSameUsg = finalUsgs.some(existing => normLineKey(existing) === normLineKey(cu));
           if (!alreadyHasSameUsg) {
             if (dateMatch && finalUsgs.some(existing => existing.includes(dateMatch[1]) && existing.length >= cu.length)) {
@@ -2177,6 +2256,8 @@
 
         if (rebuiltSections.length > 0) {
           text = `${bodyBeforeExams.trimEnd()}\n\n${rebuiltSections.join('\n\n')}${evalAndAfter}`;
+        } else {
+          text = `${bodyBeforeExams.trimEnd()}${evalAndAfter}`;
         }
       }
     }
@@ -2238,117 +2319,160 @@
 
   async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate) {
     let lastError = null;
-    const modelsToTry = [...(await getActiveGeminiModels(apiKey))];
+    let allFailedByDailyQuota = false;
+    const keysToTry = getSavedApiKeysList(apiKey);
 
-    for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
-      const model = modelsToTry[mIdx];
-      const maxAttempts = 3;
-      let disableThinkingForThisModel = false;
+    for (let kIdx = 0; kIdx < keysToTry.length; kIdx++) {
+      const currentKey = keysToTry[kIdx];
+      const modelsToTry = [...(await getActiveGeminiModels(currentKey))];
 
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        try {
-          if (onStatusUpdate) {
-            onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${model})...` : `⚡ Estruturando (${model})...`);
-          }
+      for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+        const model = modelsToTry[mIdx];
+        const maxAttempts = 2;
+        let disableThinkingForThisModel = false;
 
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-          // Otimização de velocidade: limita o thinkingBudget para evitar esperas de 2 minutos
-          const bodyForModel = {
-            ...requestBody,
-            generationConfig: {
-              ...(requestBody.generationConfig || {})
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          try {
+            if (onStatusUpdate) {
+              onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${model})...` : `⚡ Estruturando (${model})...`);
             }
-          };
-          if (!disableThinkingForThisModel && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
-            bodyForModel.generationConfig.thinkingConfig = { thinkingBudget: 512 };
-          }
 
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(bodyForModel)
-          });
-
-          if (res.ok) {
-            const responseJson = await res.json();
-            rememberWorkingModelForKey(model);
-            updateTokenMonitorUI();
-            return { responseJson, modelUsed: model };
-          }
-
-          const errData = await res.json().catch(() => ({}));
-          const errMsg = errData?.error?.message || `HTTP ${res.status}`;
-
-          if (res.status === 400 && errMsg.toLowerCase().includes('api key')) {
-            const elDaily = document.getElementById('dailyTokenCounter');
-            if (elDaily) {
-              elDaily.textContent = `🔴 Chave API inválida`;
-              elDaily.style.color = '#dc2626';
-            }
-            throw new Error('Credencial de API inválida. Clique em "Credencial API" no topo para verificar.');
-          }
-
-          // Caso um modelo específico não aceite thinkingConfig, reenvia imediatamente sem thinkingConfig
-          if (res.status === 400 && !disableThinkingForThisModel && /thinking/i.test(errMsg)) {
-            disableThinkingForThisModel = true;
-            attempt--;
-            continue;
-          }
-
-          // Se o modelo não estiver disponível na conta (404 ou "no longer available to new users"):
-          // 1) Marca como desativado permanentemente no navegador para NUNCA mais gerar erro 404
-          // 2) Se a mensagem do Google indicar o modelo substituto (ex.: "use models/gemini-3.8-flash"), usa-o imediatamente!
-          if (res.status === 404 || errMsg.toLowerCase().includes('no longer available') || errMsg.toLowerCase().includes('not found')) {
-            markModelAsDisabledForKey(model);
-            const suggestedMatch = errMsg.match(/use\s+(?:models\/)?(gemini-[a-z0-9.-]+)/i);
-            if (suggestedMatch && suggestedMatch[1]) {
-              const suggestedModel = suggestedMatch[1].replace(/\.$/, '').trim();
-              if (suggestedModel && !modelsToTry.includes(suggestedModel)) {
-                modelsToTry.splice(mIdx + 1, 0, suggestedModel);
-                rememberWorkingModelForKey(suggestedModel);
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(currentKey)}`;
+            // Otimização de velocidade: limita o thinkingBudget para evitar esperas de 2 minutos
+            const bodyForModel = {
+              ...requestBody,
+              generationConfig: {
+                ...(requestBody.generationConfig || {})
               }
+            };
+            if (!disableThinkingForThisModel && !model.includes('lite') && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
+              bodyForModel.generationConfig.thinkingConfig = { thinkingBudget: 512 };
             }
-            lastError = new Error(errMsg);
-            break;
-          }
 
-          if (res.status === 429 || res.status === 503) {
-            const elDaily = document.getElementById('dailyTokenCounter');
-            const isDailyQuota = /per day|daily|quota exceeded.*day/i.test(errMsg);
-            if (elDaily) {
-              if (isDailyQuota) {
-                elDaily.textContent = `🔴 Cota diária da chave atingida`;
-                elDaily.style.color = '#dc2626';
-              } else if (res.status === 503) {
-                elDaily.textContent = `🟡 Servidor Google ocupado (retentando)...`;
-                elDaily.style.color = '#d97706';
-              } else {
-                elDaily.textContent = `🟡 Aguardando limite por minuto da chave...`;
-                elDaily.style.color = '#d97706';
-              }
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(bodyForModel)
+            });
+
+            if (res.ok) {
+              const responseJson = await res.json();
+              rememberWorkingModelForKey(model, currentKey);
+              updateTokenMonitorUI();
+              return { responseJson, modelUsed: model };
             }
-            lastError = new Error(`Limite (${res.status}): ${errMsg}`);
-            if (attempt < maxAttempts) {
-              const waitSec = res.status === 503 ? (4 * attempt) : (6 * attempt);
-              if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando servidor (${waitSec}s)...`);
-              await sleep(waitSec * 1000);
+
+            const errData = await res.json().catch(() => ({}));
+            const errMsg = errData?.error?.message || `HTTP ${res.status}`;
+
+            if (res.status === 400 && errMsg.toLowerCase().includes('api key')) {
+              if (kIdx === keysToTry.length - 1) {
+                const elDaily = document.getElementById('dailyTokenCounter');
+                if (elDaily) {
+                  elDaily.textContent = `🔴 Chave API inválida`;
+                  elDaily.style.color = '#dc2626';
+                }
+                throw new Error('Credencial de API inválida. Clique em "Credencial API" no topo para verificar.');
+              }
+              break;
+            }
+
+            // Caso um modelo específico não aceite thinkingConfig, reenvia imediatamente sem thinkingConfig
+            if (res.status === 400 && !disableThinkingForThisModel && /thinking/i.test(errMsg)) {
+              disableThinkingForThisModel = true;
+              attempt--;
               continue;
             }
-            break;
-          }
 
-          lastError = new Error(errMsg);
-          break;
-        } catch (networkErr) {
-          lastError = networkErr;
-          if (networkErr.message && networkErr.message.includes('Credencial de API')) {
-            throw networkErr;
-          }
-          if (attempt < maxAttempts) {
-            if (onStatusUpdate) onStatusUpdate(`🌐 Reconectando em 5s...`);
-            await sleep(5000);
+            // Se o modelo não estiver disponível na conta (404 ou "no longer available to new users"):
+            // 1) Marca como desativado permanentemente no navegador para NUNCA mais gerar erro 404
+            // 2) Se a mensagem do Google indicar o modelo substituto (ex.: "use models/gemini-3.8-flash"), usa-o imediatamente!
+            if (res.status === 404 || errMsg.toLowerCase().includes('no longer available') || errMsg.toLowerCase().includes('not found')) {
+              markModelAsDisabledForKey(model, currentKey);
+              const suggestedMatch = errMsg.match(/use\s+(?:models\/)?(gemini-[a-z0-9.-]+)/i);
+              if (suggestedMatch && suggestedMatch[1]) {
+                const suggestedModel = suggestedMatch[1].replace(/\.$/, '').trim();
+                if (suggestedModel && !modelsToTry.includes(suggestedModel)) {
+                  modelsToTry.splice(mIdx + 1, 0, suggestedModel);
+                  rememberWorkingModelForKey(suggestedModel, currentKey);
+                }
+              }
+              lastError = new Error(errMsg);
+              break;
+            }
+
+            if (res.status === 429 || res.status === 503) {
+              const elDaily = document.getElementById('dailyTokenCounter');
+              const isZeroLimit = /\blimit:\s*0\b/i.test(errMsg);
+              const isDailyQuota = /per day|daily|quota exceeded.*day|free_tier_requests|retry in \d+h|\blimit:\s*20\b/i.test(errMsg);
+
+              // Se o modelo tem cota 0/0 na conta (limit: 0), desativa permanentemente para nunca mais tentar
+              if (isZeroLimit) {
+                markModelAsDisabledForKey(model, currentKey);
+                lastError = new Error(`Limite (${res.status}): ${errMsg}`);
+                break;
+              }
+
+              // Se atingiu o limite diário deste modelo específico (ex: 20/dia no gemini-3.6-flash ou 3.8-flash),
+              // marca este modelo como esgotado hoje e pula IMEDIATAMENTE (0s de espera) para o próximo modelo da conta (ex: gemini-3.5-flash-lite com 500/dia)!
+              if (isDailyQuota) {
+                markModelExhaustedForToday(model, currentKey);
+                allFailedByDailyQuota = true;
+                const nextModel = modelsToTry[mIdx + 1] || (keysToTry[kIdx + 1] ? 'próxima chave' : '');
+                if (elDaily && nextModel) {
+                  elDaily.textContent = `🔄 Alternando para ${nextModel}...`;
+                  elDaily.style.color = '#2563eb';
+                }
+                if (onStatusUpdate && nextModel) {
+                  onStatusUpdate(`🔄 Alternando para ${nextModel}...`);
+                }
+                lastError = new Error(`Limite (${res.status}): ${errMsg}`);
+                break; // Sai imediatamente deste modelo e vai para o próximo modelo com cota livre!
+              }
+
+              allFailedByDailyQuota = false;
+              if (elDaily) {
+                if (res.status === 503) {
+                  elDaily.textContent = `🟡 Servidor Google ocupado (alternando)...`;
+                  elDaily.style.color = '#d97706';
+                } else {
+                  elDaily.textContent = `🟡 Aguardando limite por minuto...`;
+                  elDaily.style.color = '#d97706';
+                }
+              }
+              lastError = new Error(`Limite (${res.status}): ${errMsg}`);
+              // Se houver outros modelos na fila, tenta apenas 1 vez rápido (2s) antes de pular para outro modelo!
+              if (attempt < maxAttempts && mIdx === modelsToTry.length - 1) {
+                const waitSec = res.status === 503 ? 3 : 4;
+                if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando servidor (${waitSec}s)...`);
+                await sleep(waitSec * 1000);
+                continue;
+              }
+              break;
+            }
+
+            allFailedByDailyQuota = false;
+            lastError = new Error(errMsg);
+            break;
+          } catch (networkErr) {
+            lastError = networkErr;
+            if (networkErr.message && networkErr.message.includes('Credencial de API')) {
+              throw networkErr;
+            }
+            if (attempt < maxAttempts) {
+              if (onStatusUpdate) onStatusUpdate(`🌐 Reconectando em 3s...`);
+              await sleep(3000);
+            }
           }
         }
+      }
+    }
+
+    if (allFailedByDailyQuota) {
+      const elDaily = document.getElementById('dailyTokenCounter');
+      if (elDaily) {
+        elDaily.textContent = `🔴 Cota diária atingida (adicione outra chave em Credencial Ativa)`;
+        elDaily.style.color = '#dc2626';
       }
     }
 
@@ -2629,36 +2753,57 @@
           await window.ScribeDB.deleteConsultation(c.id);
         }
       } else if (c.status === 'error') {
-        // Se ficou pendente por limite/cota em um dia anterior, reenvia sozinho ao abrir no outro dia!
+        // Se falhou por limite de um modelo específico (ex: 429 limit: 20 no gemini-3.6-flash ou 404/503),
+        // marca o modelo citado como esgotado hoje e coloca de volta na fila imediatamente para transcrever nos outros modelos!
+        const errStr = String(c.errorMessage || '');
+        const modelMatch = errStr.match(/model:\s*(?:models\/)?(gemini-[a-z0-9.-]+)/i);
+        if (modelMatch && modelMatch[1]) {
+          markModelExhaustedForToday(modelMatch[1].replace(/[.,;]+$/, ''), getSavedApiKey());
+        }
         const lastAttemptDay = new Date(c.updatedAt || c.createdAt).toDateString();
-        if (lastAttemptDay !== todayStr) {
+        const isQuotaOrModelError = /429|503|404|quota|limite|no longer available|not found/i.test(errStr);
+        if (lastAttemptDay !== todayStr || isQuotaOrModelError) {
           c.status = 'queued';
           c.errorMessage = '';
           c.updatedAt = Date.now();
           await window.ScribeDB.saveConsultation(c);
           nextDayAutoQueuedCount++;
         }
-      } else if (c.status === 'done' && c.evolutionText && (c.evolutionText.includes('"evolucao_completa"') || /\((?:CID(?:-1[01])?|CIAP(?:-2)?)\s*:/i.test(c.evolutionText))) {
+      } else if (c.status === 'done' && c.evolutionText) {
+        let needsSave = false;
         // Repara automaticamente qualquer evolução anterior que tenha ficado com JSON bruto ou CID no meio do texto!
-        if (c.evolutionText.includes('"evolucao_completa"')) {
-          const repaired = parseGeminiEvolutionResponse(c.evolutionText);
-          if (repaired.evolucao_completa) {
-            c.evolutionText = repaired.evolucao_completa;
-            if (repaired.transcricao_literal_do_audio && !c.rawTranscript) {
-              c.rawTranscript = repaired.transcricao_literal_do_audio;
+        if (c.evolutionText.includes('"evolucao_completa"') || /\((?:CID(?:-1[01])?|CIAP(?:-2)?)\s*:/i.test(c.evolutionText)) {
+          if (c.evolutionText.includes('"evolucao_completa"')) {
+            const repaired = parseGeminiEvolutionResponse(c.evolutionText);
+            if (repaired.evolucao_completa) {
+              c.evolutionText = repaired.evolucao_completa;
+              if (repaired.transcricao_literal_do_audio && !c.rawTranscript) {
+                c.rawTranscript = repaired.transcricao_literal_do_audio;
+              }
             }
           }
+          const { cleanText, codes } = cleanAndExtractCidFromEvolution(
+            c.evolutionText,
+            c.cidCiapCodes,
+            c.templateId,
+            c.previousConsultationText || '',
+            c.soapSubtypeHeader || ''
+          );
+          c.evolutionText = cleanText;
+          c.cidCiapCodes = codes;
+          needsSave = true;
         }
-        const { cleanText, codes } = cleanAndExtractCidFromEvolution(
-          c.evolutionText,
-          c.cidCiapCodes,
-          c.templateId,
-          c.previousConsultationText || '',
-          c.soapSubtypeHeader || ''
-        );
-        c.evolutionText = cleanText;
-        c.cidCiapCodes = codes;
-        await window.ScribeDB.saveConsultation(c);
+        // Se for uma consulta SOAP (não Pré-Natal) que tinha evolução anterior colada e copiou exames antigos por engano, limpa os exames antigos!
+        if (c.templateId !== 'prenatal' && c.previousConsultationText && /(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)/i.test(c.evolutionText)) {
+          const cleanedSoap = enforcePreviousHeaderAndExams(c.evolutionText, c.previousConsultationText, c.templateId);
+          if (cleanedSoap !== c.evolutionText) {
+            c.evolutionText = cleanedSoap;
+            needsSave = true;
+          }
+        }
+        if (needsSave) {
+          await window.ScribeDB.saveConsultation(c);
+        }
       }
     }
 
@@ -3318,8 +3463,19 @@
     updateQuickNotesExamBadge();
   }
 
+  function getSavedApiKeysList(overrideRaw) {
+    const raw = String(overrideRaw || localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
+    if (!raw) return [];
+    const matches = raw.match(/AIza[0-9A-Za-z_-]{20,}/g);
+    if (matches && matches.length > 0) {
+      return [...new Set(matches)];
+    }
+    return [raw];
+  }
+
   function getSavedApiKey() {
-    return localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '';
+    const list = getSavedApiKeysList();
+    return list[0] || '';
   }
 
   // Integração oficial com o Gerenciador de Senhas do Google Chrome (Credential Management API)
