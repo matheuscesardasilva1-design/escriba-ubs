@@ -126,7 +126,10 @@
 
     const filterAndOrder = (rawList) => {
       const valid = rawList.filter(m => !disabled.includes(m) && !exhaustedToday.includes(m));
-      if (remembered && valid.includes(remembered)) {
+      const hasFullFlash = valid.some(m => !m.includes('lite'));
+      // Apenas prioriza o modelo lembrado se for um modelo Flash completo (não-lite),
+      // ou se todos os modelos Flash completos estiverem esgotados hoje!
+      if (remembered && valid.includes(remembered) && (!remembered.includes('lite') || !hasFullFlash)) {
         return [remembered, ...valid.filter(m => m !== remembered)];
       }
       return valid;
@@ -2029,6 +2032,84 @@
     return { evolucao_completa: cleaned };
   }
 
+  // Limpa e compacta linhas de exames laboratoriais no formato padrão limpo da APS (sem unidades prolixas e sem índices redundantes)
+  function formatCleanCompactLabLine(rawLine) {
+    if (!rawLine || typeof rawLine !== 'string') return '';
+    let l = rawLine.trim();
+    if (!l.startsWith('- LABS')) return l;
+
+    // Remove unidades de medida desnecessárias no prontuário médico
+    l = l.replace(/\s*(?:milh\.\/mm³|milhões\/mm³|g\/dL|mg\/dL|µg\/dL|ug\/dL|pg|fL|%|U\/L|u\/L|µUI\/mL|uUI\/mL|ng\/mL|mEq\/L|segundos|seg|\/mm³|\/µL|\/uL)\b/gi, '');
+
+    // Remove redundâncias laboratoriais
+    l = l.replace(/Glicemia estimada média\s*:\s*[^|)]+/gi, '');
+    l = l.replace(/Colesterol Não-HDL\s*:\s*[^|)]+/gi, '');
+    l = l.replace(/Relação Colesterol Total\/HDL\s*:\s*[^|)]+/gi, '');
+    l = l.replace(/Atividade de protrombina\s*:\s*[^|)]+\s*\|\s*RNI/gi, 'TAP RNI');
+    l = l.replace(/Proteína C Reativa Quantitativa/gi, 'PCR');
+    l = l.replace(/Proteína C Reativa/gi, 'PCR');
+    l = l.replace(/Pesquisa Quantitativa\s*:\s*/gi, '');
+    l = l.replace(/TIBC \(Capacidade de Ligação do Ferro\)/gi, 'TIBC');
+    l = l.replace(/TGO \(AST\)/gi, 'TGO');
+    l = l.replace(/TGP \(ALT\)/gi, 'TGP');
+    l = l.replace(/Hemoglobina Glicada \(HbA1c\)/gi, 'HbA1c');
+    l = l.replace(/Hemoglobina Glicada/gi, 'HbA1c');
+    l = l.replace(/Colesterol Total/gi, 'CT');
+    l = l.replace(/Colesterol HDL/gi, 'HDL');
+    l = l.replace(/Colesterol LDL/gi, 'LDL');
+    l = l.replace(/Triglicerídeos/gi, 'TAG');
+    l = l.replace(/Glicose/gi, 'GJ');
+    l = l.replace(/Creatinina/gi, 'Creat');
+    l = l.replace(/Uréia/gi, 'Ureia');
+    l = l.replace(/Fosfatase Alcalina/gi, 'FA');
+    l = l.replace(/Ferro Sérico/gi, 'Ferro');
+    l = l.replace(/T4 Livre/gi, 'T4L');
+    l = l.replace(/Vitamina B12/gi, 'B12');
+    l = l.replace(/Potássio/gi, 'K');
+    l = l.replace(/Sódio/gi, 'Na');
+    l = l.replace(/Parasitológico de Fezes\s*:\s*Negativo/gi, 'EPF negativo');
+    l = l.replace(/Sangue Oculto nas Fezes\s*:\s*Negativa?/gi, 'SOF negativo');
+    l = l.replace(/Leucócitos Fecais\s*:\s*Negativa?/gi, 'Leucócitos fecais negativos');
+
+    // Descompacta Hemograma prolixo com parênteses
+    l = l.replace(/Hemograma\s*\(([^)]+)\)/gi, (_, inner) => {
+      const parts = inner.split('|').map(s => s.trim());
+      const extracted = [];
+      for (const p of parts) {
+        const hbMatch = p.match(/^Hemoglobina:\s*([0-9,.]+)/i);
+        if (hbMatch) { extracted.push(`Hb ${hbMatch[1]}`); continue; }
+        const htMatch = p.match(/^Hematócrito:\s*([0-9,.]+)/i);
+        if (htMatch) { extracted.push(`Ht ${htMatch[1]}`); continue; }
+        const vcmMatch = p.match(/^VCM:\s*([0-9,.]+)/i);
+        if (vcmMatch) { extracted.push(`VCM ${vcmMatch[1]}`); continue; }
+        const leucoMatch = p.match(/^Leucócitos:\s*([0-9,.]+)/i);
+        if (leucoMatch) { extracted.push(`Leuco ${leucoMatch[1]}`); continue; }
+        const plaqMatch = p.match(/^Plaquetas:\s*([0-9,.]+)/i);
+        if (plaqMatch) { extracted.push(`Plaq ${plaqMatch[1]}`); continue; }
+      }
+      return extracted.length > 0 ? extracted.join(' | ') : inner;
+    });
+
+    // Descompacta Bilirrubinas prolixas
+    l = l.replace(/Bilirrubinas\s*\(\s*Total:\s*([0-9,.]+)\s*\|\s*Direta:\s*([0-9,.]+)\s*\|\s*Indireta:\s*([0-9,.]+)\s*\)/gi, 'BT $1 (BD $2 / BI $3)');
+
+    // Descompacta EQU prolixo
+    l = l.replace(/EQU\s*\([^)]*Elementos anormais negativos[^)]*\)/gi, 'EQU sem alterações');
+
+    // Limpa dois-pontos desnecessários entre sigla e valor
+    l = l.replace(/\b(Hb|Ht|VCM|Leuco|Plaq|GJ|HbA1c|CT|HDL|LDL|TAG|Creat|Ureia|TGO|TGP|GGT|FA|PCR|Ferro|Ferritina|Transferrina|TIBC|TSH|T4L|B12|Na|K)\s*:\s*([0-9,.]+)/g, '$1 $2');
+    l = l.replace(/\b(TAP|KPTT)\s*:\s*/gi, '$1 ');
+
+    // Limpa separadores duplicados ou vazios
+    l = l.replace(/\s*\|\s*\|\s*/g, ' | ')
+         .replace(/\s*\|\s*$/g, '')
+         .replace(/:\s*\|\s*/g, ': ')
+         .replace(/\s+/g, ' ')
+         .trim();
+
+    return l;
+  }
+
   // Garante deterministicamente via código que NENHUMA condição de saúde anterior ("#"), NENHUMA sub-linha ("- "),
   // NENHUMA informação de Ecografia na IG, NENHUM exame anterior e NENHUMA formatação de Vacinas/Sorologias/Paridade sejam perdidos!
   function enforcePreviousHeaderAndExams(evolutionText, previousConsultationText, templateId, soapSubtypeHeader) {
@@ -2128,8 +2209,7 @@
 
         // Agrupa o cabeçalho anterior em blocos: cada linha "#" + suas sub-linhas ("- " ou ">> ") imediatamente abaixo
         const prevSourceLines = [
-          ...(parsedPrev.headerLines || []),
-          ...(parsedPrev.promotedFromAvaliacao || [])
+          ...(parsedPrev.headerLines || [])
         ];
         const prevBlocks = [];
         for (const line of prevSourceLines) {
@@ -2142,6 +2222,12 @@
             prevBlocks[prevBlocks.length - 1].subs.push(formattedSub);
           }
         }
+
+        // Limpeza de frases descritivas da Avaliação que tenham sido indevidamente colocadas no cabeçalho "#":
+        headerPart = headerPart
+          .replace(/^#\s*Hip[óo]tese\s*:[^\n]*\n?/gim, '')
+          .replace(/^#\s*.*(?:controle irregular|controle insatisfat[óo]rio|em tratamento|achado em TC|achado de imagem|expelida clinicamente)[^\n]*\n?/gim, '')
+          .replace(/^#\s*(?:S[íi]ndrome\s+d[ie]sabsortiva|Cistos?\s+hep[áa]ticos?|Nefrolit[íi]ase|SOF\s+positivo)[^\n]*\n?/gim, '');
 
         for (const block of prevBlocks) {
           const mainUpper = block.main.toUpperCase();
@@ -2333,11 +2419,22 @@
         }
 
         const rebuiltSections = [];
-        if (finalLabs.length > 0) {
-          rebuiltSections.push(`EXAMES COMPLEMENTARES\n${finalLabs.join('\n')}`);
-        }
-        if (finalUsgs.length > 0) {
-          rebuiltSections.push(`ULTRASSONOGRAFIA\n${finalUsgs.join('\n')}`);
+        const cleanedFinalLabs = finalLabs.map(formatCleanCompactLabLine);
+        if (!isPrenatal) {
+          // No SOAP Geral e demais consultas fora do Pré-Natal:
+          // Unifica todos os exames complementares sob o título "EXAMES COMPLEMENTARES" (sem criar "ULTRASSONOGRAFIA" para abrigar TC, RX ou Ecocardio!)
+          const allExams = [...cleanedFinalLabs, ...finalUsgs];
+          if (allExams.length > 0) {
+            rebuiltSections.push(`EXAMES COMPLEMENTARES\n${allExams.join('\n')}`);
+          }
+        } else {
+          // No Pré-Natal: separa EXAMES COMPLEMENTARES (- LABS) e ULTRASSONOGRAFIA (- US obstétrica/morfológica)
+          if (cleanedFinalLabs.length > 0) {
+            rebuiltSections.push(`EXAMES COMPLEMENTARES\n${cleanedFinalLabs.join('\n')}`);
+          }
+          if (finalUsgs.length > 0) {
+            rebuiltSections.push(`ULTRASSONOGRAFIA\n${finalUsgs.join('\n')}`);
+          }
         }
 
         if (rebuiltSections.length > 0) {
@@ -2353,6 +2450,31 @@
 
   function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId, previousConsultationText = '', soapSubtypeHeader = '') {
     let text = fixBrazilianMedicationSpelling(evolutionText || '');
+
+    // 1. Limpeza de linguagem informal / gírias no Subjetivo para adequação à semiologia médica formal
+    text = text
+      .replace(/\b(?:tipo\s+["']?pruft["']?|pruft)\b/gi, 'explosiva de consistência pastosa')
+      .replace(/\bdor de barriga\b/gi, 'dor abdominal')
+      .replace(/["']?desandou["']?(?:\s+novamente)?/gi, 'apresentou novo episódio diarreico')
+      .replace(/\bfedorenta\b/gi, 'de odor fétido')
+      .replace(/\bfezes brancas\b/gi, 'fezes esbranquiçadas (hipocolia fecal)')
+      .replace(/ardor semelhante a azia\/refluxo/gi, 'epigastralgia em queimação e pirose')
+      .replace(/dor no meio do estômago/gi, 'dor em região epigástrica');
+
+    // 2. Remove frases metalinguísticas inaceitáveis no Objetivo e garante ectoscopia padrão
+    text = text.replace(/OBJETIVO\s*\n\s*(?:Exame\s+f[íi]sico\s+n[ãa]o\s+detalhado[^\n]*|Exame\s+f[íi]sico\s+n[ãa]o\s+mencionado[^\n]*|N[ãa]o\s+detalhado\s+na\s+transcri[çc][ãa]o[^\n]*)\n*/gi, 'OBJETIVO\nBEG, LOC, corada, hidratada, anictérica, acianótica.\n\n');
+
+    // 3. Se média domiciliar de PA ou HGT foi parar no Objetivo, move automaticamente para o final do Subjetivo
+    const homePaInObjMatch = text.match(/\nOBJETIVO\s*\n([\s\S]*?)(\n\s*(?:EXAMES|ULTRASSONOGRAFIA|AVALIAÇÃO)\b)/i);
+    if (homePaInObjMatch) {
+      const objBody = homePaInObjMatch[1];
+      const paDomMatch = objBody.match(/^.*Controle\s+de\s+(?:PA|HGT)\s*:\s*Refere[^\n]*$/im);
+      if (paDomMatch) {
+        text = text.replace(paDomMatch[0], '');
+        text = text.replace(/(\n\s*OBJETIVO\b)/i, `\n${paDomMatch[0].trim()}\n$1`);
+      }
+    }
+
     text = enforcePreviousHeaderAndExams(text, previousConsultationText, templateId, soapSubtypeHeader);
     const extractedCodes = Array.isArray(existingCodes) ? [...existingCodes] : [];
 
@@ -2889,6 +3011,30 @@
           c.cidCiapCodes = codes;
           needsSave = true;
         }
+        // Limpa automaticamente evoluções já geradas que tenham ficado com linguagem informal, exames laboratoriais prolixos, cabeçalho duplicado ou TC em ultrassonografia!
+        if (
+          c.evolutionText.includes('Exame físico não detalhado') ||
+          c.evolutionText.includes('pruft') ||
+          c.evolutionText.includes('desandou') ||
+          c.evolutionText.includes('dor de barriga') ||
+          c.evolutionText.includes('# Hipótese:') ||
+          /ULTRASSONOGRAFIA\s*\n\s*-\s*TC\b/i.test(c.evolutionText) ||
+          /Hemograma\s*\(/i.test(c.evolutionText)
+        ) {
+          const { cleanText, codes } = cleanAndExtractCidFromEvolution(
+            c.evolutionText,
+            c.cidCiapCodes,
+            c.templateId,
+            c.previousConsultationText || '',
+            c.soapSubtypeHeader || ''
+          );
+          if (cleanText !== c.evolutionText) {
+            c.evolutionText = cleanText;
+            c.cidCiapCodes = codes;
+            needsSave = true;
+          }
+        }
+
         // Se for uma consulta SOAP (não Pré-Natal) que tinha evolução anterior colada e copiou exames antigos por engano, limpa os exames antigos!
         if (c.templateId !== 'prenatal' && c.previousConsultationText && /(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)/i.test(c.evolutionText)) {
           const cleanedSoap = enforcePreviousHeaderAndExams(c.evolutionText, c.previousConsultationText, c.templateId);

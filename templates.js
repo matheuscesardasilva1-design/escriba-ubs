@@ -525,42 +525,15 @@ window.parsePreviousConsultationData = function(prevRawText) {
   }
   flushUsgEntry();
 
-  // Identifica diagnósticos da Avaliação anterior para puxar para as "#" do cabeçalho atual (nos 7 modelos)
-  const diagnosesToPromote = [];
-  const hasNumberedAvaliacao = avaliacaoLines.some(l => /^\d+[\.\)]/.test(l));
-  for (let i = 0; i < avaliacaoLines.length; i++) {
-    const rawAv = avaliacaoLines[i];
-    // Se começa com ">" (ou se começa com "-" dentro de uma Avaliação numerada), é sub-linha explicativa do diagnóstico acima
-    if (rawAv.startsWith('>') || (rawAv.startsWith('-') && hasNumberedAvaliacao)) {
-      if (diagnosesToPromote.length > 0) {
-        const cleanSub = rawAv.startsWith('>>') ? rawAv : `- ${rawAv.replace(/^[>-]+\s*/, '')}`;
-        diagnosesToPromote[diagnosesToPromote.length - 1].subLines.push(cleanSub);
-      }
-      continue;
-    }
-    const cleanDiag = rawAv.replace(/^(?:\d+[\.\)]|-)\s*/, '').trim();
-    if (!cleanDiag) continue;
-    // Ignora frases genéricas de rotina ou checklists estruturais do modelo LGBTQIAP+
-    if (/^(?:Gesta[çc][ãa]o\s+de\s+risco\s+habitual|Crian[çc]a\s+em\s+desenvolvimento|Vacinas\s+desatualizadas|Rotina\b|Puericultura\b|Hip[óo]tese\s+Diagn[óo]stica|Crit[ée]rios\s+Cl[íi]nicos|\(\s*[xX ]?\s*\))/i.test(cleanDiag)) {
-      continue;
-    }
-    diagnosesToPromote.push({ hashLine: `# ${cleanDiag}`, subLines: [] });
-  }
-
   const updatedIgGroup = headerGroups.find(g => /^#\s*IG\b/i.test(g.hashLine));
-  const promotedFlatLines = [];
-  for (const d of diagnosesToPromote) {
-    promotedFlatLines.push(d.hashLine);
-    for (const s of d.subLines) promotedFlatLines.push(s);
-  }
 
   return {
     headerText: headerLines.join('\n'),
     headerLines,
     headerGroups,
     updatedIgLine: updatedIgGroup ? updatedIgGroup.hashLine : '',
-    diagnosesToPromote,
-    promotedFromAvaliacao: promotedFlatLines,
+    diagnosesToPromote: [],
+    promotedFromAvaliacao: [],
     labExamLines,
     labLines: labExamLines,
     usgExamLines,
@@ -647,8 +620,9 @@ Data de referência de hoje: ${todayStr}.
 === REGRAS CRÍTICAS E OBRIGATÓRIAS (VALEM PARA O PRÉ-NATAL E TODOS OS 7 MODELOS!) ===
 
 1. PADRÃO ESTRITO DO CABEÇALHO "#" (CONDIÇÕES DE SAÚDE, SUB-LINHAS COM TRAÇO "-", GPVPCA, IG POR ECO, VACINAS, SOROLOGIAS, TOXO E MUC):
-   - PRESERVAÇÃO ABSOLUTA DE TODAS AS "#" E SUB-ITENS COM TRAÇO ("- " ou "> ") ENTRE AS HASHTAGS (EM TODOS OS MODELOS):
-     * Se houver evolução prévia (ou informações ditadas), você DEVE MANTER 100% DE TODAS AS LINHAS "#" (ex.: "# ovolactovegetariana", "# Histórico de bulimia na infância", "# Apendicectomia em 2017 ou 2018", comorbidades, cirurgias prévias) E TODAS AS INFORMAÇÕES COMPLEMENTARES COM TRAÇO ("- ...") ABAIXO DAS "#" (ex.: "- Gestação atual não planejada" abaixo de "# G01PV0PC0A0", ou "- Fatores de risco..." abaixo de "# Risco aumentado para pré-eclâmpsia"). JAMAIS apague linhas "#" extras ou sub-linhas com "-"!
+   - PRESERVAÇÃO FIEL DAS "#" ANTERIORES E PROIBIÇÃO ABSOLUTA DE POLUIR O CABEÇALHO "#" COM FRASES DA AVALIAÇÃO:
+     * Quando houver evolução prévia, você DEVE MANTER EXATAMENTE as linhas "#" (ex.: "# HAS", "# Dislipidemia", "# Colelitiase", "# TAG", "# ovolactovegetariana") E TODAS AS SUB-LINHAS COM TRAÇO ("- ...") que já estavam no cabeçalho "#" da evolução anterior (ex.: "- Aguardando com CX geral via gercon", "- Gestação atual não planejada", "- Encaminhada para pneumologia via gercon").
+     * É TERMINANTEMENTE PROIBIDO copiar frases descritivas da seção AVALIAÇÃO (antiga ou de hoje) para dentro do cabeçalho "#" do topo! NUNCA escreva no cabeçalho "#" linhas duplicadas ou longas como "# Hipótese: ...", "# Hipertensão arterial sistêmica, controle irregular", "# Dislipidemia, controle insatisfatório", "# Transtorno depressivo maior (em tratamento)", "# Síndrome desabsortiva secundária à colelitíase" ou "# Cistos hepáticos a esclarecer (achado em TC)". As hipóteses e problemas avaliados hoje ficam na seção "AVALIAÇÃO", e NÃO no cabeçalho "#" do topo!
    - PADRÃO OBRIGATÓRIO DO HISTÓRICO OBSTÉTRICO (PARIDADE) NO PRÉ-NATAL:
      * NUNCA assuma "G01" como padrão se a paridade não foi informada!
      * Quando a paridade constar na evolução anterior, nas notas ou for falada no áudio, escreva SEMPRE no formato compacto sem espaços com 2 dígitos após o G: exemplo "# G01PV0PC0A0", "# G02PV1PC0A0", "# G03PV1PC1A0", mantendo na linha de baixo qualquer observação com traço "- " que já existia (ex.: "- Gestação atual não planejada"). Se a paridade não foi informada em lugar nenhum, mantenha "# G PV PC A" em branco para o médico preencher.
@@ -684,30 +658,33 @@ Data de referência de hoje: ${todayStr}.
      * Se um acompanhante for citado no áudio DE HOJE, registre no início do SUBJETIVO (ex.: "Paciente vem acompanhada do esposo [nome]"). Se não foi citado hoje, não copie acompanhante de consulta antiga!
      * Se a gestante/paciente relatar QUALQUER queixa, dor, sintoma, ida à emergência ou sinal de alarme no áudio, REMOVA IMEDIATAMENTE as frases padrão "Paciente refere estar bem, sem queixas", "Familiar relata que paciente está bem", "Nega intercorrências" e "Sem demais queixas", e apague "Nega [sintoma]" para qualquer sintoma que ela tenha apresentado!
 
-2. CONTROLE DE HGT (GLICEMIA CAPILAR) E CONTROLE DE PA (AFERIÇÕES DE PRESSÃO ARTERIAL) + PARECER FINAL NO SUBJETIVO:
-   - Sempre que forem falados ou lidos valores de Glicemia Capilar (HGT) ou de Pressão Arterial (Controle de PA residencial) — mesmo que lidos pelo médico — registre no bloco "SUBJETIVO":
-     * "Controle de HGT: [todos os valores e horários/períodos + parecer final do médico]."
-     * "Controle de PA: [todos os valores e horários/períodos + parecer final do médico]."
+2. REDAÇÃO MÉDICA FORMAL NO SUBJETIVO (PROIBIDO GÍRIAS/ONOMATOPEIAS) + CONTROLE DE HGT E PA DOMICILIAR:
+   - LINGUAGEM SEMIOLÓGICA TÉCNICA E ORGANIZAÇÃO EM PARÁGRAFOS CLÍNICOS (QUALIDADE DE MÉDICO DE FAMÍLIA SÊNIOR):
+     * Escreva o "SUBJETIVO" SEMPRE em linguagem médica técnica, formal, clara e bem estruturada em parágrafos por tema clínico (1º Motivo da consulta e história da doença atual detalhada; 2º Saúde mental / comorbidades / revisão de sistemas; 3º Adesão e tolerabilidade medicamentosa; 4º Contexto familiar, regulatório ou trabalhista).
+     * É TERMINANTEMENTE PROIBIDO escrever gírias, onomatopeias ou coloquialismos chulos no SUBJETIVO (como "desandou", "tipo pruft", "dor de barriga", "fedorenta", "foi na quinta, na sexta, no sábado")! Converta SEMPRE para semiologia médica formal: "dor de barriga" -> "dor abdominal"; "ardor no meio do estômago" -> "epigastralgia e pirose"; "desandou / diarreia tipo pruft fedorenta" -> "diarreia pós-prandial explosiva, de consistência pastosa/líquida e odor fétido"; "fezes brancas" -> "episódio prévio de acolia/hipocolia fecal".
+   - CONTROLE DE HGT E CONTROLE DE PA DOMICILIAR SEMPRE NO SUBJETIVO (NUNCA NO OBJETIVO!):
+     * Sempre que forem relatados ou lidos valores de Glicemia Capilar (HGT) ou de Pressão Arterial aferidos em domicílio, registre dentro do "SUBJETIVO" ("Controle de HGT: ..." / "Controle de PA: ..."). NUNCA coloque médias domiciliares de PA dentro do "OBJETIVO"!
 
-3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — EXAME DO ABDÔMEN E ACRÉSCIMO OBRIGATÓRIO DE QUALQUER EXAME FÍSICO FALADO OU DESCRITO (EM TODOS OS 7 MODELOS!):
+3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — PROIBIDO ESCREVER "EXAME FÍSICO NÃO DETALHADO NA TRANSCRIÇÃO":
+   - É TERMINANTEMENTE PROIBIDO escrever frases metalinguísticas como "Exame físico não detalhado na transcrição", "além da avaliação dos exames laboratoriais", "Exame físico não realizado" ou "Não mencionado no áudio"!
+   - Mantenha SEMPRE a ectoscopia base do modelo ("BEG, LOC, MUC") no "OBJETIVO"!
    - No Pré-Natal, mantenha a linha "ABD: Globoso, indolor a palpação superficial e profunda" (ou atualize-a caso o médico descreva dor à palpação, contrações/dinâmica uterina, Giordano, etc.).
-   - ACRÉSCIMO OBRIGATÓRIO DE QUALQUER ACHADO ADICIONAL: Em TODOS os 7 modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER item adicional de exame físico além do esqueleto básico (ex.: ausculta pulmonar "AP: MVUD, SRA", ausculta cardíaca "AC: BNF, 2T, RR, SS", exame abdominal, exame especular, toque vaginal / avaliação de colo uterino, exame das mamas, Giordano / punho-percussão lombar, oroscopia, otoscopia, exame de membros/panturrilhas, pele, exame neurológico, etc.), você DEVE INCLUIR e descrever todas essas linhas adicionais dentro do bloco "OBJETIVO"!
-   - NUNCA copie o exame físico antigo (PA, Peso, AU, BCF da consulta passada) como se fosse o de hoje, e NUNCA invente medidas não faladas hoje!
+   - Em TODOS os 7 modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER sinal vital ou achado de exame físico (PA aferida hoje, FC, Peso, AU, BCF, AP, AC, ABD, MMII, Pele/couro cabeludo, estado afetivo/psíquico observado em consultório, oroscopia, otoscopia, toque vaginal, especular, etc.), inclua-os no bloco "OBJETIVO"!
+   - NUNCA copie o exame físico antigo (PA, Peso, AU, BCF da consulta passada) como se fosse o de hoje!
 
-4. REGRA ESTRITA DE EXAMES COMPLEMENTARES E ULTRASSONOGRAFIA:
+4. REGRA ESTRITA DE EXAMES COMPLEMENTARES (FORMATO COMPACTO ABREVIADO PADRÃO UBS SEM UNIDADES E SEM PARÊNTESES LONGOS!):
    - ${hasAnyExamsToFormat ? 'Há exames complementares a registrar! Inclua-os logo após o OBJETIVO e antes da AVALIAÇÃO.' : 'Se NÃO houver exames trazidos/anexados/falados na consulta de HOJE, NÃO crie o bloco EXAMES COMPLEMENTARES e NÃO copie exames da evolução antiga.'}
    - ${isPrenatalTemplate
      ? 'NO PRÉ-NATAL (MANUTENÇÃO OBRIGATÓRIA DOS EXAMES DA EVOLUÇÃO ANTIGA + ADIÇÃO DOS NOVOS): Quando houver evolução prévia de Pré-Natal com exames registrados, mantenha todos os exames anteriores ("- LABS [data antiga]: ..." e "- US ... [data antiga]: ...") e inclua os exames novos logo abaixo deles em ordem cronológica.'
      : 'PROIBIÇÃO ABSOLUTA DE COPIAR EXAMES DA EVOLUÇÃO ANTIGA NO SOAP E DEMAIS CONSULTAS: Nesta modalidade de consulta, É TERMINANTEMENTE PROIBIDO copiar os exames ("- LABS ..." ou "- US ...") que estavam na evolução antiga! Registre em EXAMES COMPLEMENTARES SOMENTE os exames novos avaliados/trazidos na consulta de HOJE. Se não houver exames novos hoje, omita a seção EXAMES COMPLEMENTARES.'}
-   - SEPARAÇÃO ESTRITA ENTRE EXAMES LABORATORIAIS E ULTRASSONOGRAFIA / IMAGEM:
-     * NUNCA misture exames laboratoriais com laudos de ultrassonografia no mesmo bloco!
-     * Coloque todos os exames laboratoriais (sangue, urina/EQU, urocultura, sorologias, bioquímica, hormônios) sob o título:
-       EXAMES COMPLEMENTARES
-       - LABS [DD/MM/AAAA]: [todos os exames daquela data na mesma linha separados por " | "]
-       (Se o exame foi feito em pronto-socorro/hospital, escreva: "- LABS [DD/MM/AAAA] (REALIZADO NA EMERGÊNCIA / HOSPITAL): ...")
-     * Coloque todas as ultrassonografias / ecografias sob o título separado logo abaixo (ou formato de imagem correspondente):
-       ULTRASSONOGRAFIA
-       - US [TIPO] [DD/MM/AAAA]: [descrição completa do laudo e conclusão]
+   - FORMATO COMPACTO OBRIGATÓRIO PARA EXAMES LABORATORIAIS (PROIBIDO UNIDADES DE MEDIDA E PROIBIDO SUB-ÍNDICES REDUNDANTES!):
+     * Escreva TODOS os exames laboratoriais da mesma data em UMA ÚNICA LINHA iniciando com "- LABS DD/MM/AAAA: " separados por " | ", usando APENAS SIGLAS MÉDICAS CURTAS + VALOR NUMÉRICO (SEM escrever dois-pontos ":" após cada sigla e SEM escrever unidades como mg/dL, g/dL, U/L, milh./mm³, fL, pg, mEq/L, ng/mL, µUI/mL!).
+     * É TERMINANTEMENTE PROIBIDO escrever "Hemograma (Eritrócitos: ... | HCM: ... | CHCM: ... | RDW: ... | VPM: ...)", "Glicemia estimada média", "Colesterol Não-HDL" ou "Relação Colesterol Total/HDL"!
+     * Use OBRIGATORIAMENTE este padrão limpo de siglas:
+       - LABS DD/MM/AAAA: Hb 14,1 | Ht 41 | VCM 89,3 | Leuco 11.300 | Plaq 457.700 | RNI 1,02 | KPTT 35s | GJ 110 | HbA1c 5,8% | CT 154 | HDL 35,4 | LDL 90,8 | TAG 186 | Creat 0,91 | Ureia 19 | TGO 21 | TGP 34 | GGT 231 | BT 0,50 (BD 0,20 / BI 0,30) | FA 84 | PCR 5 | Ferro 114 | Ferritina 267,6 | Transferrina 223,1 | TIBC 274 | TSH 1,40 | T4L 0,57 | B12 294 | Na 139 | K 4,43 | EQU sem alterações | EPF negativo | SOF negativo
+   - TÍTULO CORRETO DA SEÇÃO DE EXAMES:
+     * Na Consulta Geral (SOAP) e demais consultas fora do Pré-Natal, coloque tanos os exames laboratoriais ("- LABS ...") quanto os exames de imagem ("- TC ...", "- USG ...", "- RX ...", "- ECOCARDIO ...") dentro da seção "EXAMES COMPLEMENTARES" (NUNCA coloque uma Tomografia "- TC" debaixo do título "ULTRASSONOGRAFIA"!).
+     * Apenas na Consulta de Pré-Natal separe em "EXAMES COMPLEMENTARES" (para "- LABS") e "ULTRASSONOGRAFIA" (para "- US OBSTÉTRICA / MORFOLÓGICA").
    - PROIBIDO ESCREVER "N/R" OU "Não realizado" para exames que não constam no laudo.
 
 5. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
@@ -726,25 +703,22 @@ Data de referência de hoje: ${todayStr}.
    - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'Filtre e descarte qualquer interrupção paralela de terceiros/enfermagem falando de outro paciente.'}
    - Quando o [MÉDICO] estiver explicando alterações de exames para o paciente, JAMAIS escreva no SUBJETIVO que "Paciente refere tal alteração".
 ${parsedPrev ? `
-9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR:
-   - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo, (B) os Diagnósticos da Avaliação anterior que devem entrar nas "#", ${isPrenatalTemplate ? '(C) os Exames Laboratoriais e Ultrassonografias anteriores do Pré-Natal, e (D)' : 'e (C)'} a Avaliação e Conduta da última consulta.
-   - ATENÇÃO: O SUBJETIVO e o OBJETIVO antigos foram removidos propositalmente para que você construa o SUBJETIVO e o OBJETIVO de hoje 100% a partir do ÁUDIO DE HOJE!
+9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR (SEM POLUIR AS "#" COM FRASES DA AVALIAÇÃO!):
+   - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo, ${isPrenatalTemplate ? '(B) os Exames Laboratoriais e Ultrassonografias anteriores do Pré-Natal, e (C)' : 'e (B)'} a Avaliação e Conduta da última consulta.
+   - ATENÇÃO: O SUBJETIVO e o OBJETIVO antigos foram removidos propositalmente para que você construa o SUBJETIVO e o OBJETIVO de hoje 100% a partir da consulta de HOJE!
    - Siga obrigatoriamente:
-     1) Copie TODAS as linhas "#" e TODAS as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo, acrescentando também nas "#" os diagnósticos listados em "DIAGNÓSTICOS DA AVALIAÇÃO ANTERIOR PARA INCLUIR NAS #"!
-     2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se o paciente não tomou ou manteve medicação suspensa, relate no SUBJETIVO.
+     1) Copie FIELMENTE as linhas "#" e as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo. NUNCA copie frases da AVALIAÇÃO anterior nem da AVALIAÇÃO de hoje para dentro do cabeçalho "#" do topo!
+     2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se o paciente não tomou ou suspendeu medicação por conta própria, relate no SUBJETIVO e ajuste a # MUC conforme a conduta atual.
      ${isPrenatalTemplate ? '3) No Pré-Natal, mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje logo abaixo deles!' : '3) NÃO copie os exames da evolução anterior! Inclua em EXAMES COMPLEMENTARES apenas os exames novos avaliados hoje.'}
 
-=== (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR (MANTER TODAS AS LINHAS "#" E SUB-LINHAS "-"!) ===
+=== (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR (MANTER EXATAMENTE ESTAS LINHAS "#" E SUB-LINHAS "-"!) ===
 ${parsedPrev.headerText || 'Nenhum cabeçalho anterior.'}
-
-=== (B) DIAGNÓSTICOS DA AVALIAÇÃO ANTERIOR PARA INCLUIR NAS "#" DO CABEÇALHO ===
-${parsedPrev.diagnosesToPromote.length > 0 ? parsedPrev.diagnosesToPromote.map(d => [d.hashLine, ...d.subLines].join('\n')).join('\n') : 'Nenhum diagnóstico crônico novo a promover.'}
 ${isPrenatalTemplate ? `
-=== (C) EXAMES ANTERIORES DO PRÉ-NATAL (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
+=== (B) EXAMES ANTERIORES DO PRÉ-NATAL (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
 ${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES:\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
 ${parsedPrev.usgExamLines.length > 0 ? '\nULTRASSONOGRAFIAS / IMAGEM ANTERIORES:\n' + parsedPrev.usgExamLines.join('\n\n') : ''}
 ` : ''}
-=== (${isPrenatalTemplate ? 'D' : 'C'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (PARA ATUALIZAR # MUC E CHECAR ADESÃO) ===
+=== (${isPrenatalTemplate ? 'C' : 'B'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (APENAS PARA ATUALIZAR # MUC E CHECAR ADESÃO — NÃO COPIAR FRASES DA AVALIAÇÃO PARA AS "#"!) ===
 AVALIAÇÃO ANTERIOR:
 ${parsedPrev.avaliacaoText || 'Não informada.'}
 CONDUTA ANTERIOR:
@@ -754,7 +728,45 @@ ${parsedPrev.condutaText || 'Não informada.'}
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / CÁLCULO OBSTÉTRICO DE HOJE ===\n' + zScoreSummary : ''}
 
-=== MODELO DE REFERÊNCIA A SER SEGUIDO ===
+=== EXEMPLO DE PADRÃO OURO DE QUALIDADE MÉDICA (SIGA ESTE ESTILO LIMPO E FORMAL EM TODOS OS ATENDIMENTOS) ===
+## DEMANDA ESPONTÂNEA ##
+
+# HAS
+# Diabetes Mellitus tipo 2
+# MUC: Losartana 50mg 1cp 12/12h, Metformina 850mg 1cp 2x ao dia
+# Tabagista: nega
+# Alergias: nega
+
+SUBJETIVO
+Paciente comparece por demanda espontânea referindo dor abdominal epigástrica em queimação há 3 dias, associada a pirose e náuseas pós-prandiais. Relata piora dos sintomas após ingestão de café e alimentos gordurosos. Nega vômitos, febre ou alteração do hábito intestinal. Nega perda ponderal.
+Refere boa adesão às medicações contínuas habituais para HAS e DM. Nega queixas cardiovasculares ou respiratórias.
+Controle de PA: Refere médias domiciliares de 125/80 mmHg.
+
+OBJETIVO
+BEG, LOC, corado, hidratado, anictérico, acianótico.
+PA: 120/80 mmHg
+FC: 74 bpm
+Peso: 78 kg
+ABD: Plano, flácido, doloroso à palpação superficial e profunda em epigástrio, sem massas ou visceromegalias, descompressão brusca negativa (RHA presentes e normais).
+
+EXAMES COMPLEMENTARES
+- LABS 15/09/2026: Hb 14,2 | Ht 42 | Leuco 6.800 | Plaq 240.000 | GJ 108 | HbA1c 6,2% | Creat 0,90 | TGO 22 | TGP 25 | EQU sem alterações
+
+AVALIAÇÃO
+Dispepsia funcional / Doença do refluxo gastroesofágico (DRGE)
+Hipertensão arterial sistêmica, compensada
+Diabetes Mellitus tipo 2, controle glicêmico adequado
+
+CONDUTA
+Prescrevo Omeprazol 20 mg: tomar 1 cápsula em jejum pela manhã, 30 minutos antes do café, por 30 dias.
+Prescrevo Hidróxido de Alumínio: 1 colher de sopa após as refeições se sintomas refratários.
+Mantenho medicações contínuas de uso habitual (Losartana e Metformina).
+Oriento medidas dietéticas e comportamentais anti-refluxo (fracionar refeições, evitar deitar logo após comer, cessar café/frituras/refrigerantes).
+Oriento sinais de alarme e na presença procurar atendimento médico imediato.
+Retorno em 30 dias para reavaliação clínica com enfermagem ou médico.
+Ciente, concordante e sem dúvidas.
+
+=== MODELO DE REFERÊNCIA A SER SEGUIDO NESTA CONSULTA ===
 ${effectiveTemplateText}
 
 === FORMATO DE RESPOSTA (JSON OBRIGATÓRIO) ===
