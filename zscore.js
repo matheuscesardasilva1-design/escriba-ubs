@@ -115,10 +115,11 @@ window.ZScoreCalculator = (function() {
       return null;
     }
 
-    const mChronological = parseFloat(months);
+    const toNum = (v) => (v === null || v === undefined || String(v).trim() === '') ? NaN : parseFloat(String(v).replace(',', '.').trim());
+    const mChronological = toNum(months);
     if (isNaN(mChronological) || mChronological < 0) return null;
 
-    const ga = parseFloat(birthGAWeeks);
+    const ga = toNum(birthGAWeeks);
     let mEffective = mChronological;
     let prematurityNote = '';
 
@@ -142,12 +143,12 @@ window.ZScoreCalculator = (function() {
 
     const ref = WHO_DATA[sex === 'F' ? 'F' : 'M'];
 
-    let w = parseFloat(weightKg);
+    let w = toNum(weightKg);
     if (!isNaN(w) && w > 80) {
       w = w / 1000;
     }
-    const h = parseFloat(heightCm);
-    const hc = parseFloat(hcCm);
+    const h = toNum(heightCm);
+    const hc = toNum(hcCm);
 
     const result = {
       months: mChronological,

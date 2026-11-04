@@ -1072,6 +1072,10 @@
     const baseLabel = patientInput ? patientInput.value.trim() : '';
     const currentNotes = (quickNotesInput && quickNotesInput.value) || '';
     const currentPrevConsult = (prevConsultInput && prevConsultInput.value.trim()) || '';
+    const liveExamEditor = document.getElementById('liveExamTranscriptionEditor');
+    const currentPreTranscribedExams = (liveExamEditor && liveExamEditor.value && !liveExamEditor.value.startsWith('⏳') && !liveExamEditor.value.startsWith('⚠️'))
+      ? liveExamEditor.value.trim()
+      : (state.preTranscribedExamsText || '');
     const currentZScore = getCalculatedZScoreText();
     const attachedExams = [...state.pendingExamFiles];
 
@@ -1106,6 +1110,7 @@
         fileName: file.name,
         quickNotes: currentNotes,
         previousConsultationText: currentPrevConsult,
+        preTranscribedExamsText: i === 0 ? currentPreTranscribedExams : '',
         zScoreSummary: currentZScore,
         evolutionText: '',
         soapParts: null,
@@ -1127,6 +1132,10 @@
     }
 
     state.pendingExamFiles = [];
+    state.preTranscribedExamsText = '';
+    const liveBox = document.getElementById('liveExamTranscriptionBox');
+    if (liveBox) liveBox.style.display = 'none';
+    if (liveExamEditor) liveExamEditor.value = '';
     renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
@@ -1148,7 +1157,12 @@
     const prevConsultText = prevConsultInput ? prevConsultInput.value.trim() : '';
     const attachedExams = [...state.pendingExamFiles];
 
-    if (!notes && attachedExams.length === 0 && !prevConsultText) {
+    const liveExamEditor = document.getElementById('liveExamTranscriptionEditor');
+    const currentPreTranscribedExams = (liveExamEditor && liveExamEditor.value && !liveExamEditor.value.startsWith('⏳') && !liveExamEditor.value.startsWith('⚠️'))
+      ? liveExamEditor.value.trim()
+      : (state.preTranscribedExamsText || '');
+
+    if (!notes && attachedExams.length === 0 && !prevConsultText && !currentPreTranscribedExams) {
       alert('Anexe pelo menos um PDF/imagem de exame ou digite os dados clínicos no campo de Notas Rápidas.');
       return;
     }
@@ -1175,6 +1189,7 @@
       mimeType: 'text/plain',
       quickNotes: notes,
       previousConsultationText: prevConsultText,
+      preTranscribedExamsText: currentPreTranscribedExams,
       zScoreSummary: getCalculatedZScoreText(),
       evolutionText: '',
       soapParts: null,
@@ -1190,6 +1205,10 @@
     }
 
     state.pendingExamFiles = [];
+    state.preTranscribedExamsText = '';
+    const liveBox = document.getElementById('liveExamTranscriptionBox');
+    if (liveBox) liveBox.style.display = 'none';
+    if (liveExamEditor) liveExamEditor.value = '';
     renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
@@ -1777,13 +1796,13 @@
       let preEval = text.slice(0, boundaryMatch.index);
       const evalAndAfter = text.slice(boundaryMatch.index);
 
-      // Extrai blocos EXAMES COMPLEMENTARES e ULTRASSONOGRAFIA atuais no final de preEval
-      const examSectionRegex = /\n*EXAMES COMPLEMENTARES\s*\n([\s\S]*?)$/i;
+      // Extrai blocos EXAMES COMPLEMENTARES e/ou ULTRASSONOGRAFIA atuais no final de preEval (mesmo que só exista ULTRASSONOGRAFIA)
+      const examSectionRegex = /\n*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\s*\n([\s\S]*?)$/i;
       const examMatch = preEval.match(examSectionRegex);
 
       if (examMatch || hasPrevLabs || hasPrevUsg) {
         const bodyBeforeExams = examMatch ? preEval.slice(0, examMatch.index) : preEval;
-        const rawExamArea = examMatch ? examMatch[1] : '';
+        const rawExamArea = examMatch ? preEval.slice(examMatch.index) : '';
 
         const currentLabLines = [];
         const currentUsgLines = [];
@@ -1791,7 +1810,7 @@
 
         for (const rawL of rawExamArea.split('\n')) {
           const t = rawL.trim();
-          if (!t || t === '-') continue;
+          if (!t || t === '-' || /^-\s*(?:Sem novos exames|Nenhum exame|Não realizado)/i.test(t)) continue;
           if (/^ULTRASSONOGRAFIA\b/i.test(t)) {
             inUsgSubblock = true;
             continue;
@@ -2320,8 +2339,8 @@
           await window.ScribeDB.saveConsultation(c);
           nextDayAutoQueuedCount++;
         }
-      } else if (c.status === 'done' && c.evolutionText && (c.evolutionText.includes('"evolucao_completa"') || /\((?:CID|CIAP)/i.test(c.evolutionText) || /\n-\s+/m.test(c.evolutionText))) {
-        // Repara automaticamente qualquer evolução anterior que tenha ficado com JSON bruto, CID ou traços "- " na Avaliação/Conduta!
+      } else if (c.status === 'done' && c.evolutionText && (c.evolutionText.includes('"evolucao_completa"') || /\((?:CID(?:-1[01])?|CIAP(?:-2)?)\s*:/i.test(c.evolutionText))) {
+        // Repara automaticamente qualquer evolução anterior que tenha ficado com JSON bruto ou CID no meio do texto!
         if (c.evolutionText.includes('"evolucao_completa"')) {
           const repaired = parseGeminiEvolutionResponse(c.evolutionText);
           if (repaired.evolucao_completa) {
@@ -2331,7 +2350,13 @@
             }
           }
         }
-        const { cleanText, codes } = cleanAndExtractCidFromEvolution(c.evolutionText, c.cidCiapCodes);
+        const { cleanText, codes } = cleanAndExtractCidFromEvolution(
+          c.evolutionText,
+          c.cidCiapCodes,
+          c.templateId,
+          c.previousConsultationText || '',
+          c.soapSubtypeHeader || ''
+        );
         c.evolutionText = cleanText;
         c.cidCiapCodes = codes;
         await window.ScribeDB.saveConsultation(c);
@@ -2764,6 +2789,8 @@
     return {
       weeks: w,
       days: d,
+      w,
+      d,
       shortText: `${w}s ${d}d`,
       longText: `${w} sem e ${d} dias`
     };
@@ -2951,6 +2978,10 @@
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    const mfEl = document.getElementById('pnMF');
+    if (mfEl) mfEl.value = 'Presente';
+    const edemaEl = document.getElementById('pnEdema');
+    if (edemaEl) edemaEl.value = 'Ausente';
     const cycleEl = document.getElementById('pnCycleDays');
     if (cycleEl) cycleEl.value = '28';
     const chkZ = document.getElementById('chkIncludeZScoreInEvolution');
@@ -3019,6 +3050,7 @@
           templateId: c.templateId,
           templateName: c.templateName,
           templateIcon: c.templateIcon,
+          soapSubtypeHeader: c.soapSubtypeHeader || '',
           createdAt: c.createdAt,
           updatedAt: c.updatedAt,
           status: c.status === 'uploading' ? 'queued' : c.status,
@@ -3031,7 +3063,10 @@
           evolutionText: c.evolutionText || '',
           cidCiapCodes: c.cidCiapCodes || [],
           rawTranscript: c.rawTranscript || '',
-          savedReferrals: c.savedReferrals || [],
+          referrals: c.referrals || c.savedReferrals || [],
+          savedReferrals: c.referrals || c.savedReferrals || [],
+          referralText: c.referralText || '',
+          referralSpecialty: c.referralSpecialty || '',
           evolvedInPEC: Boolean(c.evolvedInPEC),
           evolvedAt: c.evolvedAt || null,
           remoteFileUri: c.remoteFileUri || ''
@@ -3134,7 +3169,7 @@
         }],
         generationConfig: {
           temperature: 0,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 65536,
           responseMimeType: 'application/json'
         }
       };
