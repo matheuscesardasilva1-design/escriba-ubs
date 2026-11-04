@@ -34,10 +34,12 @@
     selectedMicDeviceId: localStorage.getItem('ubs_selected_mic') || ''
   };
 
-  // Usa EXCLUSIVAMENTE os modelos Flash completos de produção (rápidos, cota alta e máxima precisão clínica — NUNCA usa modelos "lite" ou "preview" lentos!)
+  // Usa EXCLUSIVAMENTE o modelo Gemini 2.5 Flash oficial de produção:
+  // - Evita "gemini-2.0-flash" / "gemini-1.5-flash" (descontinuados que geram erro 404 NotFound no Google AI Studio)
+  // - Evita "gemini-3-flash-preview" / "exp" (instáveis que geram erro 503 ServiceUnavailable e limite de 2 RPM)
+  // - Evita "gemini-2.5-flash-lite" (que ignora partes do áudio e regras de formatação)
   const GEMINI_MODELS = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash'
+    'gemini-2.5-flash'
   ];
 
   let cachedDiscoveredModels = null;
@@ -53,35 +55,22 @@
         const available = (data.models || [])
           .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
           .map(m => m.name.replace(/^models\//, ''))
-          // PROIBIDO modelos "lite" (que ignoram partes do áudio e regras), "preview"/"exp" (que têm limite de 2 RPM) ou "pro" (que demoram 2 minutos)
           .filter(name =>
-            name.includes('gemini') &&
-            name.includes('flash') &&
-            !name.includes('lite') &&
-            !name.includes('preview') &&
-            !name.includes('exp') &&
-            !name.includes('embedding') &&
-            !name.includes('imagen') &&
-            !name.includes('veo') &&
-            !name.includes('tts') &&
-            !name.includes('thinking')
+            name === 'gemini-2.5-flash' ||
+            (name.startsWith('gemini-2.5-flash') &&
+             !name.includes('lite') &&
+             !name.includes('preview') &&
+             !name.includes('exp') &&
+             !name.includes('tts') &&
+             !name.includes('image'))
           );
 
-        const preferredOrder = [
-          'gemini-2.5-flash',
-          'gemini-2.0-flash'
-        ];
-        const sorted = [];
-        preferredOrder.forEach(pref => {
-          const match = available.find(a => a === pref);
-          if (match && !sorted.includes(match)) sorted.push(match);
-        });
-        available.forEach(a => {
-          if (!sorted.includes(a)) sorted.push(a);
-        });
-
-        if (sorted.length > 0) {
-          cachedDiscoveredModels = sorted.slice(0, 3);
+        if (available.includes('gemini-2.5-flash')) {
+          cachedDiscoveredModels = ['gemini-2.5-flash'];
+          return cachedDiscoveredModels;
+        }
+        if (available.length > 0) {
+          cachedDiscoveredModels = [available[0]];
           return cachedDiscoveredModels;
         }
       }
@@ -309,9 +298,8 @@
   function getSelectedSoapSubtypeHeader() {
     const selectedRadio = document.querySelector('input[name="soapVisitSubtype"]:checked');
     const mode = selectedRadio ? selectedRadio.value : 'DEMANDA ESPONTÂNEA';
-    if (mode === 'CONSULTA AGENDADA') {
-      const timeVal = (document.getElementById('soapScheduledTime')?.value || '0800').trim() || '0800';
-      return `## CONSULTA AGENDADA - ${timeVal} ##`;
+    if (mode === 'CONSULTA AGENDADA - 0800' || mode === 'CONSULTA AGENDADA') {
+      return '## CONSULTA AGENDADA - 0800 ##';
     }
     if (mode === 'RETORNO MÉDICO') {
       return '## RETORNO MÉDICO ##';
@@ -1602,7 +1590,7 @@
         }
       }
 
-      // 6b. Verifica todas as condições "#" e sub-linhas "- " do cabeçalho anterior + diagnósticos promovidos da AVALIAÇÃO anterior
+      // 6b. Verifica todas as condições "#" e sub-linhas ("- " ou ">> ") do cabeçalho anterior + diagnósticos promovidos da AVALIAÇÃO anterior (nos 7 modelos!)
       const subjSplit = text.match(/^([\s\S]*?)(\n\s*(?:\d+\.\s*)?SUBJETIVO\b[\s\S]*)$/i);
       if (subjSplit) {
         let headerPart = subjSplit[1];
@@ -1613,7 +1601,7 @@
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
           .replace(/[^a-z0-9]/g, '');
 
-        // Agrupa o cabeçalho anterior em blocos: cada linha "#" + suas sub-linhas "- " imediatamente abaixo
+        // Agrupa o cabeçalho anterior em blocos: cada linha "#" + suas sub-linhas ("- " ou ">> ") imediatamente abaixo
         const prevSourceLines = [
           ...(parsedPrev.headerLines || []),
           ...(parsedPrev.promotedFromAvaliacao || [])
@@ -1621,73 +1609,102 @@
         const prevBlocks = [];
         for (const line of prevSourceLines) {
           const t = line.trim();
-          if (!t) continue;
+          if (!t || t === '#') continue;
           if (t.startsWith('#')) {
             prevBlocks.push({ main: t, subs: [] });
           } else if ((t.startsWith('-') || t.startsWith('>')) && prevBlocks.length > 0) {
-            prevBlocks[prevBlocks.length - 1].subs.push(t.replace(/^>\s*/, '- '));
+            const formattedSub = t.startsWith('>>') ? t : t.replace(/^>\s*/, '- ');
+            prevBlocks[prevBlocks.length - 1].subs.push(formattedSub);
           }
         }
 
         for (const block of prevBlocks) {
           const mainUpper = block.main.toUpperCase();
-          // Campos estruturais que já existem no cabeçalho (G/P, IG, TS, TOXO, SOROLOGIAS, VACINAS, MUC, TABAGISTA, ALERGIAS, ODONTO)
-          const isStructuralKey = /^#\s*(?:G\d|IG\b|TS\b|TOXO\b|SOROLOGIAS\b|VACINAS\b|MUC\b|TABAGIS|ALERGIA|CONSULTA\s+ODONTO|DUM\b|$)/i.test(mainUpper);
+          // Campos estruturais fixos dos 7 modelos (G/P, IG, TS, TOXO, SOROLOGIAS, VACINAS, MUC, TABAGISTA, ALERGIAS, ODONTO, HISTÓRICO DO PARTO, TRIAGEM NEONATAL, EQUIPE VD, FAMILIAR VD)
+          const isStructuralKey = /^#\s*(?:G\d|IG\b|TS\b|TOXO\b|SOROLOGIAS\b|VACINAS\b|MUC\b|TABAGIS|ALERGIA|CONSULTA\s+ODONTO|DUM\b|HIST[ÓO]RICO\s+DO\s+PARTO|TRIAGEM\s+NEONATAL|EQUIPE\s+PRESENTE|FAMILIAR\s*\/\s*CUIDADOR|$)/i.test(mainUpper);
 
           if (isStructuralKey) {
-            // Mesmo em campos estruturais (como # G01PV0PC0A0), se havia sub-linhas "- Gestação atual não planejada" e a IA tirou, restaura!
-            if (/^#\s*G\d/i.test(mainUpper) && block.subs.length > 0) {
-              for (const sub of block.subs) {
-                const subNorm = normalizeCompare(sub);
-                if (subNorm && !normalizeCompare(headerPart).includes(subNorm)) {
-                  headerPart = headerPart.replace(/^(#\s*G\d[^\n]*)$/im, `$1\n${sub}`);
+            // 1) Se um campo estrutural de linha única (ex.: # Tabagista: nega, # Alergias: dipirona, # TS: O positivo) ficou em branco na evolução nova, restaura o valor anterior!
+            const kvMatch = block.main.match(/^#\s*(TS|TABAGISTA|ALERGIAS|CONSULTA\s+ODONTOLOGIA)\s*:\s*(.+)$/i);
+            if (kvMatch && kvMatch[2].trim()) {
+              const keyName = kvMatch[1].trim();
+              const emptyKeyRe = new RegExp(`^#\\s*${keyName.replace(/\s+/g, '\\s+')}\\s*:\\s*$`, 'im');
+              if (emptyKeyRe.test(headerPart)) {
+                headerPart = headerPart.replace(emptyKeyRe, block.main);
+              }
+            }
+
+            // 2) Se o campo estrutural tem sub-linhas na evolução anterior (ex.: "# G01PV0PC0A0" -> "- Gestação atual não planejada", ou "# Histórico do parto" -> "- Idade por capurro...", ou "# Triagem neonatal:" -> ">> Orelhinha..."), garante que todas as sub-linhas preenchidas sejam mantidas na ordem original!
+            if (block.subs.length > 0 && /^#\s*(?:G\d|HIST[ÓO]RICO\s+DO\s+PARTO|TRIAGEM\s+NEONATAL|VACINAS|SOROLOGIAS)/i.test(mainUpper)) {
+              const keyPrefixMatch = block.main.match(/^#\s*(G\d\S*|HIST[ÓO]RICO\s+DO\s+PARTO[^\n]*|TRIAGEM\s+NEONATAL[^\n]*|VACINAS\s*:|SOROLOGIAS\s*:)/i);
+              if (keyPrefixMatch) {
+                const missingSubs = block.subs.filter(sub => {
+                  const subNorm = normalizeCompare(sub);
+                  return subNorm && !normalizeCompare(headerPart).includes(subNorm);
+                });
+                if (missingSubs.length > 0) {
+                  const anchorRe = new RegExp(`^(#\\s*${keyPrefixMatch[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*)$`, 'im');
+                  if (anchorRe.test(headerPart)) {
+                    headerPart = headerPart.replace(anchorRe, `$1\n${missingSubs.join('\n')}`);
+                  }
                 }
               }
             }
             continue;
           }
 
-          // É uma condição clínica/cirúrgica/hábito (ex.: "# ovolactovegetariana", "# Histórico de bulimia na infância", "# Apendicectomia em 2017 ou 2018", "# Risco aumentado para pré-eclâmpsia")
+          // É uma condição clínica/cirúrgica/hábito/diagnóstico (ex.: "# Hipertensão arterial", "# ovolactovegetariana", "# Risco aumentado para pré-eclâmpsia", etc.)
           const mainNorm = normalizeCompare(block.main);
           if (mainNorm && !normalizeCompare(headerPart).includes(mainNorm)) {
             const fullBlockText = [block.main, ...block.subs].join('\n');
-            // Insere antes de # TS: ou antes de # MUC: ou no final do cabeçalho #
-            if (/^#\s*TS:/im.test(headerPart)) {
+            // Insere no local exato conforme o modelo (Pré-Natal, LGBTQIAP+, Puericultura, Visita Domiciliar, Interconsulta ou SOAP Geral)
+            if (/^Medica[çc][õo]es em uso:/im.test(headerPart)) {
+              // Modelos LGBTQIAP+ (1ª Consulta e Seguimento): insere antes de "Medicações em uso:" mantendo a ordem cronológica
+              headerPart = headerPart.replace(/^(Medica[çc][õo]es em uso:)/im, `${fullBlockText}\n$1`);
+            } else if (/^#\s*TS:/im.test(headerPart)) {
+              // Modelo Pré-Natal
               headerPart = headerPart.replace(/^(#\s*TS:)/im, `${fullBlockText}\n$1`);
             } else if (/^#\s*MUC:/im.test(headerPart)) {
+              // Modelos Geral (SOAP), Puericultura, Visita Domiciliar e Interconsulta
               headerPart = headerPart.replace(/^(#\s*MUC:)/im, `${fullBlockText}\n$1`);
             } else {
               headerPart = `${headerPart.trimEnd()}\n${fullBlockText}\n`;
             }
           } else if (block.subs.length > 0) {
-            // A condição "#" existe, mas verifica se alguma sub-linha "- " abaixo dela foi omitida
-            for (const sub of block.subs) {
+            // A condição "#" existe, mas verifica se alguma sub-linha ("- " ou ">> ") abaixo dela foi omitida
+            const missingCondSubs = block.subs.filter(sub => {
               const subNorm = normalizeCompare(sub);
-              if (subNorm && !normalizeCompare(headerPart).includes(subNorm)) {
-                const escapedMain = block.main.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const reMain = new RegExp(`^(${escapedMain}[^\\n]*)$`, 'im');
-                if (reMain.test(headerPart)) {
-                  headerPart = headerPart.replace(reMain, `$1\n${sub}`);
-                }
+              return subNorm && !normalizeCompare(headerPart).includes(subNorm);
+            });
+            if (missingCondSubs.length > 0) {
+              const escapedMain = block.main.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const reMain = new RegExp(`^(${escapedMain}[^\\n]*)$`, 'im');
+              if (reMain.test(headerPart)) {
+                headerPart = headerPart.replace(reMain, `$1\n${missingCondSubs.join('\n')}`);
               }
             }
           }
+        }
+
+        // Se já houver condições "#" reais preenchidas, remove linhas "#" vazias soltas ("# ") que sobraram do esqueleto
+        if (/^#\s+\S+/m.test(headerPart)) {
+          headerPart = headerPart.replace(/^#\s*$\n?/gm, '');
         }
 
         text = `${headerPart}${restPart}`;
       }
     }
 
-    // 7. Separa rigorosamente EXAMES COMPLEMENTARES (- LABS) de ULTRASSONOGRAFIA (- US) e restaura exames anteriores se omitidos
+    // 7. Separa rigorosamente EXAMES COMPLEMENTARES (- LABS) de ULTRASSONOGRAFIA (- US) e restaura exames anteriores se omitidos (nos 7 modelos!)
     const hasPrevLabs = parsedPrev && parsedPrev.labLines && parsedPrev.labLines.length > 0;
     const hasPrevUsg = parsedPrev && parsedPrev.usgLines && parsedPrev.usgLines.length > 0;
 
-    // Se a IA colocou linhas "- US ..." ou "- USG ..." dentro de EXAMES COMPLEMENTARES sem criar o bloco ULTRASSONOGRAFIA, separa!
-    const evalHeaderRegex = /\n(\s*(?:\d+\.\s*)?AVALIAÇÃO\b)/i;
-    if (evalHeaderRegex.test(text)) {
-      const beforeEvalSplit = text.split(evalHeaderRegex);
-      let preEval = beforeEvalSplit[0];
-      const evalAndAfter = text.slice(preEval.length);
+    // Ancora os blocos de exames antes de "7. RASTREAMENTOS" (nos modelos LGBTQIAP+) ou antes de "AVALIAÇÃO" (nos outros 5 modelos)
+    const afterExamsBoundaryRegex = /\n(\s*(?:7\.\s*RASTREAMENTOS|(?:\d+\.\s*)?AVALIAÇÃO)\b)/i;
+    if (afterExamsBoundaryRegex.test(text)) {
+      const boundaryMatch = text.match(afterExamsBoundaryRegex);
+      let preEval = text.slice(0, boundaryMatch.index);
+      const evalAndAfter = text.slice(boundaryMatch.index);
 
       // Extrai blocos EXAMES COMPLEMENTARES e ULTRASSONOGRAFIA atuais no final de preEval
       const examSectionRegex = /\n*EXAMES COMPLEMENTARES\s*\n([\s\S]*?)$/i;
@@ -1836,7 +1853,7 @@
 
     for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
       const model = modelsToTry[mIdx];
-      const maxAttempts = 2;
+      const maxAttempts = 3;
 
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
@@ -1893,6 +1910,9 @@
               if (isDailyQuota) {
                 elDaily.textContent = `🔴 Cota diária da chave atingida`;
                 elDaily.style.color = '#dc2626';
+              } else if (res.status === 503) {
+                elDaily.textContent = `🟡 Servidor Google ocupado (retentando)...`;
+                elDaily.style.color = '#d97706';
               } else {
                 elDaily.textContent = `🟡 Aguardando limite por minuto da chave...`;
                 elDaily.style.color = '#d97706';
@@ -1900,8 +1920,8 @@
             }
             lastError = new Error(`Limite (${res.status}): ${errMsg}`);
             if (attempt < maxAttempts) {
-              const waitSec = 8 * attempt;
-              if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando fila (${waitSec}s)...`);
+              const waitSec = res.status === 503 ? (4 * attempt) : (6 * attempt);
+              if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando servidor (${waitSec}s)...`);
               await sleep(waitSec * 1000);
               continue;
             }

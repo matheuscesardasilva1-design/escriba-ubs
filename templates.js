@@ -449,6 +449,11 @@ window.parsePreviousConsultationData = function(prevRawText) {
       currentSection = 'exames_usg';
       continue;
     }
+    if (/^(?:\d+\.\s*)?(?:RASTREAMENTOS|SOROLOGIAS\s+E\s+INFECTOLOGIA|TERAPIA\s+HORMONAL)\b/i.test(trimmed)) {
+      flushUsgEntry();
+      currentSection = 'other_structured';
+      continue;
+    }
     if (/^(?:\d+\.\s*)?AVALIA[ÇC][ÃA]O\b/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'avaliacao';
@@ -519,19 +524,23 @@ window.parsePreviousConsultationData = function(prevRawText) {
   }
   flushUsgEntry();
 
-  // Identifica diagnósticos da Avaliação anterior para puxar para as "#" do cabeçalho atual
+  // Identifica diagnósticos da Avaliação anterior para puxar para as "#" do cabeçalho atual (nos 7 modelos)
   const diagnosesToPromote = [];
+  const hasNumberedAvaliacao = avaliacaoLines.some(l => /^\d+[\.\)]/.test(l));
   for (let i = 0; i < avaliacaoLines.length; i++) {
     const rawAv = avaliacaoLines[i];
-    if (rawAv.startsWith('>') || rawAv.startsWith('-')) {
+    // Se começa com ">" (ou se começa com "-" dentro de uma Avaliação numerada), é sub-linha explicativa do diagnóstico acima
+    if (rawAv.startsWith('>') || (rawAv.startsWith('-') && hasNumberedAvaliacao)) {
       if (diagnosesToPromote.length > 0) {
-        diagnosesToPromote[diagnosesToPromote.length - 1].subLines.push(rawAv.replace(/^>\s*/, '- '));
+        const cleanSub = rawAv.startsWith('>>') ? rawAv : `- ${rawAv.replace(/^[>-]+\s*/, '')}`;
+        diagnosesToPromote[diagnosesToPromote.length - 1].subLines.push(cleanSub);
       }
       continue;
     }
-    const cleanDiag = rawAv.replace(/^\d+[\.\)]\s*/, '').trim();
+    const cleanDiag = rawAv.replace(/^(?:\d+[\.\)]|-)\s*/, '').trim();
     if (!cleanDiag) continue;
-    if (/^(?:Gesta[çc][ãa]o\s+de\s+risco\s+habitual|Crian[çc]a\s+em\s+desenvolvimento|Vacinas\s+desatualizadas|Rotina\b|Puericultura\b)/i.test(cleanDiag)) {
+    // Ignora frases genéricas de rotina ou checklists estruturais do modelo LGBTQIAP+
+    if (/^(?:Gesta[çc][ãa]o\s+de\s+risco\s+habitual|Crian[çc]a\s+em\s+desenvolvimento|Vacinas\s+desatualizadas|Rotina\b|Puericultura\b|Hip[óo]tese\s+Diagn[óo]stica|Crit[ée]rios\s+Cl[íi]nicos|\(\s*[xX ]?\s*\))/i.test(cleanDiag)) {
       continue;
     }
     diagnosesToPromote.push({ hashLine: `# ${cleanDiag}`, subLines: [] });
