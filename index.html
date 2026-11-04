@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261104_31" />
+  <link rel="stylesheet" href="styles.css?v=20261104_32" />
 </head>
 <body>
 
@@ -501,6 +501,40 @@
         </div>
       </div>
 
+      <!-- BARRA DE ALTERAÇÃO DE MODELO E REPROCESSAMENTO IMEDIATO -->
+      <div id="modalTemplateControlBar" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <label for="modalChangeConsultationTemplate" style="font-size: 12.5px; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 5px;">
+            <span>📋 Formato Deste Atendimento:</span>
+          </label>
+          <select id="modalChangeConsultationTemplate" class="select-box" style="padding: 6px 12px; font-size: 13px; font-weight: 700; border-color: #6366f1; background: #ffffff; color: #1e293b; border-radius: 8px;">
+            <option value="geral">🩺 Consulta Geral (SOAP)</option>
+            <option value="prenatal">🤰 Consulta de Pré-Natal</option>
+            <option value="puericultura">👶 Puericultura (c/ Z-Score)</option>
+            <option value="visita_domiciliar">🏠 Visita Domiciliar (VD)</option>
+            <option value="interconsulta_enf">💛 Interconsulta Enfermagem</option>
+            <option value="lgbt_primeira">🏳️‍⚧️ LGBTQIAP+ (1ª Consulta)</option>
+            <option value="lgbt_seguimento">🏳️‍🌈 LGBTQIAP+ (Seguimento)</option>
+          </select>
+
+          <!-- Seletor de Subtipo do SOAP (Demanda Espontânea / Agendada / Retorno) -->
+          <div id="modalSoapSubtypeWrapper" style="display: inline-flex; align-items: center; gap: 6px;">
+            <label for="modalChangeSoapSubtype" style="font-size: 12px; font-weight: 700; color: #475569;">Modalidade:</label>
+            <select id="modalChangeSoapSubtype" class="select-box" style="padding: 6px 10px; font-size: 12.5px; font-weight: 700; border-color: #cbd5e1; background: #ffffff; color: #1e293b; border-radius: 8px;">
+              <option value="## DEMANDA ESPONTÂNEA ##">## DEMANDA ESPONTÂNEA ##</option>
+              <option value="## CONSULTA AGENDADA - 0800 ##">## CONSULTA AGENDADA - 0800 ##</option>
+              <option value="## RETORNO MÉDICO ##">## RETORNO MÉDICO ##</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" class="btn btn-primary" id="btnReprocessWithNewTemplate" style="padding: 7px 16px; font-size: 13px; font-weight: 700; background: #4f46e5;" title="Reorganizar este atendimento no modelo selecionado acima">
+            🔄 Reprocessar no Formato Escolhido
+          </button>
+        </div>
+      </div>
+
       <!-- Banner de Erro / Reprocessamento -->
       <div class="error-banner" id="viewErrorBanner">
         <span id="viewErrorText"></span>
@@ -816,9 +850,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261104_31"></script>
-  <script src="zscore.js?v=20261104_31"></script>
-  <script src="db.js?v=20261104_31"></script>
-  <script src="app.js?v=20261104_31"></script>
+  <script src="templates.js?v=20261104_32"></script>
+  <script src="zscore.js?v=20261104_32"></script>
+  <script src="db.js?v=20261104_32"></script>
+  <script src="app.js?v=20261104_32"></script>
 </body>
 </html>

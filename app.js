@@ -595,6 +595,7 @@
         state.templateLocked = true;
         renderTemplateSelector();
         togglePuericulturaZScorePanel();
+        showToast(`📋 Formato selecionado: ${tpl.name}`);
       });
       container.appendChild(btn);
     });
@@ -879,7 +880,7 @@
       const patientInput = document.getElementById('patientIdentifier');
       const quickNotesInput = document.getElementById('quickNotesInput');
       const prevConsultInput = document.getElementById('previousConsultationInput');
-      const tpl = state.templates[state.selectedTemplateId];
+      const tpl = state.templates[state.selectedTemplateId] || window.DEFAULT_TEMPLATES.geral;
       const now = Date.now();
 
       let consultId;
@@ -977,6 +978,7 @@
       };
 
       recorder.start(3000);
+      showToast(`🎙️ Gravando atendimento: ${tpl.name}`);
       state.templateLocked = true;
       renderTemplateSelector();
       state.timerWorker.postMessage('start');
@@ -1006,6 +1008,7 @@
 
   function resetCurrentConsultationFormFields() {
     state.templateLocked = false;
+    state.selectedTemplateId = 'geral';
     state.pendingExamFiles = [];
     state.preTranscribedExamsText = '';
 
@@ -1020,6 +1023,9 @@
     if (prevConsultInput) prevConsultInput.value = '';
     if (liveBox) liveBox.style.display = 'none';
     if (liveEditor) liveEditor.value = '';
+
+    const defaultRadio = document.querySelector('input[name="soapVisitSubtype"][value="DEMANDA ESPONTÂNEA"]');
+    if (defaultRadio) defaultRadio.checked = true;
 
     clearZScoreInputs();
     renderPendingExamFilesUI();
@@ -1170,6 +1176,7 @@
     state.isPaused = false;
     state.isContinuingConsultation = false;
     state.templateLocked = false;
+    state.selectedTemplateId = 'geral'; // Reseta com segurança para Consulta Geral (SOAP) para o próximo atendimento
     state.recordingConsultationId = null;
     state.recordingSeconds = 0;
     state.pendingExamFiles = [];
@@ -1177,6 +1184,8 @@
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     if (liveBox) liveBox.style.display = 'none';
     if (liveExamEditor) liveExamEditor.value = '';
+    const defaultRadio = document.querySelector('input[name="soapVisitSubtype"][value="DEMANDA ESPONTÂNEA"]');
+    if (defaultRadio) defaultRadio.checked = true;
     renderPendingExamFilesUI();
     renderTemplateSelector();
     updateRecordingControlsUI();
@@ -3572,6 +3581,20 @@
     const viewDateEl = document.getElementById('viewDateLabel');
     if (viewDateEl) viewDateEl.textContent = fullDateStr;
 
+    // Sincroniza a Barra de Troca de Modelo do Histórico
+    const modalTplSelect = document.getElementById('modalChangeConsultationTemplate');
+    const modalSoapSubtypeWrap = document.getElementById('modalSoapSubtypeWrapper');
+    const modalSoapSubtypeSelect = document.getElementById('modalChangeSoapSubtype');
+    if (modalTplSelect) {
+      modalTplSelect.value = consult.templateId || 'geral';
+      if (modalSoapSubtypeWrap) {
+        modalSoapSubtypeWrap.style.display = (consult.templateId === 'geral' || !consult.templateId) ? 'inline-flex' : 'none';
+      }
+      if (modalSoapSubtypeSelect) {
+        modalSoapSubtypeSelect.value = consult.soapSubtypeHeader || '## DEMANDA ESPONTÂNEA ##';
+      }
+    }
+
     const btnPec = document.getElementById('btnToggleEvolvedPEC');
     if (btnPec) {
       if (consult.evolvedInPEC) {
@@ -4327,6 +4350,7 @@
     document.getElementById('btnClearAllSheetBottom')?.addEventListener('click', clearAllCurrentSheet);
     document.getElementById('btnChangeTemplateModel')?.addEventListener('click', () => {
       state.templateLocked = false;
+      state.selectedTemplateId = 'geral';
       renderTemplateSelector();
     });
 
@@ -4335,12 +4359,22 @@
       closePatientDetailModal();
       switchMainPage('pageRecord');
       if (!state.isRecording) {
+        state.selectedTemplateId = 'geral';
         state.templateLocked = false;
         renderTemplateSelector();
       }
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
-    document.getElementById('tabBtnRecord')?.addEventListener('click', () => switchMainPage('pageRecord'));
+    document.getElementById('tabBtnRecord')?.addEventListener('click', () => {
+      closePatientDetailModal();
+      switchMainPage('pageRecord');
+      if (!state.isRecording) {
+        state.selectedTemplateId = 'geral';
+        state.templateLocked = false;
+        renderTemplateSelector();
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     document.getElementById('tabBtnHistory')?.addEventListener('click', () => switchMainPage('pageHistory'));
 
     // Botão [ ✕ Fechar ] da Evolução do Paciente + clique fora do cartão + tecla ESC
@@ -4595,20 +4629,74 @@
       });
     });
 
-    document.getElementById('btnReprocessConsultation')?.addEventListener('click', async () => {
+    // Mudança de modelo diretamente no modal de detalhes do paciente
+    document.getElementById('modalChangeConsultationTemplate')?.addEventListener('change', async (e) => {
+      if (!state.activeConsultationId) return;
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (!c) return;
+      const newTplId = e.target.value;
+      const newTpl = state.templates[newTplId] || window.DEFAULT_TEMPLATES[newTplId];
+      if (newTpl) {
+        c.templateId = newTpl.id;
+        c.templateName = newTpl.name;
+        c.templateIcon = newTpl.icon;
+        const badge = document.getElementById('viewTemplateBadge');
+        if (badge) badge.textContent = `${c.templateIcon || '🩺'} ${c.templateName}`;
+      }
+      const soapWrap = document.getElementById('modalSoapSubtypeWrapper');
+      if (soapWrap) {
+        soapWrap.style.display = (newTplId === 'geral') ? 'inline-flex' : 'none';
+      }
+      if (newTplId === 'geral') {
+        const soapSelect = document.getElementById('modalChangeSoapSubtype');
+        if (soapSelect) c.soapSubtypeHeader = soapSelect.value;
+      }
+      await window.ScribeDB.saveConsultation(c);
+      await refreshQueueSidebar();
+      showToast(`📋 Formato alterado para "${newTpl ? newTpl.name : newTplId}". Clique em "Reprocessar no Formato Escolhido" para gerar a nova evolução.`);
+    });
+
+    document.getElementById('modalChangeSoapSubtype')?.addEventListener('change', async (e) => {
+      if (!state.activeConsultationId) return;
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (!c) return;
+      c.soapSubtypeHeader = e.target.value;
+      await window.ScribeDB.saveConsultation(c);
+      showToast(`Modalidade definida como "${c.soapSubtypeHeader}". Clique em "Reprocessar no Formato Escolhido".`);
+    });
+
+    const triggerReprocessCurrent = async () => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
       if (c) {
+        const tplSelect = document.getElementById('modalChangeConsultationTemplate');
+        const soapSelect = document.getElementById('modalChangeSoapSubtype');
+        if (tplSelect && tplSelect.value) {
+          const chosenTpl = state.templates[tplSelect.value] || window.DEFAULT_TEMPLATES[tplSelect.value];
+          if (chosenTpl) {
+            c.templateId = chosenTpl.id;
+            c.templateName = chosenTpl.name;
+            c.templateIcon = chosenTpl.icon;
+          }
+        }
+        if (c.templateId === 'geral' && soapSelect && soapSelect.value) {
+          c.soapSubtypeHeader = soapSelect.value;
+        }
         c.status = 'queued';
         c.errorMessage = '';
         if (c.chunkCount > 0) {
-          c.rawTranscript = ''; // Limpa para re-transcrever o áudio completo do zero
+          c.rawTranscript = ''; // Limpa para re-transcrever o áudio completo do zero sem omissões
         }
         await window.ScribeDB.saveConsultation(c);
         await refreshQueueSidebar();
+        await renderActiveConsultationView(c);
         processQueueInBackground();
+        showToast(`🔄 Reprocessando "${c.patientLabel}" em ${c.templateName || 'Consulta Geral (SOAP)'}...`);
       }
-    });
+    };
+
+    document.getElementById('btnReprocessWithNewTemplate')?.addEventListener('click', triggerReprocessCurrent);
+    document.getElementById('btnReprocessConsultation')?.addEventListener('click', triggerReprocessCurrent);
 
     document.getElementById('btnDeleteConsultation')?.addEventListener('click', async () => {
       if (!state.activeConsultationId) return;
