@@ -2676,17 +2676,22 @@
             const userContent = (requestBody.contents || [])[0];
             const parts = userContent?.parts || [];
 
-            // A) Envia chunks de áudio se presentes
+            // A) Envia chunks de áudio se presentes (fatiados em 24KB para fluxo contínuo e sem estouro de frame no WebSocket)
             for (const p of parts) {
               if (p.inlineData && p.inlineData.data) {
-                ws.send(JSON.stringify({
-                  realtimeInput: {
-                    mediaChunks: [{
-                      mimeType: p.inlineData.mimeType || 'audio/webm',
-                      data: p.inlineData.data
-                    }]
-                  }
-                }));
+                const rawBase64 = p.inlineData.data;
+                const chunkSize = 24576; // 24KB por pedaço
+                for (let offset = 0; offset < rawBase64.length; offset += chunkSize) {
+                  const slice = rawBase64.slice(offset, offset + chunkSize);
+                  ws.send(JSON.stringify({
+                    realtimeInput: {
+                      mediaChunks: [{
+                        mimeType: p.inlineData.mimeType || 'audio/webm',
+                        data: slice
+                      }]
+                    }
+                  }));
+                }
               }
             }
 
