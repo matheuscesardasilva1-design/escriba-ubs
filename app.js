@@ -37,17 +37,27 @@
 
   // Descoberta inteligente e auto-adaptativa do modelo Gemini Flash ativo na chave do usuário:
   // - Chaves novas (2026+) usam a geração Gemini 3 Flash (ex.: gemini-3.8-flash / gemini-3.0-flash / gemini-3-flash-preview) e bloqueiam gemini-2.5-flash com "no longer available to new users".
-  // Descoberta inteligente e rotação automática entre os modelos com cota ativa no Google AI Studio:
-  // - Gemini 3.5 Flash Lite: 500 requisições/dia (RPD) e 15/min (RPM)
-  // - Gemini 3.1 Flash Lite: 500 requisições/dia (RPD) e 15/min (RPM)
-  // - Gemini 3.8 Flash / 3.6 Flash / 3 Flash: 20 requisições/dia cada (RPD) e 5/min (RPM)
-  // - Gemini 2.5 Flash Lite: 20 requisições/dia (RPD) e 10/min (RPM)
-  // Total combinado na mesma chave: > 1.080 atendimentos por dia!
-  // Modelos com cota 0/0 (Pro, 2.0 Flash, TTS, Image, Live) são filtrados automaticamente.
+  // Lista robusta de modelos do Google AI Studio priorizados por capacidade e cota:
+  // 1. Modelos Ilimitados (API Live / Transcrição em Tempo Real): Gemini 3 Flash Live, Gemini 3.8 Live, Gemini 2.5 Native Audio Dialog, Gemini 3.5 Transcribe Live
+  // 2. Transcrição Dedicada: Gemini 3.5 Transcribe (25/dia)
+  // 3. Agente Gerenciado: Antigravity (100/dia, 60 RPM)
+  // 4. Modelos Flash Completos: Gemini 3.8 Flash, 3.6 Flash, 3 Flash, 2.5 Flash (20/dia cada)
+  // 5. Alta Escala: Gemma 4 31B / 26B (14.400/dia)
+  // 6. Flash-Lite de Emergência: Gemini 3.5 Flash Lite, 3.1 Flash Lite (500/dia cada)
   const GEMINI_MODELS = [
+    'gemini-3-flash-live',
+    'gemini-3.8-live',
+    'gemini-2.5-flash-native-audio-dialog',
+    'gemini-3.5-transcribe-live',
+    'gemini-3.5-transcribe',
+    'antigravity',
     'gemini-3.8-flash',
     'gemini-3.6-flash',
+    'gemini-3-flash',
     'gemini-3-flash-preview',
+    'gemini-2.5-flash',
+    'gemma-4-31b',
+    'gemma-4-26b',
     'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
     'gemini-2.5-flash-lite'
@@ -122,14 +132,18 @@
     const exhaustedToday = getExhaustedModelsForToday(apiKey);
     const workKey = 'ubs_working_model_' + getKeyShortHash(apiKey);
     const remembered = localStorage.getItem(workKey) || '';
+    const preferredModel = localStorage.getItem('ubs_preferred_model') || 'auto';
     const keyHash = getKeyShortHash(apiKey);
 
     const filterAndOrder = (rawList) => {
       const valid = rawList.filter(m => !disabled.includes(m) && !exhaustedToday.includes(m));
-      const hasFullFlash = valid.some(m => !m.includes('lite'));
-      // Apenas prioriza o modelo lembrado se for um modelo Flash completo (não-lite),
-      // ou se todos os modelos Flash completos estiverem esgotados hoje!
-      if (remembered && valid.includes(remembered) && (!remembered.includes('lite') || !hasFullFlash)) {
+      // 1. Se o usuário escolheu um modelo preferido fixo na interface, coloca-o no topo absoluto!
+      if (preferredModel && preferredModel !== 'auto' && valid.includes(preferredModel)) {
+        return [preferredModel, ...valid.filter(m => m !== preferredModel)];
+      }
+      // 2. Prioriza modelo que já funcionou com sucesso na chave se não for Lite (ou se só restarem Lites)
+      const hasFullOrLive = valid.some(m => !m.includes('lite'));
+      if (remembered && valid.includes(remembered) && (!remembered.includes('lite') || !hasFullOrLive)) {
         return [remembered, ...valid.filter(m => m !== remembered)];
       }
       return valid;
@@ -151,42 +165,66 @@
           }
         });
         const allCapable = (data.models || [])
-          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-          .map(m => m.name.replace(/^models\//, ''))
-          .filter(name =>
-            name.startsWith('gemini-') &&
-            name.includes('flash') &&
-            !name.includes('pro') &&
-            !name.includes('2.0') &&
-            !name.startsWith('gemini-2-flash') &&
-            !name.includes('omni') &&
-            !name.includes('argon') &&
-            !name.includes('banana') &&
-            !name.includes('live') &&
-            !name.includes('transcribe') &&
-            !name.includes('embedding') &&
-            !name.includes('imagen') &&
-            !name.includes('veo') &&
-            !name.includes('tts') &&
-            !name.includes('image') &&
-            !name.includes('audio') &&
-            !name.includes('thinking') &&
-            !name.includes('robotics') &&
-            !name.includes('computer-use') &&
-            !name.includes('1.0') &&
-            !name.includes('1.5')
-          );
+          .filter(m => {
+            const methods = Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : [];
+            return methods.includes('generateContent') || methods.includes('bidiGenerateContent');
+          })
+          .map(m => (m.name || '').replace(/^models\//, ''))
+          .filter(name => {
+            if (!name) return false;
+            // Filtros de exclusão: modelos sem saída de texto clínico
+            if (name.includes('tts')) return false;
+            if (name.includes('embedding')) return false;
+            if (name.includes('imagen') || name.includes('banana') || name.includes('image')) return false;
+            if (name.includes('veo')) return false;
+            if (name.includes('pro')) return false; // Cota 0/0 na conta gratuita do usuário
+            if (name.includes('robotics') || name.includes('computer-use')) return false;
+            if (name.includes('1.0') || name.includes('1.5')) return false;
+            if (name.includes('2.0') || name.startsWith('gemini-2-flash')) return false;
 
-        // Classifica priorizando:
-        // 1) Modelos Flash 3.x (20/dia cada: gemini-3.8-flash, gemini-3.6-flash, gemini-3-flash)
-        // 2) Modelos Flash-Lite 3.5 e 3.1 (500/dia cada e 15 RPM: gemini-3.5-flash-lite, gemini-3.1-flash-lite) + 2.5-flash-lite (20/dia)
+            // Modelos permitidos da conta: Live, Transcrição, Antigravity, Flash completo, Gemma e Flash-Lite
+            const isLive = name.includes('live') || name.includes('native-audio-dialog');
+            const isTranscribe = name.includes('transcribe');
+            const isAntigravity = name.includes('antigravity');
+            const isFlash = name.includes('flash');
+            const isGemma = name.includes('gemma');
+
+            return isLive || isTranscribe || isAntigravity || isFlash || isGemma;
+          });
+
+        // Hierarquia de pontuação dos modelos:
+        // 1) Modelos Ilimitados da Live API e de Transcrição: 300 pontos
+        // 2) Agente Antigravity (100 atendimentos/dia, 60 RPM): 250 pontos
+        // 3) Modelos Flash Completos sem corte (3.8, 3.6, 3, 2.5): 200 pontos
+        // 4) Gemma 4 (14.400 requisições/dia): 150 pontos
+        // 5) Flash-Lite de emergência (500 requisições/dia): 50 pontos
         const scoreModel = (name) => {
-          const m = name.match(/gemini-(\d+(?:\.\d+)?)/);
-          const ver = m ? parseFloat(m[1]) : 2.5;
+          const isLive = name.includes('live') || name.includes('native-audio-dialog');
+          const isTranscribe = name.includes('transcribe');
+          const isAntigravity = name.includes('antigravity');
+          const isFullFlash = name.includes('flash') && !name.includes('lite');
+          const isGemma = name.includes('gemma');
           const isLite = name.includes('lite');
-          const tierScore = isLite ? 50 : 100;
+
+          let baseScore = 0;
+          if (isLive || isTranscribe) {
+            baseScore = 300;
+          } else if (isAntigravity) {
+            baseScore = 250;
+          } else if (isFullFlash) {
+            baseScore = 200;
+          } else if (isGemma) {
+            baseScore = 150;
+          } else if (isLite) {
+            baseScore = 50;
+          } else {
+            baseScore = 100;
+          }
+
+          const verMatch = name.match(/(\d+(?:\.\d+)?)/);
+          const ver = verMatch ? parseFloat(verMatch[1]) : 0;
           const stableBonus = (!name.includes('preview') && !name.includes('exp')) ? 0.2 : 0;
-          return tierScore + ver + stableBonus;
+          return baseScore + ver + stableBonus;
         };
 
         allCapable.sort((a, b) => scoreModel(b) - scoreModel(a));
@@ -278,19 +316,40 @@
     updateTokenMonitorUI();
   }
 
-  function updateTokenMonitorUI() {
+  function formatModelName(model) {
+    if (!model) return '';
+    const clean = String(model).replace(/^models\//, '');
+    if (clean.includes('3-flash-live')) return 'Gemini 3 Flash Live (Ilimitado)';
+    if (clean.includes('3.8-live')) return 'Gemini 3.8 Live (Ilimitado)';
+    if (clean.includes('native-audio-dialog')) return 'Gemini 2.5 Native Audio (Ilimitado)';
+    if (clean.includes('transcribe-live')) return 'Gemini 3.5 Transcribe Live (Ilimitado)';
+    if (clean.includes('3.5-transcribe')) return 'Gemini 3.5 Transcribe';
+    if (clean.includes('antigravity')) return 'Antigravity Managed Agent';
+    if (clean.includes('3.8-flash')) return 'Gemini 3.8 Flash';
+    if (clean.includes('3.6-flash')) return 'Gemini 3.6 Flash';
+    if (clean.includes('2.5-flash') && !clean.includes('lite')) return 'Gemini 2.5 Flash';
+    if (clean.includes('gemma')) return 'Gemma 4';
+    if (clean.includes('3.5-flash-lite')) return 'Gemini 3.5 Flash Lite';
+    if (clean.includes('3.1-flash-lite')) return 'Gemini 3.1 Flash Lite';
+    if (clean.includes('2.5-flash-lite')) return 'Gemini 2.5 Flash Lite';
+    return clean;
+  }
+
+  function updateTokenMonitorUI(modelUsed) {
     const now = Date.now();
     state.recentApiCallsTimestamps = (state.recentApiCallsTimestamps || []).filter(ts => now - ts < 60000);
     const rpmLastMinute = state.recentApiCallsTimestamps.length;
     const usedCalls = state.dailyConsultationsProcessed || 0;
+    const activeModel = modelUsed || localStorage.getItem('ubs_working_model_' + getKeyShortHash(getSavedApiKey())) || '';
+    const activeModelStr = activeModel ? ` • ${formatModelName(activeModel)}` : '';
 
     const elDaily = document.getElementById('dailyTokenCounter');
     if (elDaily) {
       if (rpmLastMinute >= 12) {
-        elDaily.textContent = `🟡 Aguardando fila rápida (${usedCalls} hoje)`;
+        elDaily.textContent = `🟡 Aguardando fila rápida (${usedCalls} hoje)${activeModelStr}`;
         elDaily.style.color = '#d97706';
       } else {
-        elDaily.textContent = `🟢 Sistema Pronto (${usedCalls} hoje)`;
+        elDaily.textContent = `🟢 Sistema Pronto (${usedCalls} hoje)${activeModelStr}`;
         elDaily.style.color = '#059669';
       }
     }
@@ -1669,7 +1728,15 @@
               pctBadge.textContent = 'Pausa';
             }
             if (barWrap) barWrap.style.display = 'none';
-            bannerText.textContent = `⚠️ Pausa no envio de "${nextItem.patientLabel}": ${nextItem.errorMessage}`;
+            bannerText.innerHTML = `⚠️ Pausa no envio de "<strong>${escapeHtml(nextItem.patientLabel)}</strong>": ${escapeHtml(nextItem.errorMessage)} <button type="button" id="btnBannerRetryNow" style="margin-left:10px;padding:3px 10px;border-radius:6px;border:1px solid #991b1b;background:#fff;color:#991b1b;font-weight:700;cursor:pointer;">Reenviar Agora</button>`;
+            document.getElementById('btnBannerRetryNow')?.addEventListener('click', async () => {
+              nextItem.status = 'queued';
+              nextItem.errorMessage = '';
+              if (nextItem.chunkCount > 0) nextItem.rawTranscript = '';
+              await window.ScribeDB.saveConsultation(nextItem);
+              await refreshQueueSidebar();
+              processQueueInBackground();
+            });
           }
         }
 
@@ -1807,6 +1874,11 @@
       parts.push({
         text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE (LEIA DO INÍCIO AO FIM E INCLUA 100% DAS QUEIXAS, INTERROGATÓRIO, HISTÓRIA, EXAME FÍSICO E CONDUTAS NA EVOLUÇÃO!) ===\n${verbatimTranscript}`
       });
+      // Adiciona também o áudio original na Etapa 2 para que os modelos multimodais possam
+      // ouvir diretamente os minutos finais caso alguma prescrição tenha sido rápida ou abafada:
+      if (hasAudioAttached && audioPart && (!audioPart.inlineData || audioPart.inlineData.data.length < 9000000)) {
+        parts.push(audioPart);
+      }
     } else if (hasAudioAttached && audioPart) {
       parts.push(audioPart);
     }
@@ -2525,6 +2597,192 @@
     return { cleanText: cleanedLines.join('\n').trim(), codes: extractedCodes };
   }
 
+  async function callGeminiLiveWebSocket(requestBody, apiKey, modelName, onStatusUpdate) {
+    return new Promise((resolve, reject) => {
+      const cleanModel = String(modelName || '').replace(/^models\//, '').trim();
+      const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(apiKey)}`;
+
+      let ws;
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (err) {
+        return reject(err);
+      }
+
+      let accumulatedText = '';
+      let isSetupDone = false;
+      let hasFinished = false;
+
+      const timer = setTimeout(() => {
+        if (!hasFinished) {
+          hasFinished = true;
+          try { ws.close(); } catch (_) {}
+          if (accumulatedText.trim().length >= 15) {
+            resolve({
+              responseJson: {
+                candidates: [{
+                  content: {
+                    parts: [{ text: accumulatedText.trim() }]
+                  }
+                }]
+              },
+              modelUsed: cleanModel
+            });
+          } else {
+            reject(new Error(`Timeout na comunicação WebSocket Live API com modelo ${cleanModel}`));
+          }
+        }
+      }, 75000);
+
+      ws.onopen = () => {
+        if (onStatusUpdate) onStatusUpdate(`⚡ Conectado ao ${formatModelName(cleanModel)} (Live)...`);
+        const setupMsg = {
+          setup: {
+            model: `models/${cleanModel}`,
+            generationConfig: {
+              responseModalities: ['TEXT']
+            }
+          }
+        };
+        try {
+          ws.send(JSON.stringify(setupMsg));
+        } catch (sendErr) {
+          clearTimeout(timer);
+          reject(sendErr);
+        }
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const rawData = event.data;
+          if (typeof rawData !== 'string') return;
+          const msg = JSON.parse(rawData);
+
+          if (msg.error) {
+            if (!hasFinished) {
+              hasFinished = true;
+              clearTimeout(timer);
+              try { ws.close(); } catch (_) {}
+              reject(new Error(msg.error.message || `Erro Live API (${cleanModel})`));
+            }
+            return;
+          }
+
+          // 1. Confirmação do Setup pelo Google
+          if (msg.setupComplete && !isSetupDone) {
+            isSetupDone = true;
+            if (onStatusUpdate) onStatusUpdate(`🎙️ Processando com ${formatModelName(cleanModel)}...`);
+
+            const userContent = (requestBody.contents || [])[0];
+            const parts = userContent?.parts || [];
+
+            // A) Envia chunks de áudio se presentes
+            for (const p of parts) {
+              if (p.inlineData && p.inlineData.data) {
+                ws.send(JSON.stringify({
+                  realtimeInput: {
+                    mediaChunks: [{
+                      mimeType: p.inlineData.mimeType || 'audio/webm',
+                      data: p.inlineData.data
+                    }]
+                  }
+                }));
+              }
+            }
+
+            // B) Envia instruções / texto / prompt no turno do usuário
+            const textParts = parts.filter(p => p.text).map(p => ({ text: p.text }));
+            if (textParts.length > 0) {
+              ws.send(JSON.stringify({
+                clientContent: {
+                  turns: [{
+                    role: 'user',
+                    parts: textParts
+                  }],
+                  turnComplete: true
+                }
+              }));
+            } else {
+              ws.send(JSON.stringify({
+                clientContent: {
+                  turns: [{
+                    role: 'user',
+                    parts: [{ text: 'Processe o áudio da consulta na íntegra.' }]
+                  }],
+                  turnComplete: true
+                }
+              }));
+            }
+            return;
+          }
+
+          // 2. Fragmentos de texto do modelo retornando
+          if (msg.serverContent?.modelTurn?.parts) {
+            for (const part of msg.serverContent.modelTurn.parts) {
+              if (part.text) {
+                accumulatedText += part.text;
+              }
+            }
+          }
+
+          // 3. Fim do turno do modelo
+          if (msg.serverContent?.turnComplete) {
+            if (!hasFinished) {
+              hasFinished = true;
+              clearTimeout(timer);
+              try { ws.close(); } catch (_) {}
+              resolve({
+                responseJson: {
+                  candidates: [{
+                    content: {
+                      parts: [{ text: accumulatedText.trim() }]
+                    }
+                  }],
+                  usageMetadata: {
+                    totalTokenCount: Math.ceil(accumulatedText.length / 3.5)
+                  }
+                },
+                modelUsed: cleanModel
+              });
+            }
+          }
+        } catch (msgErr) {
+          console.warn('Erro ao processar mensagem do WebSocket Live API:', msgErr);
+        }
+      };
+
+      ws.onerror = (err) => {
+        if (!hasFinished) {
+          hasFinished = true;
+          clearTimeout(timer);
+          try { ws.close(); } catch (_) {}
+          reject(new Error(`Falha na conexão Live WebSocket com ${cleanModel}: ${err?.message || 'erro de rede'}`));
+        }
+      };
+
+      ws.onclose = (ev) => {
+        if (!hasFinished) {
+          hasFinished = true;
+          clearTimeout(timer);
+          if (accumulatedText.trim().length >= 15) {
+            resolve({
+              responseJson: {
+                candidates: [{
+                  content: {
+                    parts: [{ text: accumulatedText.trim() }]
+                  }
+                }]
+              },
+              modelUsed: cleanModel
+            });
+          } else {
+            reject(new Error(`WebSocket Live API encerrou (${ev.code}: ${ev.reason || 'sem dados'})`));
+          }
+        }
+      };
+    });
+  }
+
   async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate) {
     let lastError = null;
     let allFailedByDailyQuota = false;
@@ -2543,12 +2801,27 @@
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
             if (onStatusUpdate) {
-              onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${model})...` : `⚡ Estruturando (${model})...`);
+              onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${formatModelName(model)})...` : `⚡ Estruturando (${formatModelName(model)})...`);
+            }
+
+            // Se for modelo da Live API (WebSocket)
+            const isLiveModel = model.includes('live') || model.includes('native-audio-dialog');
+            if (isLiveModel) {
+              try {
+                const liveResult = await callGeminiLiveWebSocket(requestBody, currentKey, model, onStatusUpdate);
+                if (liveResult && liveResult.responseJson) {
+                  rememberWorkingModelForKey(model, currentKey);
+                  updateTokenMonitorUI(model);
+                  return liveResult;
+                }
+              } catch (wsErr) {
+                console.warn(`Tentativa Live API via WebSocket com ${model} falhou, tentando fallback:`, wsErr);
+              }
             }
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(currentKey)}`;
             // Garante maxOutputTokens no teto do modelo (65536) para NUNCA truncar ou resumir falas longas
-            const maxSupported = fallbackMaxTokens || modelOutputTokenLimits[model] || 65536;
+            const maxSupported = fallbackMaxTokens || 65536;
             const bodyForModel = {
               ...requestBody,
               generationConfig: {
@@ -2556,7 +2829,7 @@
                 maxOutputTokens: Math.min(requestBody.generationConfig?.maxOutputTokens || 65536, maxSupported)
               }
             };
-            if (!disableThinkingForThisModel && !model.includes('lite') && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
+            if (!disableThinkingForThisModel && !model.includes('lite') && !model.includes('live') && !model.includes('transcribe') && !model.includes('gemma') && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
               bodyForModel.generationConfig.thinkingConfig = { thinkingBudget: 512 };
             }
 
@@ -2569,12 +2842,24 @@
             if (res.ok) {
               const responseJson = await res.json();
               rememberWorkingModelForKey(model, currentKey);
-              updateTokenMonitorUI();
+              updateTokenMonitorUI(model);
               return { responseJson, modelUsed: model };
             }
 
             const errData = await res.json().catch(() => ({}));
             const errMsg = errData?.error?.message || `HTTP ${res.status}`;
+
+            // Se o erro indicar que o modelo aceita apenas BidiGenerateContent via WebSocket:
+            if ((res.status === 400 || res.status === 404) && !isLiveModel && /bidi|websocket|live/i.test(errMsg)) {
+              try {
+                const liveResult = await callGeminiLiveWebSocket(bodyForModel, currentKey, model, onStatusUpdate);
+                if (liveResult && liveResult.responseJson) {
+                  rememberWorkingModelForKey(model, currentKey);
+                  updateTokenMonitorUI(model);
+                  return liveResult;
+                }
+              } catch (_) {}
+            }
 
             if (res.status === 400 && errMsg.toLowerCase().includes('api key')) {
               if (kIdx === keysToTry.length - 1) {
@@ -2638,11 +2923,11 @@
                 allFailedByDailyQuota = true;
                 const nextModel = modelsToTry[mIdx + 1] || (keysToTry[kIdx + 1] ? 'próxima chave' : '');
                 if (elDaily && nextModel) {
-                  elDaily.textContent = `🔄 Alternando para ${nextModel}...`;
+                  elDaily.textContent = `🔄 Alternando para ${formatModelName(nextModel)}...`;
                   elDaily.style.color = '#2563eb';
                 }
                 if (onStatusUpdate && nextModel) {
-                  onStatusUpdate(`🔄 Alternando para ${nextModel}...`);
+                  onStatusUpdate(`🔄 Alternando para ${formatModelName(nextModel)}...`);
                 }
                 lastError = new Error(`Limite (${res.status}): ${errMsg}`);
                 break; // Sai imediatamente deste modelo e vai para o próximo modelo com cota livre!
@@ -3069,6 +3354,9 @@
       if (c.status === 'error') {
         c.status = 'queued';
         c.errorMessage = '';
+        if (c.chunkCount > 0) {
+          c.rawTranscript = ''; // Limpa transcrição prévia incompleta para forçar nova transcrição integral com o modelo ativo
+        }
         c.updatedAt = Date.now();
         await window.ScribeDB.saveConsultation(c);
         count++;
@@ -4020,6 +4308,8 @@
     const modal = document.getElementById('apiKeyModal');
     const input = document.getElementById('apiKeyInput');
     if (input) input.value = getSavedApiKey();
+    const sel = document.getElementById('preferredModelSelect');
+    if (sel) sel.value = localStorage.getItem('ubs_preferred_model') || 'auto';
     if (modal) modal.style.display = 'flex';
   }
 
@@ -4306,6 +4596,9 @@
       if (c) {
         c.status = 'queued';
         c.errorMessage = '';
+        if (c.chunkCount > 0) {
+          c.rawTranscript = ''; // Limpa para re-transcrever o áudio completo do zero
+        }
         await window.ScribeDB.saveConsultation(c);
         await refreshQueueSidebar();
         processQueueInBackground();
@@ -4400,6 +4693,13 @@
       } catch (_) {}
 
       updateApiKeyStatusBadge();
+      const prefModel = document.getElementById('preferredModelSelect')?.value || 'auto';
+      localStorage.setItem('ubs_preferred_model', prefModel);
+      if (prefModel !== 'auto') {
+        rememberWorkingModelForKey(prefModel, key);
+      }
+      delete cachedDiscoveredModelsByKey[getKeyShortHash(key)];
+
       document.getElementById('apiKeyModal').style.display = 'none';
       showToast('🔒 Credencial salva com sucesso!');
       retryAllPendingConsultations();

@@ -566,6 +566,11 @@ REGRAS OBRIGATÓRIAS E INEGOCIÁVEIS DE TRANSCRIÇÃO INTEGRAL:
    - Transcreva todos os valores ditados de pressão arterial (PA), glicemia capilar (HGT), peso, estatura, altura uterina (AU), batimentos cardiofetais (BCF), perímetro cefálico e qualquer achado de exame físico falado pelo médico.
    - Transcreva todos os resultados de exames laboratoriais ou ultrassonografias lidos em voz alta durante a consulta.
    - Transcreva todas as orientações finais, receitas/prescrições, exames solicitados, encaminhamentos, atestados, sinais de alarme e prazo de retorno falados pelo médico até o último segundo do áudio.
+4. CAPTAÇÃO OBRIGATÓRIA E INFALÍVEL DO FINAL DA GRAVAÇÃO (RECEITAS, PRESCRIÇÕES E CONDUTAS):
+   - O final da gravação médica (últimos 2 a 4 minutos) é o momento em que o médico realiza a PRESCRIÇÃO DE MEDICAMENTOS, dita as receitas, explica posologias, doses, quantidades e solicita exames!
+   - É TERMINANTEMENTE PROIBIDO cortar ou parar a transcrição antes do último segundo da gravação!
+   - Transcreva CADA medicamento prescrito, dosagem exata (mg, mcg, UI, ml, gotas), quantidade de comprimidos/frascos, frequência (de 8/8h, 1x ao dia pela manhã, à noite) e orientações ditadas pelo médico!
+   - Se qualquer medicamento prescrito for omitido, a transcrição será considerada INCOMPLETA E NULA!
 
 Responda APENAS com a transcrição literal completa, linha por linha, do início ao fim do áudio (sem blocos markdown e sem comentários extras).`;
 };
@@ -690,7 +695,18 @@ Data de referência de hoje: ${todayStr}.
 5. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
    - Na seção AVALIAÇÃO da "evolucao_completa", escreva as hipóteses diagnósticas / problemas avaliados na consulta de hoje, sem códigos CID-10/CIAP-2 no texto (os códigos vão apenas no array JSON "codigos_cid_ciap").
 
-6. REGRA ESTRITA DA CONDUTA E ORTOGRAFIA FARMACOLÓGICA OFICIAL DO BRASIL (DCB / ANVISA / RENAME):
+6. REGRA ESTRITA DA CONDUTA E PRESCRIÇÕES MÉDICAS (PROIBIÇÃO ABSOLUTA DE OMITIR RECEITAS / PRESCRIÇÕES!):
+   - SE O MÉDICO PRESCREVEU QUALQUER MEDICAMENTO NO ÁUDIO, DISSE QUE IA RECEITAR/ORIENTAR OU AJUSTOU UMA MEDICAÇÃO:
+     * Você DEVE OBRIGATORIAMENTE listar cada um dos medicamentos prescritos no bloco CONDUTA!
+     * Escreva em linhas separadas (sem traço "-"), com nome oficial brasileiro (DCB / ANVISA / RENAME), dosagem exata e posologia clara:
+       Exemplos:
+       Fluoxetina 20mg: 2 comprimidos pela manhã (uso contínuo)
+       Clonazepam 2,5mg/ml: 2 gotas 1x ao dia à noite
+       Mirtazapina 15mg: 1/2 comprimido à noite
+       Dipirona 500mg: 1 comprimido até de 6/6h se dor ou febre
+       Amoxicilina 500mg: 1 cápsula de 8/8h por 7 dias
+     * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer de registrar as medicações que o médico prescreveu no consultório!
+   - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovação de receitas de uso contínuo (conforme # MUC)".
    - NÃO coloque traços ("- ") no início das linhas da CONDUTA.
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
    - Transcreva integralmente todas as medicações prescritas/ajustadas/suspensas hoje, doses, posologias, orientações de uso, exames solicitados, encaminhamentos e sinais de alarme orientados.
