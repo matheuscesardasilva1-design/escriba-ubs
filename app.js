@@ -157,6 +157,7 @@
     updateApiKeyStatusBadge();
     updateStorageStatsUI();
     renderPendingExamFilesUI();
+    updateDocumentTitle();
 
     try {
       await window.ScribeDB.autoCleanupOldAudio(30, 15); // 15 dias para "Evoluído no PEC" e 30 dias para os demais
@@ -258,18 +259,132 @@
     };
   }
 
+  let faviconCanvas = null;
+  let lastFaviconKey = '';
+
+  function updateDynamicFavicon(mode, percent = 0) {
+    const key = `${mode}_${Math.round(percent / 5) * 5}`;
+    if (key === lastFaviconKey) return;
+    lastFaviconKey = key;
+
+    try {
+      if (!faviconCanvas) {
+        faviconCanvas = document.createElement('canvas');
+        faviconCanvas.width = 64;
+        faviconCanvas.height = 64;
+      }
+      const ctx = faviconCanvas.getContext('2d');
+      ctx.clearRect(0, 0, 64, 64);
+
+      if (mode === 'recording') {
+        // Círculo vermelho vivo de gravação ativa
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        ctx.arc(32, 32, 29, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Anel branco interno + ponto central de gravação
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(32, 32, 20, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(32, 32, 10, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (mode === 'paused') {
+        // Círculo âmbar com barras de pausa
+        ctx.fillStyle = '#d97706';
+        ctx.beginPath();
+        ctx.arc(32, 32, 29, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(21, 18, 8, 28);
+        ctx.fillRect(35, 18, 8, 28);
+      } else if (mode === 'transcribing') {
+        // Círculo azul/índigo com arco de progresso e porcentagem
+        ctx.fillStyle = '#312e81';
+        ctx.beginPath();
+        ctx.arc(32, 32, 29, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Trilha do arco
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(32, 32, 24, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Arco de progresso (0% a 100%)
+        const pct = Math.min(100, Math.max(5, percent));
+        const endAngle = -Math.PI / 2 + (Math.PI * 2 * (pct / 100));
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 6;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(32, 32, 24, -Math.PI / 2, endAngle);
+        ctx.stroke();
+
+        // Número da porcentagem no centro
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${Math.round(pct)}`, 32, 33);
+      } else {
+        // Pronto para próxima gravação: círculo verde esmeralda com check branco
+        ctx.fillStyle = '#059669';
+        ctx.beginPath();
+        ctx.arc(32, 32, 29, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 6.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.beginPath();
+        ctx.moveTo(19, 33);
+        ctx.lineTo(28, 42);
+        ctx.lineTo(46, 22);
+        ctx.stroke();
+      }
+
+      let link = document.getElementById('dynamicFavicon') || document.querySelector("link[rel*='icon']");
+      if (!link) {
+        link = document.createElement('link');
+        link.id = 'dynamicFavicon';
+        link.rel = 'icon';
+        link.type = 'image/png';
+        document.head.appendChild(link);
+      }
+      link.href = faviconCanvas.toDataURL('image/png');
+    } catch (_) {}
+  }
+
   function updateDocumentTitle() {
     if (state.isRecording) {
-      document.title = state.isPaused
-        ? `e-SUS APS • Em espera`
-        : `e-SUS APS • Em atendimento`;
+      const mm = String(Math.floor(state.recordingSeconds / 60)).padStart(2, '0');
+      const ss = String(state.recordingSeconds % 60).padStart(2, '0');
+      if (state.isPaused) {
+        document.title = `⏸️ Pausado (${mm}:${ss}) • Prontuário APS`;
+        updateDynamicFavicon('paused');
+      } else {
+        document.title = `🔴 Gravando (${mm}:${ss}) • Prontuário APS`;
+        updateDynamicFavicon('recording');
+      }
     } else if (state.queueRunning && state.activeProcessingProgress) {
       const pct = Math.min(100, Math.max(0, Math.round(state.activeProcessingProgress.percent || 0)));
-      document.title = `⏳ ${pct}% • Prontuário APS`;
+      document.title = `⏳ ${pct}% Transcrevendo • Prontuário APS`;
+      updateDynamicFavicon('transcribing', pct);
     } else if (state.queueRunning) {
-      document.title = `e-SUS APS • Sincronizando`;
+      document.title = `⏳ Transcrevendo • Prontuário APS`;
+      updateDynamicFavicon('transcribing', 15);
     } else {
-      document.title = `Prontuário Clínico APS - Evolução & Regulação`;
+      document.title = `🟢 Pronto • Prontuário APS`;
+      updateDynamicFavicon('ready');
     }
   }
 
@@ -744,6 +859,7 @@
       await requestWakeLock();
       startVUMeterAndSilenceDetector(stream);
       updateRecordingControlsUI();
+      updateDocumentTitle();
       await refreshQueueSidebar();
     } catch (err) {
       alert('Não foi possível acessar o microfone. Verifique se está conectado e com permissão liberada.\n\nDetalhe: ' + err.message);
@@ -3158,7 +3274,7 @@
     const calc = calculatePrenatalGestationalAge();
     if (!calc) {
       if (previewEl) {
-        previewEl.textContent = 'Preencha a DUM (com dias do ciclo) e/ou os dados da 1ª Ecografia acima para calcular automaticamente a IG de hoje, a DPP e o critério oficial de redatação (FEBRASGO / Ministério da Saúde).';
+        previewEl.textContent = 'Preencha a DUM ou a Ecografia acima para calcular a IG e a DPP.';
       }
       return;
     }
@@ -3176,12 +3292,12 @@
     const includeZ = document.getElementById('chkIncludeZScoreInEvolution')?.checked;
     const text = getCalculatedZScoreText(true);
     if (!text) {
-      preview.textContent = 'Preencha idade (meses), IG do parto (se prematuro) e medidas caso queira calcular o Z-Score.';
+      preview.textContent = 'Preencha os dados acima para calcular.';
       return;
     }
     preview.textContent = includeZ
-      ? `✅ Z-Score ATIVO p/ Objetivo:\n${text}`
-      : `ℹ️ Prévia (marque a caixa "Incluir Z-Score desta calculadora no Objetivo" acima se quiser inserir o Z-Score na evolução):\n${text}`;
+      ? `✅ Z-Score incluído no Objetivo:\n${text}`
+      : `${text}`;
   }
 
   function clearZScoreInputs() {
@@ -3521,7 +3637,16 @@
       renderTemplateSelector();
     });
 
-    // Navegação entre as 2 Telas ("Novo Atendimento" e "Meu Histórico")
+    // Navegação entre as 2 Telas ("Novo Atendimento" e "Meu Histórico") e clique em "Prontuário APS" para voltar à primeira página
+    document.getElementById('brandHomeBtn')?.addEventListener('click', () => {
+      closePatientDetailModal();
+      switchMainPage('pageRecord');
+      if (!state.isRecording) {
+        state.templateLocked = false;
+        renderTemplateSelector();
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
     document.getElementById('tabBtnRecord')?.addEventListener('click', () => switchMainPage('pageRecord'));
     document.getElementById('tabBtnHistory')?.addEventListener('click', () => switchMainPage('pageHistory'));
 
