@@ -27,6 +27,7 @@
     timerWorker: null,
     wakeLock: null,
     queueRunning: false,
+    activeProcessingProgress: null, // { consultId, patientLabel, percent, stageLabel, elapsedSec, extraQueueCount, modelStatus }
     dailyTokensUsed: 0,
     dailyConsultationsProcessed: 0,
     recentApiCallsTimestamps: [], // Monitora o limite real de Requisições Por Minuto (RPM) da API
@@ -262,6 +263,9 @@
       document.title = state.isPaused
         ? `e-SUS APS • Em espera`
         : `e-SUS APS • Em atendimento`;
+    } else if (state.queueRunning && state.activeProcessingProgress) {
+      const pct = Math.min(100, Math.max(0, Math.round(state.activeProcessingProgress.percent || 0)));
+      document.title = `⏳ ${pct}% • Prontuário APS`;
     } else if (state.queueRunning) {
       document.title = `e-SUS APS • Sincronizando`;
     } else {
@@ -512,15 +516,27 @@
     const liveEditor = document.getElementById('liveExamTranscriptionEditor');
 
     if (liveBox) liveBox.style.display = 'block';
-    if (liveEditor) liveEditor.value = '⏳ Lendo e formatando os exames no padrão Laboratorial (- LABS ... | ...) / Imagem (- EXAME: texto corrido)...';
+    if (liveEditor) liveEditor.value = '⏳ [10%] Lendo e formatando os exames no padrão Laboratorial (- LABS ... | ...) / Imagem (- EXAME: texto corrido)...';
     if (btnNow) {
       btnNow.disabled = true;
-      btnNow.textContent = '⏳ Transcrevendo...';
+      btnNow.textContent = '⏳ 10% Transcrevendo...';
     }
     if (btnNotesNow) {
       btnNotesNow.disabled = true;
-      btnNotesNow.textContent = '⏳ Formatando...';
+      btnNotesNow.textContent = '⏳ 10% Formatando...';
     }
+
+    let examPct = 10;
+    const examTimer = setInterval(() => {
+      if (examPct < 92) {
+        examPct += Math.max(2, Math.round((94 - examPct) * 0.18));
+        if (btnNow && btnNow.disabled) btnNow.textContent = `⏳ ${examPct}% Transcrevendo...`;
+        if (btnNotesNow && btnNotesNow.disabled) btnNotesNow.textContent = `⏳ ${examPct}% Formatando...`;
+        if (liveEditor && liveEditor.value.startsWith('⏳')) {
+          liveEditor.value = `⏳ [${examPct}%] Lendo e organizando resultados laboratoriais e laudos de imagem...`;
+        }
+      }
+    }, 500);
 
     try {
       const parts = [];
@@ -544,6 +560,7 @@
       };
 
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
+      clearInterval(examTimer);
       let examText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
       examText = fixBrazilianMedicationSpelling(examText);
 
@@ -560,10 +577,12 @@
       }
 
       addDailyTokenUsage(responseJson?.usageMetadata?.totalTokenCount || 800);
-      showToast('🧪 Exames formatados na hora! Você já pode ler/copiar e eles entrarão em EXAMES COMPLEMENTARES.');
+      showToast('🧪 100% — Exames formatados na hora! Você já pode ler/copiar e eles entrarão em EXAMES COMPLEMENTARES.');
     } catch (err) {
+      clearInterval(examTimer);
       if (liveEditor) liveEditor.value = `⚠️ Erro ao formatar exames: ${err.message}`;
     } finally {
+      clearInterval(examTimer);
       if (btnNow) {
         btnNow.disabled = false;
         btnNow.textContent = '⚡ Transcrever Anexo na Hora';
@@ -1220,6 +1239,103 @@
     processQueueInBackground();
   }
 
+  // Atualiza em tempo real todos os indicadores visuais de porcentagem (0% a 100%) e etapa de transcrição/organização
+  function getStageDescriptionForPercent(pct) {
+    if (pct < 12) return '📦 Lendo áudio gravado no disco local...';
+    if (pct < 22) return '📄 Preparando anexos, evolução anterior e máscara...';
+    if (pct < 56) return '🎙️ Transcrevendo diálogo completo da consulta...';
+    if (pct < 78) return '📋 Organizando # Condições, Subjetivo e Objetivo...';
+    if (pct < 93) return '💊 Estruturando Exames, Avaliação e Conduta...';
+    if (pct < 100) return '🏷️ Validando cabeçalho, exames anteriores e CIAP-2 / CID-10...';
+    return '✅ Evolução 100% transcrita e organizada!';
+  }
+
+  function updateLiveProcessingUI(progressObj) {
+    state.activeProcessingProgress = progressObj;
+    updateDocumentTitle();
+
+    const banner = document.getElementById('liveProcessingBanner');
+    const bannerText = document.getElementById('liveProcessingText');
+    const pctBadge = document.getElementById('liveProcessingPercentBadge');
+    const barWrap = document.getElementById('liveProcessingBarWrap');
+    const barFill = document.getElementById('liveProcessingBarFill');
+    const spinner = document.getElementById('liveProcSpinner');
+
+    if (!progressObj) {
+      return;
+    }
+
+    const pct = Math.min(100, Math.max(0, Math.round(progressObj.percent || 0)));
+    const stageText = progressObj.stageLabel || getStageDescriptionForPercent(pct);
+    const extraQueue = progressObj.extraQueueCount > 0 ? ` (+${progressObj.extraQueueCount} na fila)` : '';
+    const modelSuffix = progressObj.modelStatus ? ` • ${progressObj.modelStatus}` : '';
+
+    // 1. Atualiza a barra fixa no topo da tela
+    if (banner && bannerText) {
+      banner.style.display = 'block';
+      banner.style.background = '#eef2ff';
+      banner.style.color = '#3730a3';
+      if (spinner) spinner.style.display = 'inline-block';
+      if (pctBadge) {
+        pctBadge.style.display = 'inline-block';
+        pctBadge.style.background = '#4f46e5';
+        pctBadge.textContent = `${pct}%`;
+      }
+      if (barWrap) barWrap.style.display = 'block';
+      if (barFill) barFill.style.width = `${pct}%`;
+      bannerText.textContent = `${stageText} "${progressObj.patientLabel}" (${progressObj.elapsedSec || 0}s)${modelSuffix}${extraQueue}`;
+    }
+
+    // 2. Atualiza o card do paciente em "Meu Histórico"
+    const cardStatusEl = document.getElementById(`qstatus_${progressObj.consultId}`);
+    if (cardStatusEl) {
+      cardStatusEl.textContent = `⚡ ${pct}% — ${stageText.replace(/^[^\s]+\s*/, '')}`;
+    }
+    const cardBarWrap = document.getElementById(`qbar_wrap_${progressObj.consultId}`);
+    const cardBarFill = document.getElementById(`qbar_fill_${progressObj.consultId}`);
+    if (cardBarWrap && cardBarFill) {
+      cardBarWrap.style.display = 'block';
+      cardBarFill.style.width = `${pct}%`;
+    }
+    const cardSnippetEl = document.getElementById(`qsnippet_${progressObj.consultId}`);
+    if (cardSnippetEl) {
+      cardSnippetEl.textContent = `${stageText} (${pct}% concluído • ${progressObj.elapsedSec || 0}s)`;
+    }
+
+    // 3. Atualiza o painel de progresso dentro da janela do paciente (se estiver aberta)
+    if (state.activeConsultationId === progressObj.consultId) {
+      const modalBox = document.getElementById('modalLiveProgressBox');
+      const modalStage = document.getElementById('modalProgressStageText');
+      const modalPct = document.getElementById('modalProgressPercentText');
+      const modalFill = document.getElementById('modalProgressBarFill');
+      const modalSteps = document.getElementById('modalProgressStepsRow');
+      const editor = document.getElementById('mainEvolutionEditor');
+
+      if (modalBox) modalBox.style.display = 'block';
+      if (modalStage) modalStage.textContent = `${stageText}${modelSuffix}`;
+      if (modalPct) modalPct.textContent = `${pct}%`;
+      if (modalFill) modalFill.style.width = `${pct}%`;
+      if (modalSteps) {
+        const steps = [
+          { label: '1. Áudio & Anexos', done: pct >= 20, active: pct < 20 },
+          { label: '2. Transcrição da Fala', done: pct >= 56, active: pct >= 20 && pct < 56 },
+          { label: '3. # Condições, Subjetivo & Objetivo', done: pct >= 78, active: pct >= 56 && pct < 78 },
+          { label: '4. Exames, Avaliação & Conduta', done: pct >= 93, active: pct >= 78 && pct < 93 },
+          { label: '5. Revisão Final & CIAP/CID', done: pct >= 100, active: pct >= 93 && pct < 100 }
+        ];
+        modalSteps.innerHTML = steps.map(s => {
+          const icon = s.done ? '✅' : (s.active ? '⏳' : '⚪');
+          const bg = s.done ? '#dcfce7' : (s.active ? '#e0e7ff' : '#f1f5f9');
+          const col = s.done ? '#166534' : (s.active ? '#3730a3' : '#64748b');
+          return `<span style="background:${bg};color:${col};padding:3px 8px;border-radius:99px;">${icon} ${s.label}</span>`;
+        }).join('');
+      }
+      if (editor) {
+        editor.value = `⏳ [${pct}% CONCLUÍDO] ${stageText}\nTempo decorrido: ${progressObj.elapsedSec || 0}s${modelSuffix}\n\nAguarde alguns instantes — a evolução organizada aparecerá nesta tela automaticamente assim que chegar em 100% (não precisa clicar em Atualizar).`;
+      }
+    }
+  }
+
   // --- FILA ASSÍNCRONA EM SEGUNDO PLANO ---
   async function processQueueInBackground() {
     if (state.queueRunning) return;
@@ -1234,6 +1350,10 @@
 
     const banner = document.getElementById('liveProcessingBanner');
     const bannerText = document.getElementById('liveProcessingText');
+    const pctBadge = document.getElementById('liveProcessingPercentBadge');
+    const barWrap = document.getElementById('liveProcessingBarWrap');
+    const barFill = document.getElementById('liveProcessingBarFill');
+    const spinner = document.getElementById('liveProcSpinner');
     let elapsedSec = 0;
     let procInterval = null;
 
@@ -1248,35 +1368,69 @@
         nextItem.errorMessage = '';
         await window.ScribeDB.saveConsultation(nextItem);
         await refreshQueueSidebar();
+
+        elapsedSec = 0;
+        const extraQueueCount = Math.max(0, queuedItems.length - 1);
+        // Tempo estimado adaptativo conforme a duração da gravação e quantidade de exames anexados
+        const estTotalSec = Math.max(10, Math.min(35, Math.round((nextItem.durationSeconds || 60) / 28) + 9 + (nextItem.examFileCount || 0) * 3));
+
+        updateLiveProcessingUI({
+          consultId: nextItem.id,
+          patientLabel: nextItem.patientLabel,
+          percent: 5,
+          stageLabel: getStageDescriptionForPercent(5),
+          elapsedSec: 0,
+          extraQueueCount,
+          modelStatus: ''
+        });
+
         if (state.activeConsultationId === nextItem.id) {
           await renderActiveConsultationView(nextItem);
         }
 
-        elapsedSec = 0;
-        if (banner && bannerText) {
-          banner.style.display = 'block';
-          banner.style.background = '#eef2ff';
-          banner.style.color = '#3730a3';
-          bannerText.textContent = `⏳ Transcrevendo e estruturando prontuário: "${nextItem.patientLabel}" (0s)...`;
-        }
         if (procInterval) clearInterval(procInterval);
         procInterval = setInterval(() => {
-          elapsedSec++;
-          if (bannerText) {
-            const extraQueue = queuedItems.length > 1 ? ` (+${queuedItems.length - 1} na fila)` : '';
-            bannerText.textContent = `⏳ Transcrevendo e estruturando prontuário: "${nextItem.patientLabel}" (${elapsedSec}s)...${extraQueue}`;
-          }
-          if (state.activeConsultationId === nextItem.id) {
-            const editor = document.getElementById('mainEvolutionEditor');
-            if (editor && (nextItem.status === 'uploading' || nextItem.status === 'queued')) {
-              editor.value = `⏳ Transcrevendo áudio e estruturando evolução clínica... (${elapsedSec}s decorridos)\n\nAguarde alguns instantes — o texto aparecerá nesta tela automaticamente assim que concluir (não precisa clicar em Atualizar).`;
-            }
-          }
-        }, 1000);
+          elapsedSec += 0.5;
+          const prevPct = state.activeProcessingProgress?.percent || 5;
+          // Curva assintótica suave até 94% enquanto aguarda a conclusão da IA
+          const timeRatio = elapsedSec / estTotalSec;
+          const targetByTime = Math.min(94, Math.round(18 + 76 * (1 - Math.exp(-1.55 * timeRatio))));
+          const nextPct = Math.min(94, Math.max(prevPct, targetByTime));
+          updateLiveProcessingUI({
+            consultId: nextItem.id,
+            patientLabel: nextItem.patientLabel,
+            percent: nextPct,
+            stageLabel: getStageDescriptionForPercent(nextPct),
+            elapsedSec: Math.floor(elapsedSec),
+            extraQueueCount,
+            modelStatus: state.activeProcessingProgress?.modelStatus || ''
+          });
+        }, 500);
 
         try {
-          const result = await processSingleConsultationWithGemini(nextItem, apiKey);
+          const result = await processSingleConsultationWithGemini(nextItem, apiKey, (milestonePct, customStage, modelInfo) => {
+            const currentPct = Math.max(state.activeProcessingProgress?.percent || 0, milestonePct || 0);
+            updateLiveProcessingUI({
+              consultId: nextItem.id,
+              patientLabel: nextItem.patientLabel,
+              percent: currentPct,
+              stageLabel: customStage || getStageDescriptionForPercent(currentPct),
+              elapsedSec: Math.floor(elapsedSec),
+              extraQueueCount,
+              modelStatus: modelInfo !== undefined ? modelInfo : (state.activeProcessingProgress?.modelStatus || '')
+            });
+          });
           if (procInterval) clearInterval(procInterval);
+
+          updateLiveProcessingUI({
+            consultId: nextItem.id,
+            patientLabel: nextItem.patientLabel,
+            percent: 100,
+            stageLabel: '✅ Evolução 100% transcrita e organizada!',
+            elapsedSec: Math.max(1, Math.round(elapsedSec)),
+            extraQueueCount,
+            modelStatus: ''
+          });
 
           nextItem.status = 'done';
           nextItem.evolutionText = result.evolutionText;
@@ -1295,7 +1449,7 @@
           await window.ScribeDB.saveConsultation(nextItem);
 
           addDailyTokenUsage(result.tokensUsed || 0);
-          showToast(`✅ Evolução pronta: ${nextItem.patientLabel}`);
+          showToast(`✅ 100% — Evolução pronta: ${nextItem.patientLabel}`);
 
           if (state.autoCloudSync) {
             pushConsultationsToGeminiCloud(true).catch(() => {});
@@ -1304,7 +1458,13 @@
           if (banner && bannerText) {
             banner.style.background = '#dcfce7';
             banner.style.color = '#166534';
-            bannerText.innerHTML = `✅ Prontuário de <strong>${escapeHtml(nextItem.patientLabel)}</strong> concluído em ${elapsedSec}s! <button type="button" id="btnBannerOpenFinished" style="margin-left:10px;padding:3px 10px;border-radius:6px;border:1px solid #166534;background:#fff;color:#166534;font-weight:700;cursor:pointer;">Abrir Evolução Agora</button>`;
+            if (spinner) spinner.style.display = 'none';
+            if (pctBadge) {
+              pctBadge.style.background = '#166534';
+              pctBadge.textContent = '100%';
+            }
+            if (barFill) barFill.style.width = '100%';
+            bannerText.innerHTML = `✅ Prontuário de <strong>${escapeHtml(nextItem.patientLabel)}</strong> 100% concluído em ${Math.max(1, Math.round(elapsedSec))}s! <button type="button" id="btnBannerOpenFinished" style="margin-left:10px;padding:3px 10px;border-radius:6px;border:1px solid #166534;background:#fff;color:#166534;font-weight:700;cursor:pointer;">Abrir Evolução Agora</button>`;
             document.getElementById('btnBannerOpenFinished')?.addEventListener('click', () => {
               selectConsultationToView(nextItem.id);
             });
@@ -1322,10 +1482,17 @@
           if (banner && bannerText) {
             banner.style.background = '#fee2e2';
             banner.style.color = '#991b1b';
+            if (spinner) spinner.style.display = 'none';
+            if (pctBadge) {
+              pctBadge.style.background = '#dc2626';
+              pctBadge.textContent = 'Pausa';
+            }
+            if (barWrap) barWrap.style.display = 'none';
             bannerText.textContent = `⚠️ Pausa no envio de "${nextItem.patientLabel}": ${nextItem.errorMessage}`;
           }
         }
 
+        state.activeProcessingProgress = null;
         await refreshQueueSidebar();
         if (state.activeConsultationId === nextItem.id) {
           const updated = await window.ScribeDB.getConsultation(nextItem.id);
@@ -1334,17 +1501,20 @@
       }
     } finally {
       if (procInterval) clearInterval(procInterval);
+      state.activeProcessingProgress = null;
       state.queueRunning = false;
       updateDocumentTitle();
     }
   }
 
   // --- Envio Multimodal (Áudio + PDFs de Exames + Notas) para o Gemini ---
-  async function processSingleConsultationWithGemini(consultation, apiKey) {
+  async function processSingleConsultationWithGemini(consultation, apiKey, onProgressMilestone) {
     const tpl = state.templates[consultation.templateId] || window.DEFAULT_TEMPLATES.geral;
     const examFiles = await window.ScribeDB.getExamFilesForConsultation(consultation.id);
     const preExams = consultation.preTranscribedExamsText || '';
     const soapSubtypeHeader = consultation.soapSubtypeHeader || getSelectedSoapSubtypeHeader();
+
+    if (onProgressMilestone) onProgressMilestone(8, '📦 Lendo áudio gravado no disco local...');
 
     const promptText = window.buildMedicalEvolutionPrompt(
       tpl,
@@ -1367,6 +1537,7 @@
         hasAudioAttached = true;
         const cleanMime = normalizeAudioMimeType(audioBlob, consultation.fileName || '');
         if (audioBlob.size > 12 * 1024 * 1024) {
+          if (onProgressMilestone) onProgressMilestone(14, '☁️ Enviando arquivo de áudio longo...');
           const fileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
           parts.push({ fileData: { mimeType: cleanMime, fileUri } });
         } else {
@@ -1390,6 +1561,9 @@
 
     // 2. Inclui PDFs / Imagens de Exames (se já não tiverem sido transcritos na hora durante a consulta)
     if (!preExams) {
+      if (examFiles.length > 0 && onProgressMilestone) {
+        onProgressMilestone(18, '📄 Preparando PDFs / imagens de exames anexados...');
+      }
       for (const exam of examFiles) {
         if (exam.blob && exam.blob.size > 0) {
           const mime = exam.mimeType || 'application/pdf';
@@ -1415,10 +1589,19 @@
       }
     };
 
+    if (onProgressMilestone) {
+      onProgressMilestone(24, '🎙️ Transcrevendo diálogo completo da consulta...');
+    }
+
     const { responseJson, modelUsed } = await callGeminiWithFallbackAndRetry(requestBody, apiKey, (statusMsg) => {
-      const badge = document.getElementById(`qstatus_${consultation.id}`);
-      if (badge) badge.textContent = statusMsg;
+      if (onProgressMilestone) {
+        onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
+      }
     });
+
+    if (onProgressMilestone) {
+      onProgressMilestone(95, '🏷️ Validando cabeçalho #, exames anteriores e CIAP-2 / CID-10...', '');
+    }
 
     const rawText = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
     let tokensUsed = responseJson?.usageMetadata?.totalTokenCount || Math.round((consultation.durationSeconds || 60) * 32 + 1200);
@@ -2497,6 +2680,12 @@
       const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
       // Cria um resumo de 2 linhas da Avaliação/Conduta ou Subjetivo para exibir no card (igual ao print 2)
+      const isActivelyProcessingThis = (item.status === 'uploading' && state.activeProcessingProgress && state.activeProcessingProgress.consultId === item.id);
+      const activePct = isActivelyProcessingThis ? Math.min(100, Math.max(0, Math.round(state.activeProcessingProgress.percent || 5))) : (item.status === 'uploading' ? 8 : 0);
+      const activeStage = isActivelyProcessingThis
+        ? (state.activeProcessingProgress.stageLabel || getStageDescriptionForPercent(activePct))
+        : '🎙️ Transcrevendo e organizando evolução clínica...';
+
       let snippet = '';
       if (item.status === 'done' && item.evolutionText) {
         const cleanEvo = item.evolutionText
@@ -2504,8 +2693,10 @@
           .replace(/\n+/g, ' • ')
           .trim();
         snippet = cleanEvo.slice(0, 240);
-      } else if (item.status === 'uploading' || item.status === 'queued') {
-        snippet = 'Processando evolução clínica em segundo plano...';
+      } else if (item.status === 'uploading') {
+        snippet = `${activeStage} (${activePct}% concluído)`;
+      } else if (item.status === 'queued') {
+        snippet = 'Na fila — aguardando vez para transcrever e organizar (0%)...';
       } else if (item.status === 'error') {
         snippet = 'Pendente de processamento — clique para abrir e atualizar.';
       } else {
@@ -2516,11 +2707,11 @@
       if (item.status === 'recording') {
         statusHTML = `<span class="q-status st-rec" id="qstatus_${item.id}">Em andamento</span>`;
       } else if (item.status === 'queued') {
-        statusHTML = `<span class="q-status st-queue" id="qstatus_${item.id}">⏳ Na fila</span>`;
+        statusHTML = `<span class="q-status st-queue" id="qstatus_${item.id}">⏳ 0% Na fila</span>`;
       } else if (item.status === 'uploading') {
-        statusHTML = `<span class="q-status st-up" id="qstatus_${item.id}">⚡ Estruturando...</span>`;
+        statusHTML = `<span class="q-status st-up" id="qstatus_${item.id}">⚡ ${activePct}% — ${escapeHtml(activeStage.replace(/^[^\s]+\s*/, ''))}</span>`;
       } else if (item.status === 'done') {
-        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ Pronto</span>`;
+        statusHTML = `<span class="q-status st-done" id="qstatus_${item.id}">✅ 100% Pronto</span>`;
       } else if (item.status === 'error') {
         statusHTML = `<span class="q-status st-err" id="qstatus_${item.id}">⚠️ Atualizar</span>`;
       }
@@ -2529,6 +2720,7 @@
         ? `<span class="q-status st-done" style="background:#dcfce7;color:#166534;">☑️ Evoluído no PEC</span>`
         : `<span class="q-status" style="background:#f1f5f9;color:#475569;">📌 Falta Evoluir</span>`;
 
+      const showProgressBar = (item.status === 'uploading' || item.status === 'queued');
       const card = document.createElement('div');
       card.className = 'history-card';
       card.innerHTML = `
@@ -2541,7 +2733,10 @@
               ${statusHTML}
               ${pecBadge}
             </div>
-            <div class="h-snippet">${escapeHtml(snippet)}</div>
+            <div class="h-snippet" id="qsnippet_${item.id}">${escapeHtml(snippet)}</div>
+            <div id="qbar_wrap_${item.id}" style="display:${showProgressBar ? 'block' : 'none'};width:100%;max-width:440px;height:6px;background:#e0e7ff;border-radius:99px;overflow:hidden;margin-top:6px;">
+              <div id="qbar_fill_${item.id}" style="width:${activePct}%;height:100%;background:linear-gradient(90deg,#4f46e5,#0d9488);border-radius:99px;transition:width 0.35s ease;"></div>
+            </div>
           </div>
         </div>
         <div class="h-card-right">
@@ -2611,9 +2806,25 @@
     }
 
     const editor = document.getElementById('mainEvolutionEditor');
+    const modalProgressBox = document.getElementById('modalLiveProgressBox');
     if (consult.status === 'uploading' || consult.status === 'queued') {
-      editor.value = '⏳ Transcrevendo áudio e estruturando evolução clínica...\n\nAguarde alguns instantes — o texto aparecerá nesta tela automaticamente assim que concluir (não é necessário clicar em Atualizar).';
+      const isCurrentActive = state.activeProcessingProgress && state.activeProcessingProgress.consultId === consult.id;
+      const pct = isCurrentActive ? Math.round(state.activeProcessingProgress.percent || 5) : (consult.status === 'uploading' ? 5 : 0);
+      const stage = isCurrentActive ? state.activeProcessingProgress.stageLabel : '⏳ Aguardando na fila para transcrever e organizar...';
+      if (modalProgressBox) modalProgressBox.style.display = 'block';
+      if (isCurrentActive) {
+        updateLiveProcessingUI(state.activeProcessingProgress);
+      } else {
+        const modalStage = document.getElementById('modalProgressStageText');
+        const modalPct = document.getElementById('modalProgressPercentText');
+        const modalFill = document.getElementById('modalProgressBarFill');
+        if (modalStage) modalStage.textContent = stage;
+        if (modalPct) modalPct.textContent = `${pct}%`;
+        if (modalFill) modalFill.style.width = `${pct}%`;
+        editor.value = `⏳ [${pct}% CONCLUÍDO] ${stage}\n\nAguarde alguns instantes — a evolução organizada aparecerá nesta tela automaticamente assim que chegar em 100% (não é necessário clicar em Atualizar).`;
+      }
     } else {
+      if (modalProgressBox) modalProgressBox.style.display = 'none';
       editor.value = consult.evolutionText || '';
     }
 
