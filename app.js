@@ -1914,7 +1914,18 @@
     // 3. Inclui as instruções clínicas e a máscara exata
     parts.push({ text: promptText });
 
+    const medicalSystemInstruction = {
+      parts: [{
+        text: `Você é um Médico de Família e Comunidade experiente registrando a consulta no prontuário oficial (PEC / e-SUS).
+Você redige o prontuário como o PRÓPRIO MÉDICO ASSISTENTE (primeira pessoa profissional ou impessoal médico), NUNCA como uma IA ou observador externo de 3ª pessoa narrando o que aconteceu.
+É TERMINANTEMENTE PROIBIDO escrever frases como "Médico orientou", "Médico reforçou", "Médico explicou", "Após esclarecimento médico" no SUBJETIVO.
+O SUBJETIVO contém EXCLUSIVAMENTE a anamnese e o relato do paciente (queixas, sintomas, história da doença atual, tolerabilidade a remédios, hábitos de vida referidos, sintomas negados e demandas trazidas).
+Toda e qualquer conduta, conselho, orientação médica dada durante a consulta, prescrição de medicamentos, solicitação de exames e encaminhamento via GERCON pertencem OBRIGATORIAMENTE à CONDUTA.`
+      }]
+    };
+
     const requestBody = {
+      systemInstruction: medicalSystemInstruction,
       contents: [{ role: 'user', parts }],
       generationConfig: {
         temperature: 0.1,
@@ -1971,6 +1982,7 @@
         soapSubtypeHeader
       );
       const rescueBody = {
+        systemInstruction: medicalSystemInstruction,
         contents: [{
           role: 'user',
           parts: [
@@ -2529,6 +2541,39 @@
     return text;
   }
 
+  // Sanitizador que remove julgamentos de IA em 3ª pessoa do SUBJETIVO e limpa contaminações com conduta médica
+  function sanitizeSubjectiveAndConductPerspectives(text) {
+    if (!text || typeof text !== 'string') return '';
+
+    // Regex para identificar início e fim do bloco SUBJETIVO
+    const subjMatch = text.match(/(^|\n)((\d+\.\s*)?SUBJETIVO[^\n]*\n)([\s\S]*?)(\n(\d+\.\s*)?(?:5\.|6\.|TERAPIA|OBJETIVO|EXAMES|AVALIAÇÃO)\b)/i);
+    if (!subjMatch) return text;
+
+    const beforeSubj = text.slice(0, subjMatch.index + subjMatch[1].length + subjMatch[2].length);
+    let subjContent = subjMatch[4];
+    const afterSubj = text.slice(subjMatch.index + subjMatch[1].length + subjMatch[2].length + subjContent.length);
+
+    // 1. Remove julgamentos narrativos de IA e frases em 3ª pessoa sobre o médico
+    subjContent = subjContent
+      .replace(/,?\s*contradizendo\s+relato\s+anterior\s+de\s+abstin[êe]ncia\s+total/gi, '')
+      .replace(/Paciente\s+nega\s+ser\s+doador\s+de\s+[óo]rg[ãa]os,?\s*(?:mas\s*)?(?:ap[óo]s\s+esclarecimento\s+m[ée]dico,?\s*)?manifestou\s+interesse\s+em\s+ser\s+doador[^.\n]*/gi, 'Manifesta interesse em ser doador de órgãos.')
+      .replace(/ap[óo]s\s+esclarecimento\s+m[ée]dico,?\s*/gi, '');
+
+    // 2. Remove condutas/orientações médicas que vazaram para dentro do SUBJETIVO
+    subjContent = subjContent.replace(
+      /(?:(?:O\s+)?M[ée]dico\s+(?:refor[çc]ou|orientou|explicou|solicitou|prescreveu|enfatizou|reiterou|esclareceu)|Realizado\s+encaminhamento|Orientado\s+(?:o\s+)?paciente\s+a\s+acompanhar)[^.\n]*\.?\s*/gi,
+      ''
+    );
+
+    // 3. Limpa espaços e quebras repetidas
+    subjContent = subjContent
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n')
+      .trim();
+
+    return beforeSubj + subjContent + '\n' + afterSubj;
+  }
+
   function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId, previousConsultationText = '', soapSubtypeHeader = '') {
     let text = fixBrazilianMedicationSpelling(evolutionText || '');
 
@@ -2541,6 +2586,9 @@
       .replace(/\bfezes brancas\b/gi, 'fezes esbranquiçadas (hipocolia fecal)')
       .replace(/ardor semelhante a azia\/refluxo/gi, 'epigastralgia em queimação e pirose')
       .replace(/dor no meio do estômago/gi, 'dor em região epigástrica');
+
+    // 1.1 Limpeza estrita de contaminação do SUBJETIVO com condutas médicas ou frases de IA em 3ª pessoa
+    text = sanitizeSubjectiveAndConductPerspectives(text);
 
     // 2. Remove frases metalinguísticas inaceitáveis no Objetivo e garante ectoscopia padrão
     text = text.replace(/OBJETIVO\s*\n\s*(?:Exame\s+f[íi]sico\s+n[ãa]o\s+detalhado[^\n]*|Exame\s+f[íi]sico\s+n[ãa]o\s+mencionado[^\n]*|N[ãa]o\s+detalhado\s+na\s+transcri[çc][ãa]o[^\n]*)\n*/gi, 'OBJETIVO\nBEG, LOC, corada, hidratada, anictérica, acianótica.\n\n');
@@ -2595,6 +2643,13 @@
       }
       if (inAvaliacaoOrConduta) {
         rawLine = rawLine.replace(/^\s*-\s+/, '');
+        // Garante que qualquer resquício de narrador de 3ª pessoa na conduta vire 1ª pessoa profissional médica
+        rawLine = rawLine
+          .replace(/^(?:O\s+)?M[ée]dico\s+prescreveu\s+/i, 'Prescrevo ')
+          .replace(/^(?:O\s+)?M[ée]dico\s+orientou\s+/i, 'Oriento ')
+          .replace(/^(?:O\s+)?M[ée]dico\s+refor[çc]ou\s+(?:orienta[çc][õo]es\s+sobre\s+)?/i, 'Reforço orientações sobre ')
+          .replace(/^(?:O\s+)?M[ée]dico\s+solicitou\s+/i, 'Solicito ')
+          .replace(/^Realizado\s+encaminhamento\s+/i, 'Encaminhamento ');
         // Se já descreveu os sinais de alarme específicos, remove a frase genérica duplicada
         if (hasDetailedAlarmLine && /^Oriento sinais de alarme e(?:,\s*)? na presença/i.test(rawLine.trim())) {
           continue;
@@ -2650,7 +2705,8 @@
             model: `models/${cleanModel}`,
             generationConfig: {
               responseModalities: ['TEXT']
-            }
+            },
+            ...(requestBody?.systemInstruction ? { systemInstruction: requestBody.systemInstruction } : {})
           }
         };
         try {

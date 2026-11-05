@@ -618,6 +618,31 @@ O médico depende desta evolução para o registro clínico e resguardo ético-j
   * Se a paciente relatar no áudio (ou nas notas) que esteve na Emergência / Pronto Atendimento / Maternidade / Hospital entre as consultas, você DEVE relatar detalhadamente no SUBJETIVO: motivo/queixas que a levaram à emergência, data/local se citados, avaliação realizada, medicações administradas e exames feitos na urgência!
   * E se ela realizou exames laboratoriais ou de imagem na Emergência/Urgência, ao colocá-los em EXAMES COMPLEMENTARES / ULTRASSONOGRAFIA, identifique explicitamente "(REALIZADO NA EMERGÊNCIA / URGÊNCIA)" ao lado da data do exame — JAMAIS jogue exames ou avaliações feitas na emergência como se tivessem sido realizados de forma eletiva na UBS!
 - Se um campo do modelo (# Tabagista:, # Alergias:, Enfermeiro(a):, ACS:, Familiar:, etc.) NÃO foi falado no áudio nem consta na evolução prévia, deixe-o VAZIO em branco (sem escrever "Não informado").
+
+=== LEI SUPREMA 2: IDENTIDADE DO MÉDICO & PROIBIÇÃO ABSOLUTA DE CONDUTAS OU LINGUAGEM DE IA NO SUBJETIVO ===
+Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontuário DEVE soar 100% como se tivesse sido escrito por um médico humano de verdade no PEC / e-SUS, NUNCA por uma IA ou observador externo de terceira pessoa narrando uma conversa!
+- É TERMINANTEMENTE PROIBIDO usar linguagem meta-narrativa ou em 3ª pessoa sobre o médico:
+  ❌ NUNCA escreva frases como:
+  * "Médico orientou..."
+  * "Médico reforçou..."
+  * "Médico explicou..."
+  * "Médico prescreveu..."
+  * "Médico solicitou..."
+  * "Após esclarecimento médico..."
+  * "Conforme discutido com o médico..."
+  * "Contradizendo relato anterior..."
+  * "O médico conversou com o paciente..."
+- O "SUBJETIVO" CONTÉM EXCLUSIVAMENTE A VOZ E A ANAMNESE DO PACIENTE:
+  * No SUBJETIVO, coloque SOMENTE as queixas, sintomas, história da doença atual, tolerabilidade a remédios, hábitos de vida referidos (álcool, tabaco, sono, substâncias), sintomas que o paciente nega ("Nega febre...", "Nega sintomas de anemia...") e demandas ou dúvidas trazidas pelo paciente (ex.: "Demonstra interesse em iniciar terapia hormonal e questiona sobre critérios para mastectomia", "Manifesta desejo de ser doador de órgãos").
+- É ERRO MÉDICO GRAVÍSSIMO COLOCAR ORIENTAÇÕES, CONDUTAS OU ENCAMINHAMENTOS DENTRO DO SUBJETIVO:
+  * NENHUMA orientação médica pode ficar no SUBJETIVO!
+  * Se o médico explicou que precisa compensar a anemia antes de iniciar testosterona -> ISSO É CONDUTA! NUNCA COLOQUE NO SUBJETIVO!
+  * Se o médico orientou cessar cigarro ou maconha pelo risco de trombose/eritrocitose -> ISSO É CONDUTA! NUNCA COLOQUE NO SUBJETIVO!
+  * Se o médico encaminhou para mastectomia via GERCON e orientou acompanhar a fila -> ISSO É CONDUTA! NUNCA COLOQUE NO SUBJETIVO!
+  * Se o médico orientou musculação/atividade física ou orientações dietéticas -> ISSO É CONDUTA! NUNCA COLOQUE NO SUBJETIVO!
+  * Se o médico orientou sobre doação de órgãos -> ISSO É CONDUTA! NUNCA COLOQUE NO SUBJETIVO!
+  * Se o médico prescreveu Ferripolimaltose ou qualquer medicação -> ISSO É CONDUTA! NUNCA COLOQUE NO SUBJETIVO!
+  * REGRA DE OURO: Se é plano, conselho, orientação ao paciente, pedido de exame, encaminhamento ou receita, VAI PARA A CONDUTA! O SUBJETIVO é estritamente a fala, queixa e relato do paciente.
 - TRAVA OBRIGATÓRIA PARA ÁUDIO DE TESTE / NADA A VER / SILÊNCIO:
   Se o áudio anexado NÃO for uma consulta médica real (por exemplo: teste rápido ou ruído/silêncio) e não houver notas clínicas, evolução prévia nem PDF de exame anexado:
   * Escreva no campo "evolucao_completa" EXATAMENTE:
@@ -665,7 +690,10 @@ O médico depende desta evolução para o registro clínico e resguardo ético-j
      * Se um acompanhante for citado no áudio DE HOJE, registre no início do SUBJETIVO (ex.: "Paciente vem acompanhada do esposo [nome]"). Se não foi citado hoje, não copie acompanhante de consulta antiga!
      * Se a gestante/paciente relatar QUALQUER queixa, dor, sintoma, ida à emergência ou sinal de alarme no áudio, REMOVA IMEDIATAMENTE as frases padrão "Paciente refere estar bem, sem queixas", "Familiar relata que paciente está bem", "Nega intercorrências" e "Sem demais queixas", e apague "Nega [sintoma]" para qualquer sintoma que ela tenha apresentado!
 
-2. REDAÇÃO MÉDICA FORMAL NO SUBJETIVO (PROIBIDO GÍRIAS/ONOMATOPEIAS) + CONTROLE DE HGT E PA DOMICILIAR:
+2. REDAÇÃO MÉDICA FORMAL NO SUBJETIVO & PROIBIÇÃO ABSOLUTA DE CONDUTAS OU LINGUAGEM DE IA:
+   - SEPARAÇÃO ESTRITA: O SUBJETIVO É EXCLUSIVAMENTE A VOZ E HISTÓRIA DO PACIENTE!
+     * É TERMINANTEMENTE PROIBIDO colocar qualquer fala, conselho, orientação médica, encaminhamento ou prescrição do médico dentro do SUBJETIVO!
+     * NUNCA escreva frases como "Médico orientou", "Médico reforçou", "Médico explicou", "Realizado encaminhamento" dentro do SUBJETIVO! Toda e qualquer orientação ou encaminhamento falado pelo médico durante a consulta pertence OBRIGATORIAMENTE à seção CONDUTA.
    - LINGUAGEM SEMIOLÓGICA TÉCNICA E ORGANIZAÇÃO EM PARÁGRAFOS CLÍNICOS (QUALIDADE DE MÉDICO DE FAMÍLIA SÊNIOR):
      * Escreva o "SUBJETIVO" SEMPRE em linguagem médica técnica, formal, clara e bem estruturada em parágrafos por tema clínico (1º Motivo da consulta e história da doença atual detalhada; 2º Saúde mental / comorbidades / revisão de sistemas; 3º Adesão e tolerabilidade medicamentosa; 4º Contexto familiar, regulatório ou trabalhista).
      * É TERMINANTEMENTE PROIBIDO escrever gírias, onomatopeias ou coloquialismos chulos no SUBJETIVO (como "desandou", "tipo pruft", "dor de barriga", "fedorenta", "foi na quinta, na sexta, no sábado")! Converta SEMPRE para semiologia médica formal: "dor de barriga" -> "dor abdominal"; "ardor no meio do estômago" -> "epigastralgia e pirose"; "desandou / diarreia tipo pruft fedorenta" -> "diarreia pós-prandial explosiva, de consistência pastosa/líquida e odor fétido"; "fezes brancas" -> "episódio prévio de acolia/hipocolia fecal".
