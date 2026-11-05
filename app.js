@@ -37,29 +37,22 @@
 
   // Descoberta inteligente e auto-adaptativa do modelo Gemini Flash ativo na chave do usuário:
   // - Chaves novas (2026+) usam a geração Gemini 3 Flash (ex.: gemini-3.8-flash / gemini-3.0-flash / gemini-3-flash-preview) e bloqueiam gemini-2.5-flash com "no longer available to new users".
-  // Lista robusta de modelos do Google AI Studio priorizados por capacidade e cota:
-  // 1. Modelos Ilimitados (API Live / Transcrição em Tempo Real): Gemini 3 Flash Live, Gemini 3.8 Live, Gemini 2.5 Native Audio Dialog, Gemini 3.5 Transcribe Live
-  // 2. Transcrição Dedicada: Gemini 3.5 Transcribe (25/dia)
-  // 3. Agente Gerenciado: Antigravity (100/dia, 60 RPM)
-  // 4. Modelos Flash Completos: Gemini 3.8 Flash, 3.6 Flash, 3 Flash, 2.5 Flash (20/dia cada)
-  // 5. Alta Escala: Gemma 4 31B / 26B (14.400/dia)
-  // 6. Flash-Lite de Emergência: Gemini 3.5 Flash Lite, 3.1 Flash Lite (500/dia cada)
+  // Lista robusta de modelos do Google AI Studio priorizados por capacidade e cota disponível:
+  // 1. Alta Cota: Gemini 3.5 Flash Lite e 3.1 Flash Lite (500 atendimentos/dia cada — 496 livres hoje!)
+  // 2. Ultra Cota: Gemma 4 31B / 26B (14.400 atendimentos/dia)
+  // 3. Flash Completo com Cota Livre: Gemini 2.5 Flash (20 atendimentos/dia — 20 livres hoje)
+  // 4. Flash 3: Gemini 3 Flash e 3 Flash Preview (20 atendimentos/dia — restam 2 hoje)
+  // 5. Modelos com cota diária esgotada hoje (25/20): Gemini 3.8 Flash e 3.6 Flash (restabelecem amanhã)
   const GEMINI_MODELS = [
-    'gemini-3-flash-live',
-    'gemini-3.8-live',
-    'gemini-2.5-flash-native-audio-dialog',
-    'gemini-3.5-transcribe-live',
-    'gemini-3.5-transcribe',
-    'antigravity',
-    'gemini-3.8-flash',
-    'gemini-3.6-flash',
-    'gemini-3-flash',
-    'gemini-3-flash-preview',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
     'gemini-2.5-flash',
     'gemma-4-31b',
     'gemma-4-26b',
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
+    'gemini-3-flash',
+    'gemini-3-flash-preview',
+    'gemini-3.8-flash',
+    'gemini-3.6-flash',
     'gemini-2.5-flash-lite'
   ];
 
@@ -2993,12 +2986,13 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                 allFailedByDailyQuota = true;
                 const nextModel = modelsToTry[mIdx + 1] || (keysToTry[kIdx + 1] ? 'próxima chave' : '');
                 if (elDaily && nextModel) {
-                  elDaily.textContent = `🔄 Alternando para ${formatModelName(nextModel)}...`;
+                  elDaily.textContent = `🔄 ${formatModelName(model)} esgotado hoje (429). Alternando para ${formatModelName(nextModel)}...`;
                   elDaily.style.color = '#2563eb';
                 }
                 if (onStatusUpdate && nextModel) {
-                  onStatusUpdate(`🔄 Alternando para ${formatModelName(nextModel)}...`);
+                  onStatusUpdate(`⚠️ Cota diária do ${formatModelName(model)} esgotada (429). Alternando para ${formatModelName(nextModel)}...`);
                 }
+                showToast(`⚠️ ${formatModelName(model)} esgotou cota diária (429). Alternando para ${formatModelName(nextModel)} para não perder o atendimento.`);
                 lastError = new Error(`Limite (${res.status}): ${errMsg}`);
                 break; // Sai imediatamente deste modelo e vai para o próximo modelo com cota livre!
               }
