@@ -2636,13 +2636,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
       if (inAvaliacaoOrConduta) {
         rawLine = rawLine.replace(/^\s*-\s+/, '');
-        // Garante que qualquer resquício de narrador de 3ª pessoa na conduta vire 1ª pessoa profissional médica
+        // Garante que qualquer resquício de narrador de 3ª pessoa ou particípio na conduta vire 1ª pessoa profissional médica
         rawLine = rawLine
           .replace(/^(?:O\s+)?M[ée]dico\s+prescreveu\s+/i, 'Prescrevo ')
           .replace(/^(?:O\s+)?M[ée]dico\s+orientou\s+/i, 'Oriento ')
           .replace(/^(?:O\s+)?M[ée]dico\s+refor[çc]ou\s+(?:orienta[çc][õo]es\s+sobre\s+)?/i, 'Reforço orientações sobre ')
           .replace(/^(?:O\s+)?M[ée]dico\s+solicitou\s+/i, 'Solicito ')
-          .replace(/^Realizado\s+encaminhamento\s+/i, 'Encaminhamento ');
+          .replace(/^Realizado\s+encaminhamento\s+/i, 'Encaminho ')
+          .replace(/^Parabenizada\s+(?:a\s+)?(?:m[ãa]e|paciente|familiar)\b/i, 'Parabenizo a mãe')
+          .replace(/^Explicado\s+[àa]\s+(?:m[ãa]e|paciente|familiar)\b/i, 'Explico à mãe')
+          .replace(/^Orientad[ao]s?\s+manuten[çc][ãa]o\b/i, 'Oriento manutenção')
+          .replace(/^Orientad[ao]s?\s+medidas\b/i, 'Oriento medidas')
+          .replace(/^Orientad[ao]s?\s+sobre\b/i, 'Oriento sobre')
+          .replace(/^Reiterad[ao]\s+(?:a\s+)?import[âa]ncia\b/i, 'Reitero a importância')
+          .replace(/^Renovad[ao]\s+receita\b/i, 'Renovo receita')
+          .replace(/^Retorno\s+agendado\b/i, 'Agendo retorno')
+          .replace(/^Agendad[ao]\s+retorno\b/i, 'Agendo retorno');
         // Se já descreveu os sinais de alarme específicos, remove a frase genérica duplicada
         if (hasDetailedAlarmLine && /^Oriento sinais de alarme e(?:,\s*)? na presença/i.test(rawLine.trim())) {
           continue;

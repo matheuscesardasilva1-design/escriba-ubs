@@ -725,21 +725,23 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
 5. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
    - Na seção AVALIAÇÃO da "evolucao_completa", escreva as hipóteses diagnósticas / problemas avaliados na consulta de hoje, sem códigos CID-10/CIAP-2 no texto (os códigos vão apenas no array JSON "codigos_cid_ciap").
 
-6. REGRA ESTRITA DA CONDUTA E PRESCRIÇÕES MÉDICAS (PROIBIÇÃO ABSOLUTA DE OMITIR RECEITAS / PRESCRIÇÕES!):
-   - SE O MÉDICO PRESCREVEU QUALQUER MEDICAMENTO NO ÁUDIO, DISSE QUE IA RECEITAR/ORIENTAR OU AJUSTOU UMA MEDICAÇÃO:
-     * Você DEVE OBRIGATORIAMENTE listar cada um dos medicamentos prescritos no bloco CONDUTA!
-     * Escreva em linhas separadas (sem traço "-"), com nome oficial brasileiro (DCB / ANVISA / RENAME), dosagem exata e posologia clara:
-       Exemplos:
-       Fluoxetina 20mg: 2 comprimidos pela manhã (uso contínuo)
-       Clonazepam 2,5mg/ml: 2 gotas 1x ao dia à noite
-       Mirtazapina 15mg: 1/2 comprimido à noite
-       Dipirona 500mg: 1 comprimido até de 6/6h se dor ou febre
-       Amoxicilina 500mg: 1 cápsula de 8/8h por 7 dias
+6. REGRA ESTRITA DA CONDUTA MÉDICA (PRIMEIRA PESSOA VERBAL DO MÉDICO OBRIGATÓRIA + MÁXIMA RIQUEZA DE DETALHES E EXPLICAÇÕES DIDÁTICAS DE LIVRO):
+   - A CONDUTA DEVE SER REDIGIDA OBRIGATORIAMENTE EM PRIMEIRA PESSOA DO SINGULAR DO MÉDICO:
+     * Inicie sempre as frases com verbos de ação na 1ª pessoa: "Prescrevo...", "Oriento...", "Explico...", "Parabenizo...", "Reitero...", "Agendo...", "Renovo receita de...", "Mantenho...", "Encaminho...", "Solicito...".
+     * É TERMINANTEMENTE PROIBIDO usar voz passiva em terceira pessoa / particípio (NUNCA escreva: "Parabenizada a mãe...", "Explicado à mãe...", "Orientada manutenção...", "Orientadas medidas...", "Orientado sobre...", "Reiterada a importância...", "Prescrito...", "Agendado retorno...").
+     * Compare a diferença obrigatória:
+       ERRADO (passivo/impessoal de auditor): "Parabenizada a mãe pelo aleitamento... Explicado à mãe sobre exames... Orientada manutenção do sono... Renovada receita... Retorno agendado..."
+       CORRETO (1ª pessoa do médico): "Parabenizo a mãe pelo aleitamento... Explico à mãe sobre os resultados dos exames... Oriento manutenção do sono... Prescrevo / Renovo receita de... Agendo retorno para consulta..."
+   - NÃO COLOQUE A CONDUTA EM TÓPICOS NUMERADOS OU COM TRAÇOS (NÃO USE 1., 2., 3., OU "-"):
+     * Escreva em parágrafos e linhas de texto corrido bem descritas, elegantes e fluidas, sem listas numeradas nem tópicos.
+   - PRESERVE 100% DOS DETALHES CLÍNICOS E EXPLICAÇÕES DIDÁTICAS DE LIVRO:
+     * O médico quer a conduta ricamente descrita: mantenha todas as explicações didáticas, fisiologia, justificativas pediátricas/clínicas (ex.: prazos de resolução espontânea, por que evitar dipirona em menores de 6 meses, mecanismo de ação, cuidados de decúbito dorsal, massagens e compressas, dosagens por kg, vacinas do calendário e orientações de acolhimento).
+     * Toda essa riqueza teórica deve estar presente, mas formulada sempre como a voz ativa do MÉDICO orientando e explicando à mãe/paciente ("Explico à mãe...", "Oriento que...").
+   - PRESCRIÇÕES MÉDICAS COMPLETAS:
+     * Toda e qualquer medicação prescrita, ajustada ou renovada deve estar detalhada na CONDUTA com nome oficial brasileiro, dosagem, frequência, posologia e duração ("Prescrevo Ad-Til...", "Oriento manutenção de Endorus gotas...", "Oriento Paracetamol 100 mg/ml...").
      * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer de registrar as medicações que o médico prescreveu no consultório!
-   - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovação de receitas de uso contínuo (conforme # MUC)".
-   - NÃO coloque traços ("- ") no início das linhas da CONDUTA.
+   - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo receitas de uso contínuo (conforme # MUC)".
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
-   - Transcreva integralmente todas as medicações prescritas/ajustadas/suspensas hoje, doses, posologias, orientações de uso, exames solicitados, encaminhamentos e sinais de alarme orientados.
 
 7. REGRAS ESPECÍFICAS DE PUERICULTURA (PROIBIÇÃO ABSOLUTA DE INVENTAR Z-SCORE!), PRÉ-NATAL E VISITA DOMICILIAR:
    - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
