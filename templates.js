@@ -198,21 +198,11 @@ Ciente, concordante e sem dúvidas`
     name: 'Discussão Telessaúde',
     badge: 'Teleconsultoria',
     icon: '📞',
-    description: 'Gravação e discussão de caso clínico com o Telessaúde. Sem importar cabeçalho antigo, formata toda a discussão e condutas alinhadas em texto corrido detalhado.',
+    description: 'Gravação e discussão de caso clínico com o Telessaúde. Gera exclusivamente a parte da CONDUTA em texto corrido detalhado, sem cabeçalho nem outros blocos.',
     templateText: `## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##
 
-SUBJETIVO
-Realizo discussão de caso clínico com o serviço de Teleconsultoria / Telessaúde.
-Síntese do caso clínico apresentado, dúvidas clínicas e contextualização do paciente: 
-
-OBJETIVO
-Dados clínicos, sinais vitais e resultados de exames discutidos durante a teleconsultoria:
-
-AVALIAÇÃO
-Impressão diagnóstica compartilhada e parecer da Teleconsultoria:
-
 CONDUTA
-Discuto caso com a teleconsultoria do Telessaúde e alinho o plano diagnóstico-terapêutico.
+Discuto caso clínico com o serviço de Teleconsultoria / Telessaúde e alinho o plano diagnóstico-terapêutico.
 Oriento condutas não farmacológicas e medidas de suporte:
 Prescrevo medicações alinhadas:
 Encaminho conforme pactuação com a teleconsultoria:
@@ -619,11 +609,16 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
     (isPrenatalTemplate && parsedPrev && parsedPrev.hasPreviousExams)
   );
 
-  // Ajusta o título do modelo SOAP Geral conforme a modalidade selecionada (Demanda Espontânea, Consulta Agendada - 0800 ou Retorno Médico)
+  // Ajusta o título do modelo SOAP Geral conforme a modalidade selecionada (Demanda Espontânea, Consulta Agendada - 0800, Retorno Médico ou Sem Título ##)
   let effectiveTemplateText = templateObj.templateText;
-  if (templateObj.id === 'geral' && soapSubtypeHeader) {
-    effectiveTemplateText = effectiveTemplateText.replace(/^##.*##\s*\n+/m, '');
-    effectiveTemplateText = `${soapSubtypeHeader}\n\n${effectiveTemplateText.trim()}`;
+  if (templateObj.id === 'geral') {
+    if (soapSubtypeHeader) {
+      effectiveTemplateText = effectiveTemplateText.replace(/^##.*##\s*\n+/m, '');
+      effectiveTemplateText = `${soapSubtypeHeader}\n\n${effectiveTemplateText.trim()}`;
+    } else if (soapSubtypeHeader === '') {
+      // Opção para não ter nenhum cabeçalho ## no topo
+      effectiveTemplateText = effectiveTemplateText.replace(/^##.*##\s*\n+/m, '').trim();
+    }
   }
 
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
@@ -773,8 +768,9 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
 
 7. REGRAS ESPECÍFICAS DE TELESSAÚDE, PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
    - Na DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA):
-     * É TERMINANTEMENTE PROIBIDO importar cabeçalho padrão '#' com comorbidades anteriores! O registro da teleconsultoria DEVE iniciar diretamente com o título "## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##" seguido por SUBJETIVO, OBJETIVO, AVALIAÇÃO e CONDUTA.
-     * Na seção CONDUTA: estruture e descreva toda a discussão da Teleconsultoria em TEXTO CORRIDO DETALHADO (em 1ª pessoa: "Discuto caso com a teleconsultoria do Telessaúde...", "Alinho conduta...", "Oriento...", "Prescrevo..."), sem tópicos e sem listas numeradas, preservando todas as orientações especializadas, justificativas clínicas, doses e condutas pactuadas!
+     * DEIXE EXCLUSIVAMENTE A PARTE DA CONDUTA! É TERMINANTEMENTE PROIBIDO gerar blocos de SUBJETIVO, OBJETIVO ou AVALIAÇÃO e PROIBIDO importar cabeçalho '#' com comorbidades anteriores!
+     * A evolução do Telessaúde deve conter estritamente o título "## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##" e a seção "CONDUTA". NADA MAIS!
+     * Na CONDUTA: transcreva e estruture toda a discussão da Teleconsultoria, contextualização do caso, considerações do teleconsultor, parecer especializado, orientações diagnósticas e plano terapêutico alinhado em TEXTO CORRIDO DETALHADO (em 1ª pessoa do médico: "Discuto caso com a teleconsultoria do Telessaúde...", "Alinho conduta...", "Oriento...", "Prescrevo..."), sem tópicos e sem listas numeradas, preservando todas as orientações especializadas, justificativas clínicas, doses e condutas pactuadas!
    - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
    - Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 

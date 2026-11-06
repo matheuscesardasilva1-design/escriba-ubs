@@ -598,6 +598,9 @@
   function getSelectedSoapSubtypeHeader() {
     const selectedRadio = document.querySelector('input[name="soapVisitSubtype"]:checked');
     const mode = selectedRadio ? selectedRadio.value : 'DEMANDA ESPONTÂNEA';
+    if (mode === 'NENHUM' || mode === 'NONE' || mode === '') {
+      return '';
+    }
     if (mode === 'CONSULTA AGENDADA - 0800' || mode === 'CONSULTA AGENDADA') {
       return '## CONSULTA AGENDADA - 0800 ##';
     }
@@ -2203,12 +2206,25 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     if (!text || /Áudio sem conteúdo de consulta médica/i.test(text)) return text;
 
     // 1. Garante o cabeçalho da modalidade na Consulta Geral (SOAP):
-    // ## CONSULTA AGENDADA - 0800 ## | ## RETORNO MÉDICO ## | ## DEMANDA ESPONTÂNEA ##
-    if (templateId === 'geral' && soapSubtypeHeader) {
-      if (/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##/i.test(text)) {
-        text = text.replace(/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##/i, soapSubtypeHeader);
-      } else {
-        text = `${soapSubtypeHeader}\n\n${text.trimStart()}`;
+    // ## CONSULTA AGENDADA - 0800 ## | ## RETORNO MÉDICO ## | ## DEMANDA ESPONTÂNEA ## | Sem ##
+    if (templateId === 'geral') {
+      if (soapSubtypeHeader) {
+        if (/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##\s*\n*/i.test(text)) {
+          text = text.replace(/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##\s*\n*/i, soapSubtypeHeader + '\n\n');
+        } else {
+          text = `${soapSubtypeHeader}\n\n${text.trimStart()}`;
+        }
+      } else if (soapSubtypeHeader === '') {
+        // Se escolheu "Sem título ##", remove qualquer cabeçalho ## no topo
+        text = text.replace(/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##\s*\n*/i, '');
+      }
+    }
+
+    // 1.1 Se for DISCUSSÃO COM TELESSAÚDE, garante que mantenha EXCLUSIVAMENTE a CONDUTA:
+    if (templateId === 'telessaude' || /DISCUSSÃO COM TELESSAÚDE/i.test(text)) {
+      const condutaMatch = text.match(/(?:10\.\s*)?CONDUTA\s*([\s\S]*)$/i);
+      if (condutaMatch) {
+        text = `## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##\n\nCONDUTA\n${condutaMatch[1].trim()}`;
       }
     }
 
@@ -3650,7 +3666,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         modalSoapSubtypeWrap.style.display = (consult.templateId === 'geral' || !consult.templateId) ? 'inline-flex' : 'none';
       }
       if (modalSoapSubtypeSelect) {
-        modalSoapSubtypeSelect.value = consult.soapSubtypeHeader || '## DEMANDA ESPONTÂNEA ##';
+        modalSoapSubtypeSelect.value = consult.soapSubtypeHeader !== undefined ? consult.soapSubtypeHeader : '## DEMANDA ESPONTÂNEA ##';
       }
     }
 
