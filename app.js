@@ -4231,7 +4231,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     if (!pin) {
       if (!silent) {
         if (statusEl) {
-          statusEl.innerHTML = '⚠️ <strong>Por favor, defina um PIN Fixo acima</strong> (ex: <code>1234</code> ou <code>dr.matheus</code>) antes de salvar.';
+          statusEl.innerHTML = '⚠️ <strong>Por favor, defina seu PIN Fixo no campo acima</strong> antes de salvar.';
         }
         pinInput?.focus();
       }
@@ -4316,9 +4316,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       if (!silent) {
         if (statusEl) {
-          statusEl.innerHTML = `✅ <strong>${syncItems.length} atendimento(s) salvos na nuvem às ${timeStr}!</strong><br>Ao chegar em casa, abra o sistema com o PIN <code>${pin}</code> e clique em <em>"Puxar Plantão em Casa"</em>.`;
+          statusEl.innerHTML = `✅ <strong>${syncItems.length} atendimento(s) salvos na nuvem às ${timeStr}!</strong><br>Ao chegar em casa, abra o sistema com o seu PIN e clique em <em>"Puxar Plantão em Casa"</em>.`;
         }
-        showToast(`☁️ Plantão (${syncItems.length} atendimentos) sincronizado na nuvem com PIN fixo!`);
+        showToast(`☁️ Plantão (${syncItems.length} atendimentos) sincronizado na nuvem!`);
       }
     } catch (err) {
       if (!silent && statusEl) {
@@ -4951,7 +4951,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const pinInput = document.getElementById('syncFixedPinInput');
       const pin = (pinInput?.value || '').trim();
       if (!pin) {
-        showToast('⚠️ Digite seu PIN fixo pessoal (ex: 1234 ou seu nome).');
+        showToast('⚠️ Digite seu PIN fixo pessoal antes de salvar.');
         return;
       }
       setSavedSyncPin(pin);
