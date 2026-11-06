@@ -5059,7 +5059,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     });
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
-      if (confirm('Restaurar todos os 7 modelos para o texto original padrão?')) {
+      if (confirm('Restaurar todos os 8 modelos para o texto original padrão?')) {
         localStorage.removeItem('ubs_custom_templates_v10');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();

@@ -193,6 +193,33 @@ Orientações gerais
 Ciente, concordante e sem dúvidas`
   },
 
+  telessaude: {
+    id: 'telessaude',
+    name: 'Discussão Telessaúde',
+    badge: 'Teleconsultoria',
+    icon: '📞',
+    description: 'Gravação e discussão de caso clínico com o Telessaúde. Sem importar cabeçalho antigo, formata toda a discussão e condutas alinhadas em texto corrido detalhado.',
+    templateText: `## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##
+
+SUBJETIVO
+Realizo discussão de caso clínico com o serviço de Teleconsultoria / Telessaúde.
+Síntese do caso clínico apresentado, dúvidas clínicas e contextualização do paciente: 
+
+OBJETIVO
+Dados clínicos, sinais vitais e resultados de exames discutidos durante a teleconsultoria:
+
+AVALIAÇÃO
+Impressão diagnóstica compartilhada e parecer da Teleconsultoria:
+
+CONDUTA
+Discuto caso com a teleconsultoria do Telessaúde e alinho o plano diagnóstico-terapêutico.
+Oriento condutas não farmacológicas e medidas de suporte:
+Prescrevo medicações alinhadas:
+Encaminho conforme pactuação com a teleconsultoria:
+Oriento sinais de alarme e retorno precoce se intercorrências.
+Paciente e familiar cientes, concordantes e sem dúvidas ao final do atendimento.`
+  },
+
   lgbt_primeira: {
     id: 'lgbt_primeira',
     name: 'LGBTQIAP+ (1ª Consulta)',
@@ -584,6 +611,7 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
   const notesExamDetection = window.detectExamsInText(quickNotes);
   const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
   const isPrenatalTemplate = templateObj.id === 'prenatal';
+  const isTelessaudeTemplate = templateObj.id === 'telessaude';
   const hasAnyExamsToFormat = Boolean(
     hasExamFiles ||
     preTranscribedExamsText ||
@@ -743,14 +771,17 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo receitas de uso contínuo (conforme # MUC)".
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
 
-7. REGRAS ESPECÍFICAS DE PUERICULTURA (PROIBIÇÃO ABSOLUTA DE INVENTAR Z-SCORE!), PRÉ-NATAL E VISITA DOMICILIAR:
+7. REGRAS ESPECÍFICAS DE TELESSAÚDE, PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
+   - Na DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA):
+     * É TERMINANTEMENTE PROIBIDO importar cabeçalho padrão '#' com comorbidades anteriores! O registro da teleconsultoria DEVE iniciar diretamente com o título "## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##" seguido por SUBJETIVO, OBJETIVO, AVALIAÇÃO e CONDUTA.
+     * Na seção CONDUTA: estruture e descreva toda a discussão da Teleconsultoria em TEXTO CORRIDO DETALHADO (em 1ª pessoa: "Discuto caso com a teleconsultoria do Telessaúde...", "Alinho conduta...", "Oriento...", "Prescrevo..."), sem tópicos e sem listas numeradas, preservando todas as orientações especializadas, justificativas clínicas, doses e condutas pactuadas!
    - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
    - Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
 8. BLINDAGEM CONTRA INTERRUPÇÕES DE ENFERMAGEM E DIFERENCIAÇÃO VOZ DO MÉDICO VS. PACIENTE:
    - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'Filtre e descarte qualquer interrupção paralela de terceiros/enfermagem falando de outro paciente.'}
    - Quando o [MÉDICO] estiver explicando alterações de exames para o paciente, JAMAIS escreva no SUBJETIVO que "Paciente refere tal alteração".
-${parsedPrev ? `
+${parsedPrev && !isTelessaudeTemplate ? `
 9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR (SEM POLUIR AS "#" COM FRASES DA AVALIAÇÃO!):
    - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo, ${isPrenatalTemplate ? '(B) os Exames Laboratoriais e Ultrassonografias anteriores do Pré-Natal, e (C)' : 'e (B)'} a Avaliação e Conduta da última consulta.
    - ATENÇÃO: O SUBJETIVO e o OBJETIVO antigos foram removidos propositalmente para que você construa o SUBJETIVO e o OBJETIVO de hoje 100% a partir da consulta de HOJE!
