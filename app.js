@@ -5016,6 +5016,17 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       processQueueInBackground();
     };
 
+    document.getElementById('preferredModelSelect')?.addEventListener('change', (e) => {
+      const chosen = e.target.value;
+      localStorage.setItem('ubs_preferred_model', chosen);
+      const key = getSavedApiKey();
+      if (key && chosen !== 'auto') {
+        rememberWorkingModelForKey(chosen, key);
+        delete cachedDiscoveredModelsByKey[getKeyShortHash(key)];
+      }
+      showToast(`⚡ Modelo preferido alterado para: ${formatModelName(chosen)}`);
+    });
+
     document.getElementById('apiKeyForm')?.addEventListener('submit', saveApiKeyHandler);
     document.getElementById('btnSaveApiKey')?.addEventListener('click', saveApiKeyHandler);
 

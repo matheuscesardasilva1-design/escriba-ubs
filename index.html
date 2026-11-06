@@ -808,14 +808,13 @@
             Modelo de Inteligência Artificial:
           </label>
           <select id="preferredModelSelect" class="select-box" style="width: 100%; font-size: 13px; font-weight: 600;">
-            <option value="auto">🌟 Automático (Usa o melhor modelo com cota livre no momento)</option>
-            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (500 atendimentos/dia — 496 livres hoje! Recomendado)</option>
-            <option value="gemini-3.1-flash-lite">⚡ Gemini 3.1 Flash Lite (500 atendimentos/dia — 500 livres hoje!)</option>
-            <option value="gemini-2.5-flash">💎 Gemini 2.5 Flash (20 atendimentos/dia — 20 livres hoje!)</option>
-            <option value="gemma-4-31b">🌐 Gemma 4 31B (14.400 atendimentos/dia — Ultra Cota!)</option>
-            <option value="gemini-3-flash">💎 Gemini 3 Flash (20 atendimentos/dia — restam 2 hoje)</option>
-            <option value="gemini-3.8-flash">💎 Gemini 3.8 Flash (20 atendimentos/dia — cota diária esgotada hoje)</option>
-            <option value="gemini-3.6-flash">💎 Gemini 3.6 Flash (20 atendimentos/dia — cota diária esgotada hoje)</option>
+            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (500 atendimentos/dia — Áudio Completo • Recomendado!)</option>
+            <option value="auto">🌟 Automático (Alterna sozinho conforme cota livre)</option>
+            <option value="gemini-3.1-flash-lite">⚡ Gemini 3.1 Flash Lite (500 atendimentos/dia)</option>
+            <option value="gemini-3-flash">💎 Gemini 3 Flash (20 atendimentos/dia)</option>
+            <option value="gemini-3.8-flash">💎 Gemini 3.8 Flash (20 atendimentos/dia — cota 20 esgotada)</option>
+            <option value="gemini-3.6-flash">💎 Gemini 3.6 Flash (20 atendimentos/dia — cota 20 esgotada)</option>
+            <option value="gemma-4-31b" disabled>🌐 Gemma 4 31B (14.400/dia — Modelo de Texto/Foto, NÃO escuta áudio de voz)</option>
           </select>
           <small style="color: #64748b; display: block; margin-top: 4px; font-size: 11px;">
             💡 Dica: Se o modelo selecionado atingir o limite diário de 20/dia (erro 429), o sistema aciona a rede de segurança automática e usa o Gemini 3.5 Flash Lite para não travar seus atendimentos.
