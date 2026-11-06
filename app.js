@@ -4102,40 +4102,154 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
   }
 
   // ============================================================================
-  // SINCRONIZAÇÃO ENTRE COMPUTADORES (EVOLUIR DE CASA PELA CHAVE GEMINI OU ARQUIVO)
+  // SINCRONIZAÇÃO EM NUVEM POR PIN FIXO PESSOAL (AES-256-GCM + NUVEM INSTANTÂNEA)
   // ============================================================================
-  async function pushConsultationsToGeminiCloud(silent = false) {
-    const apiKey = getSavedApiKey();
-    const statusEl = document.getElementById('cloudSyncStatusText');
-    if (!apiKey) {
-      if (!silent) openApiKeyModal();
-      return;
+  function getSavedSyncPin() {
+    return (localStorage.getItem('ubs_sync_fixed_pin') || '').trim();
+  }
+
+  function setSavedSyncPin(pin) {
+    const clean = (pin || '').trim();
+    if (clean) {
+      localStorage.setItem('ubs_sync_fixed_pin', clean);
+    } else {
+      localStorage.removeItem('ubs_sync_fixed_pin');
+    }
+  }
+
+  // Gera tópico anônimo determinístico via SHA-256 do PIN para ninguém descobrir o endereço na nuvem
+  async function getTopicForPin(pin) {
+    const enc = new TextEncoder();
+    const data = enc.encode('ubs_plantao_secret_salt_2026_' + pin.trim().toLowerCase());
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return 'ubs_plantao_' + hashHex.slice(0, 24);
+  }
+
+  function uint8ArrayToBase64(uint8) {
+    let binary = '';
+    const len = uint8.byteLength;
+    const chunkSize = 8192;
+    for (let i = 0; i < len; i += chunkSize) {
+      const chunk = uint8.subarray(i, Math.min(i + chunkSize, len));
+      binary += String.fromCharCode.apply(null, chunk);
+    }
+    return btoa(binary);
+  }
+
+  function base64ToUint8Array(base64) {
+    const binary = atob(base64.replace(/\s+/g, ''));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  // Criptografa o JSON com AES-256-GCM usando chave derivada de PBKDF2 (50.000 iterações)
+  async function encryptWithPin(plainText, pin) {
+    const enc = new TextEncoder();
+    const pinBytes = enc.encode(pin.trim());
+    const salt = window.crypto.getRandomValues(new Uint8Array(16));
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      pinBytes,
+      { name: 'PBKDF2' },
+      false,
+      ['deriveKey']
+    );
+
+    const key = await window.crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 50000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+
+    const ciphertext = await window.crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      enc.encode(plainText)
+    );
+
+    const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+    combined.set(salt, 0);
+    combined.set(iv, salt.length);
+    combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
+
+    return uint8ArrayToBase64(combined);
+  }
+
+  // Descriptografa os dados com o PIN
+  async function decryptWithPin(base64Cipher, pin) {
+    const combined = base64ToUint8Array(base64Cipher);
+    if (combined.length < 28) {
+      throw new Error('Arquivo de plantão corrompido ou incompleto.');
     }
 
+    const salt = combined.slice(0, 16);
+    const iv = combined.slice(16, 28);
+    const ciphertext = combined.slice(28);
+
+    const enc = new TextEncoder();
+    const pinBytes = enc.encode(pin.trim());
+
+    const keyMaterial = await window.crypto.subtle.importKey(
+      'raw',
+      pinBytes,
+      { name: 'PBKDF2' },
+      false,
+      ['deriveKey']
+    );
+
+    const key = await window.crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 50000, hash: 'SHA-256' },
+      keyMaterial,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await window.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      ciphertext
+    );
+
+    return new TextDecoder().decode(decrypted);
+  }
+
+  async function pushConsultationsToCloud(silent = false) {
+    const pinInput = document.getElementById('syncFixedPinInput');
+    let pin = (pinInput?.value || '').trim() || getSavedSyncPin();
+    const statusEl = document.getElementById('cloudSyncStatusText');
+
+    if (!pin) {
+      if (!silent) {
+        if (statusEl) {
+          statusEl.innerHTML = '⚠️ <strong>Por favor, defina um PIN Fixo acima</strong> (ex: <code>1234</code> ou <code>dr.matheus</code>) antes de salvar.';
+        }
+        pinInput?.focus();
+      }
+      return;
+    }
+    setSavedSyncPin(pin);
+
     if (!silent && statusEl) {
-      statusEl.textContent = '☁️ Sincronizando plantão na nuvem da sua Chave Gemini...';
+      statusEl.textContent = '🔒 Criptografando atendimentos com seu PIN e enviando para a nuvem...';
     }
 
     try {
       const all = await window.ScribeDB.getAllConsultations();
-      // Sincroniza os últimos 40 atendimentos (dos últimos 7 dias)
-      const recent = all.slice(0, 40);
+      const recent = all.slice(0, 60);
       const syncItems = [];
 
       for (const c of recent) {
-        // Se houver áudio ainda pendente de transcrição e ainda não tiver sido enviado à nuvem, sobe o áudio para a File API da chave!
-        if (c.status !== 'done' && c.chunkCount > 0 && !c.audioDeleted && !c.remoteFileUri) {
-          try {
-            const audioBlob = await window.ScribeDB.assembleAudioBlob(c.id, c.mimeType);
-            if (audioBlob && audioBlob.size > 0) {
-              const cleanMime = normalizeAudioMimeType(audioBlob, c.fileName || '');
-              c.remoteFileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
-              await window.ScribeDB.saveConsultation(c);
-            }
-          } catch (_) {}
-        }
-
-        syncItems.push({
+        const copy = {
           id: c.id,
           patientLabel: c.patientLabel,
           templateId: c.templateId,
@@ -4159,143 +4273,181 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           referralText: c.referralText || '',
           referralSpecialty: c.referralSpecialty || '',
           evolvedInPEC: Boolean(c.evolvedInPEC),
-          evolvedAt: c.evolvedAt || null,
-          remoteFileUri: c.remoteFileUri || ''
-        });
+          evolvedAt: c.evolvedAt || null
+        };
+
+        // Se ainda não foi transcrito e tem áudio recente, embute para poder transcrever em casa
+        if (c.status !== 'done' && c.chunkCount > 0 && !c.audioDeleted) {
+          try {
+            const blob = await window.ScribeDB.assembleAudioBlob(c.id, c.mimeType);
+            if (blob && blob.size > 0 && blob.size < 12 * 1024 * 1024) {
+              copy.embeddedAudioBase64 = await blobToBase64(blob);
+            }
+          } catch (_) {}
+        }
+
+        syncItems.push(copy);
       }
 
-      const payload = JSON.stringify({
-        syncVersion: 1,
+      const payloadRaw = JSON.stringify({
+        syncVersion: 2,
         syncedAt: Date.now(),
         consultations: syncItems
       });
 
-      // Remove snapshots antigos "UBS_PLANTAO_SYNC_V1" na conta para manter limpo
-      try {
-        const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/files?pageSize=30&key=${encodeURIComponent(apiKey)}`);
-        if (listRes.ok) {
-          const listData = await listRes.json();
-          const oldFiles = (listData.files || []).filter(f => f.displayName === 'UBS_PLANTAO_SYNC_V1');
-          for (const oldF of oldFiles) {
-            await fetch(`https://generativelanguage.googleapis.com/v1beta/${oldF.name}?key=${encodeURIComponent(apiKey)}`, { method: 'DELETE' }).catch(() => {});
-          }
-        }
-      } catch (_) {}
+      // Criptografia AES-256 de ponta a ponta com o PIN fixo do médico
+      const encryptedData = await encryptWithPin(payloadRaw, pin);
+      const topic = await getTopicForPin(pin);
 
-      const blob = new Blob([payload], { type: 'text/plain' });
-      const initUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`;
-      const initRes = await fetch(initUrl, {
+      const res = await fetch(`https://ntfy.sh/${topic}`, {
         method: 'POST',
         headers: {
-          'X-Goog-Upload-Protocol': 'resumable',
-          'X-Goog-Upload-Command': 'start',
-          'X-Goog-Upload-Header-Content-Length': String(blob.size),
-          'X-Goog-Upload-Header-Content-Type': 'text/plain',
-          'Content-Type': 'application/json'
+          'Title': 'Plantao UBS Sincronizado',
+          'Priority': 'low',
+          'Tags': 'hospital,stethoscope'
         },
-        body: JSON.stringify({ file: { displayName: 'UBS_PLANTAO_SYNC_V1' } })
+        body: encryptedData
       });
 
-      const uploadUrl = initRes.headers.get('x-goog-upload-url');
-      if (uploadUrl) {
-        await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Length': String(blob.size),
-            'X-Goog-Upload-Offset': '0',
-            'X-Goog-Upload-Command': 'upload, finalize'
-          },
-          body: blob
-        });
+      if (!res.ok) {
+        throw new Error(`Servidor de sincronização retornou status ${res.status}`);
       }
 
+      const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       if (!silent) {
         if (statusEl) {
-          statusEl.textContent = `✅ ${syncItems.length} atendimento(s) salvos na nuvem da sua Chave Gemini (${new Date().toLocaleTimeString('pt-BR')})! Basta abrir em casa com a mesma chave.`;
+          statusEl.innerHTML = `✅ <strong>${syncItems.length} atendimento(s) salvos na nuvem às ${timeStr}!</strong><br>Ao chegar em casa, abra o sistema com o PIN <code>${pin}</code> e clique em <em>"Puxar Plantão em Casa"</em>.`;
         }
-        showToast(`☁️ Plantão (${syncItems.length} atendimentos) sincronizado na nuvem!`);
+        showToast(`☁️ Plantão (${syncItems.length} atendimentos) sincronizado na nuvem com PIN fixo!`);
       }
     } catch (err) {
       if (!silent && statusEl) {
-        statusEl.textContent = `⚠️ Não foi possível sincronizar na nuvem agora (${err.message}). Use o botão "Baixar Arquivo do Plantão (.ubs)" abaixo!`;
+        statusEl.textContent = `⚠️ Erro ao salvar na nuvem: ${err.message}. Você também pode usar a Opção 2 (Baixar Arquivo) abaixo.`;
       }
     }
   }
 
-  async function pullConsultationsFromGeminiCloud() {
-    const apiKey = getSavedApiKey();
+  async function pullConsultationsFromCloud() {
+    const pinInput = document.getElementById('syncFixedPinInput');
+    let pin = (pinInput?.value || '').trim() || getSavedSyncPin();
     const statusEl = document.getElementById('cloudSyncStatusText');
-    if (!apiKey) {
-      openApiKeyModal();
+
+    if (!pin) {
+      if (statusEl) {
+        statusEl.innerHTML = '⚠️ <strong>Digite seu PIN Fixo no campo acima</strong> (o mesmo que você usou no Posto).';
+      }
+      pinInput?.focus();
       return;
     }
+    setSavedSyncPin(pin);
 
     if (statusEl) {
-      statusEl.textContent = '⏳ Buscando seus atendimentos salvos na nuvem da Chave Gemini...';
+      statusEl.textContent = '⏳ Conectando à nuvem e localizando seu plantão com seu PIN...';
     }
 
     try {
-      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/files?pageSize=50&key=${encodeURIComponent(apiKey)}`);
-      if (!listRes.ok) {
-        throw new Error(`Erro HTTP ${listRes.status} ao consultar nuvem da chave`);
+      const topic = await getTopicForPin(pin);
+      const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
+      if (!res.ok) {
+        throw new Error(`Erro ao conectar à nuvem (${res.status})`);
       }
-      const listData = await listRes.json();
-      const syncFiles = (listData.files || []).filter(f => f.displayName === 'UBS_PLANTAO_SYNC_V1');
 
-      if (syncFiles.length === 0) {
+      const text = await res.text();
+      const lines = text.trim().split('\n').filter(Boolean);
+      if (lines.length === 0) {
         if (statusEl) {
-          statusEl.textContent = 'ℹ️ Nenhum plantão encontrado na nuvem desta chave. No computador do posto, clique em "Salvar Plantão na Nuvem Agora" antes de sair.';
+          statusEl.textContent = 'ℹ️ Nenhum plantão recente encontrado para este PIN. No computador do posto, clique em "Salvar Plantão no Posto" antes de sair.';
         }
         return;
       }
 
-      const newestFile = syncFiles[0];
-      const reqBody = {
-        contents: [{
-          role: 'user',
-          parts: [
-            { fileData: { mimeType: 'text/plain', fileUri: newestFile.uri } },
-            { text: 'Retorne EXATAMENTE o objeto JSON contido neste arquivo sem alterar nenhum caractere.' }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens: 65536,
-          responseMimeType: 'application/json'
-        }
-      };
+      // Encontra a mensagem mais recente enviada para o tópico do PIN
+      let latestMsg = null;
+      for (let i = lines.length - 1; i >= 0; i--) {
+        try {
+          const obj = JSON.parse(lines[i]);
+          if (obj.event === 'message') {
+            latestMsg = obj;
+            break;
+          }
+        } catch (_) {}
+      }
 
-      const { responseJson } = await callGeminiWithFallbackAndRetry(reqBody, apiKey);
-      const rawJson = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const parsed = JSON.parse(rawJson.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim());
+      if (!latestMsg) {
+        throw new Error('Nenhum dado de plantão válido encontrado no servidor.');
+      }
+
+      let encryptedPayload = '';
+      if (latestMsg.attachment && latestMsg.attachment.url) {
+        if (statusEl) statusEl.textContent = '⏳ Baixando pacote do plantão da nuvem...';
+        const attRes = await fetch(latestMsg.attachment.url);
+        if (!attRes.ok) throw new Error('Falha ao baixar pacote completo do plantão.');
+        encryptedPayload = await attRes.text();
+      } else {
+        encryptedPayload = latestMsg.message || '';
+      }
+
+      if (!encryptedPayload) {
+        throw new Error('Conteúdo vazio recebido do servidor.');
+      }
+
+      if (statusEl) statusEl.textContent = '🔓 Descriptografando atendimentos com seu PIN...';
+      let decryptedRaw = '';
+      try {
+        decryptedRaw = await decryptWithPin(encryptedPayload, pin);
+      } catch (decErr) {
+        throw new Error('PIN incorreto ou dados corrompidos. Verifique se o PIN digitado é exatamente o mesmo cadastrado no Posto.');
+      }
+
+      const parsed = JSON.parse(decryptedRaw);
       const remoteList = Array.isArray(parsed.consultations) ? parsed.consultations : [];
 
       let importedCount = 0;
       for (const item of remoteList) {
         if (!item || !item.id) continue;
         const local = await window.ScribeDB.getConsultation(item.id);
+        const embeddedB64 = item.embeddedAudioBase64;
+        delete item.embeddedAudioBase64;
+
         if (!local || (item.updatedAt || 0) > (local.updatedAt || 0) || (!local.evolutionText && item.evolutionText)) {
           await window.ScribeDB.saveConsultation({
             ...(local || {}),
             ...item
           });
+          if (embeddedB64) {
+            try {
+              const byteChars = atob(embeddedB64);
+              const byteNumbers = new Array(byteChars.length);
+              for (let i = 0; i < byteChars.length; i++) {
+                byteNumbers[i] = byteChars.charCodeAt(i);
+              }
+              const audioBlob = new Blob([new Uint8Array(byteNumbers)], { type: item.mimeType || 'audio/webm' });
+              await window.ScribeDB.saveAudioChunk(item.id, 0, audioBlob, item.mimeType || 'audio/webm');
+            } catch (_) {}
+          }
           importedCount++;
         }
       }
 
       await refreshQueueSidebar();
       updateStorageStatsUI();
+
       if (statusEl) {
-        statusEl.textContent = `✅ ${remoteList.length} atendimento(s) sincronizados do Posto (${importedCount} novos/atualizados)! Confira na aba "Meu Histórico".`;
+        statusEl.innerHTML = `✅ <strong>${remoteList.length} atendimento(s) sincronizados com sucesso (${importedCount} novos/atualizados)!</strong><br>Disponíveis agora no seu <em>"Meu Histórico"</em> para evoluir no PEC.`;
       }
       showToast(`📥 ${remoteList.length} atendimento(s) puxados da nuvem com sucesso!`);
+      switchMainPage('pageHistory');
       processQueueInBackground();
     } catch (err) {
       if (statusEl) {
-        statusEl.textContent = `⚠️ Falha ao puxar da nuvem: ${err.message}. Se a cota diária estiver cheia, use a Opção 2 (Arquivo do Plantão).`;
+        statusEl.textContent = `⚠️ Falha ao puxar da nuvem: ${err.message}`;
       }
     }
   }
+
+  // Aliases para compatibilidade reversa
+  const pushConsultationsToGeminiCloud = pushConsultationsToCloud;
+  const pullConsultationsFromGeminiCloud = pullConsultationsFromCloud;
 
   async function exportPlantaoToFile() {
     try {
@@ -4776,10 +4928,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     });
 
-    // Modal de Sincronização entre Computadores / Evoluir de Casa
+    // Modal de Sincronização entre Computadores / Evoluir de Casa (PIN Fixo Pessoal)
     const openCloudSync = () => {
       const chk = document.getElementById('chkAutoCloudSync');
       if (chk) chk.checked = state.autoCloudSync;
+      const pinInput = document.getElementById('syncFixedPinInput');
+      if (pinInput) pinInput.value = getSavedSyncPin();
       const modal = document.getElementById('cloudSyncModal');
       if (modal) modal.style.display = 'flex';
     };
@@ -4793,8 +4947,21 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       state.autoCloudSync = Boolean(e.target.checked);
       localStorage.setItem('ubs_auto_cloud_sync', String(state.autoCloudSync));
     });
-    document.getElementById('btnPushCloudSync')?.addEventListener('click', () => pushConsultationsToGeminiCloud(false));
-    document.getElementById('btnPullCloudSync')?.addEventListener('click', pullConsultationsFromGeminiCloud);
+    document.getElementById('btnSaveSyncFixedPin')?.addEventListener('click', () => {
+      const pinInput = document.getElementById('syncFixedPinInput');
+      const pin = (pinInput?.value || '').trim();
+      if (!pin) {
+        showToast('⚠️ Digite seu PIN fixo pessoal (ex: 1234 ou seu nome).');
+        return;
+      }
+      setSavedSyncPin(pin);
+      showToast('💾 PIN Fixo Pessoal salvo neste navegador!');
+    });
+    document.getElementById('syncFixedPinInput')?.addEventListener('change', (e) => {
+      setSavedSyncPin(e.target.value);
+    });
+    document.getElementById('btnPushCloudSync')?.addEventListener('click', () => pushConsultationsToCloud(false));
+    document.getElementById('btnPullCloudSync')?.addEventListener('click', pullConsultationsFromCloud);
     document.getElementById('btnExportPlantaoFile')?.addEventListener('click', exportPlantaoToFile);
     document.getElementById('importPlantaoFileInput')?.addEventListener('change', (e) => {
       if (e.target.files && e.target.files[0]) {

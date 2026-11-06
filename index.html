@@ -715,37 +715,60 @@
         <button type="button" class="btn btn-secondary" id="btnCloseCloudSyncModal">✕</button>
       </div>
 
+      <!-- OPÇÃO 1: NUVEM COM PIN FIXO PESSOAL (ZERO-CONFIGURAÇÃO) -->
       <div class="step-box" style="background: #eff6ff; border-color: #bfdbfe; color: #1e3a8a; margin-bottom: 14px;">
-        <strong>☁️ Opção 1 — Sincronização Automática na Nuvem (pela sua Chave Gemini):</strong>
-        <p style="margin-top: 4px; font-size: 12.5px;">
-          Seus atendimentos (tanto evoluções prontas quanto gravações pendentes) ficam salvos de forma criptografada/privada na nuvem da sua própria chave Gemini por 48h. Ao chegar em casa, basta colocar a mesma chave e clicar em <strong>"Puxar Plantão da Nuvem"</strong>!
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <strong style="font-size: 13.5px;">☁️ Opção 1 — Nuvem por PIN Fixo Pessoal (Zero-Configuração):</strong>
+          <span style="font-size: 11px; background: #dbeafe; color: #1e40af; padding: 2px 8px; border-radius: 12px; font-weight: 700;">Recomendada</span>
+        </div>
+        <p style="margin-top: 6px; font-size: 12.5px; line-height: 1.45;">
+          Defina seu PIN ou senha pessoal abaixo (uma única vez). No posto, clique em <strong>"Salvar no Posto"</strong>. Em casa, clique em <strong>"Puxar em Casa"</strong> com o mesmo PIN e todos os atendimentos carregarão instantaneamente!
         </p>
-        <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; font-weight: 700; cursor: pointer;">
+
+        <!-- CAMPO DO PIN FIXO -->
+        <div style="margin-top: 10px; background: #ffffff; padding: 10px 12px; border-radius: 6px; border: 1px solid #bfdbfe;">
+          <label style="font-size: 12px; font-weight: 700; color: #1e40af; display: block; margin-bottom: 5px;">
+            🔑 Seu PIN Fixo Pessoal (Escolha uma senha para usar sempre no Posto e em Casa):
+          </label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="syncFixedPinInput" class="input-text" placeholder="Ex: 1234 ou dr.matheus" style="font-size: 14px; font-weight: 700; letter-spacing: 1px; padding: 8px 10px; flex: 1; border: 1.5px solid #93c5fd;" autocomplete="off" />
+            <button type="button" class="btn btn-secondary" id="btnSaveSyncFixedPin" style="padding: 8px 12px; font-size: 12px; white-space: nowrap; font-weight: 700;">
+              💾 Salvar PIN
+            </button>
+          </div>
+          <span style="font-size: 11px; color: #64748b; margin-top: 4px; display: block;">
+            🔒 Seus dados são criptografados com esse PIN (AES-256) antes de subir para a nuvem. Total sigilo e LGPD.
+          </span>
+        </div>
+
+        <label style="display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; font-weight: 700; cursor: pointer;">
           <input type="checkbox" id="chkAutoCloudSync" checked />
-          Sincronizar automaticamente na nuvem após finalizar cada atendimento no Posto
+          Salvar automaticamente na nuvem após finalizar cada atendimento no Posto
         </label>
-        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-          <button type="button" class="btn btn-primary" id="btnPushCloudSync" style="flex: 1; background: #2563eb;">
-            ☁️ Salvar Plantão na Nuvem Agora
+
+        <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary" id="btnPushCloudSync" style="flex: 1; background: #2563eb; font-weight: 700; padding: 10px 14px; font-size: 13px;">
+            ☁️ Salvar Plantão no Posto
           </button>
-          <button type="button" class="btn btn-primary" id="btnPullCloudSync" style="flex: 1; background: #059669;">
-            📥 Puxar Plantão da Nuvem (Em Casa)
+          <button type="button" class="btn btn-primary" id="btnPullCloudSync" style="flex: 1; background: #059669; font-weight: 700; padding: 10px 14px; font-size: 13px;">
+            📥 Puxar Plantão em Casa
           </button>
         </div>
-        <div id="cloudSyncStatusText" style="margin-top: 8px; font-size: 12px; font-weight: 700; color: #0369a1;"></div>
+        <div id="cloudSyncStatusText" style="margin-top: 10px; font-size: 12.5px; font-weight: 700; color: #0369a1; min-height: 18px;"></div>
       </div>
 
+      <!-- OPÇÃO 2: ARQUIVO PORTÁTIL -->
       <div class="step-box" style="background: #f8fafc; border-color: #cbd5e1; color: #334155;">
-        <strong>📦 Opção 2 — Arquivo Portátil do Plantão (Funciona mesmo com cota zerada / WhatsApp):</strong>
+        <strong style="font-size: 13.5px;">📦 Opção 2 — Arquivo Portátil do Plantão (.ubs) (Backup 100% Offline):</strong>
         <p style="margin-top: 4px; font-size: 12.5px;">
-          Baixe todos os atendimentos de hoje (incluindo áudios pendentes e evoluções prontas) em um único arquivo leve para enviar pelo WhatsApp/Drive e abrir em casa com 1 clique:
+          Caso o posto fique sem conexão à internet, baixe todos os atendimentos em um único arquivo leve para transferir via WhatsApp Web ou pendrive e abrir em casa:
         </p>
         <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
-          <button type="button" class="btn btn-secondary" id="btnExportPlantaoFile" style="flex: 1; font-weight: 700;">
-            📤 Baixar Arquivo do Plantão (.ubs)
+          <button type="button" class="btn btn-secondary" id="btnExportPlantaoFile" style="flex: 1; font-weight: 700; padding: 8px 12px;">
+            📤 Baixar Arquivo (.ubs)
           </button>
-          <label class="btn btn-secondary" style="flex: 1; cursor: pointer; font-weight: 700; text-align: center;">
-            📂 Abrir Arquivo do Plantão em Casa
+          <label class="btn btn-secondary" style="flex: 1; cursor: pointer; font-weight: 700; text-align: center; padding: 8px 12px;">
+            📂 Abrir Arquivo em Casa
             <input type="file" id="importPlantaoFileInput" accept=".json,.ubs" style="display: none;" />
           </label>
         </div>
