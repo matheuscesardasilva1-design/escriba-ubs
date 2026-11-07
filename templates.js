@@ -424,6 +424,7 @@ window.parsePreviousConsultationData = function(prevRawText) {
   const lines = raw.split(/\r?\n/);
   const headerLines = [];
   const headerGroups = []; // Cada grupo: { hashLine: '# ...', subLines: ['- ...', '> ...'] }
+  const unstructuredHeaderLines = [];
   const labExamLines = [];
   const usgExamLines = [];
   const avaliacaoLines = [];
@@ -449,35 +450,36 @@ window.parsePreviousConsultationData = function(prevRawText) {
 
     if (/^##.*##$/.test(trimmed)) continue;
 
-    if (/^(?:\d+\.\s*)?SUBJETIVO\b/i.test(trimmed)) {
+    // Reconhece cabeçalhos padrão e variações de evolução antiga/externa
+    if (/^(?:\d+[\.\-\)]\s*)?(?:SUBJETIVO|ANAMNESE|HIST[ÓO]RIA(?:\s+CL[ÍI]NICA)?|HDA|QUEIXA\s+PRINCIPAL|QP|S\s*[:\-])\b/i.test(trimmed)) {
       currentSection = 'subjetivo';
       continue;
     }
-    if (/^(?:\d+\.\s*)?OBJETIVO\b/i.test(trimmed)) {
+    if (/^(?:\d+[\.\-\)]\s*)?(?:OBJETIVO|EXAME\s+F[ÍI]SICO|EXAME\s+CL[ÍI]NICO|EF|O\s*[:\-])\b/i.test(trimmed)) {
       currentSection = 'objetivo';
       continue;
     }
-    if (/^(?:\d+\.\s*)?EXAMES\s+COMPLEMENTARES\b/i.test(trimmed)) {
+    if (/^(?:\d+[\.\-\)]\s*)?(?:EXAMES\s+COMPLEMENTARES|EXAMES\s+LABORATORIAIS|EXAMES|LABS|LABORAT[ÓO]RIO)\b/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'exames_labs';
       continue;
     }
-    if (/^(?:\d+\.\s*)?(?:ULTRASSONOGRAFIA|ECOGRAFIA|EXAMES\s+DE\s+IMAGEM)\b/i.test(trimmed)) {
+    if (/^(?:\d+[\.\-\)]\s*)?(?:ULTRASSONOGRAFIA|ECOGRAFIA|EXAMES\s+DE\s+IMAGEM|USG|US|RAIO-X|TC|RM)\b/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'exames_usg';
       continue;
     }
-    if (/^(?:\d+\.\s*)?(?:RASTREAMENTOS|SOROLOGIAS\s+E\s+INFECTOLOGIA|TERAPIA\s+HORMONAL)\b/i.test(trimmed)) {
+    if (/^(?:\d+[\.\-\)]\s*)?(?:RASTREAMENTOS|SOROLOGIAS\s+E\s+INFECTOLOGIA|TERAPIA\s+HORMONAL)\b/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'other_structured';
       continue;
     }
-    if (/^(?:\d+\.\s*)?AVALIA[ÇC][ÃA]O\b/i.test(trimmed)) {
+    if (/^(?:\d+[\.\-\)]\s*)?(?:AVALIA[ÇC][ÃA]O|HIP[ÓO]TESE(?:S)?(?:\s+DIAGN[ÓO]STICA[S]?)?|DIAGN[ÓO]STICO(?:S)?|IMPRESS[ÃA]O(?:\s+DIAGN[ÓO]STICA)?|A\s*[:\-])\b/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'avaliacao';
       continue;
     }
-    if (/^(?:\d+\.\s*)?CONDUTA\b/i.test(trimmed)) {
+    if (/^(?:\d+[\.\-\)]\s*)?(?:CONDUTA|PLANO(?:\s+TERAP[ÊE]UTICO)?|TRATAMENTO|PRESCRI[ÇC][ÃA]O|ORIENTA[ÇC][ÕO]ES|CD|P\s*[:\-])\b/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'conduta';
       continue;
@@ -486,6 +488,16 @@ window.parsePreviousConsultationData = function(prevRawText) {
     if (currentSection === 'header') {
       if (!trimmed) continue;
       let processedLine = trimmed;
+
+      // Se a linha NÃO começa com '#' e NÃO é sub-linha vinculada a um grupo '#', não pertence ao cabeçalho '#'
+      if (!processedLine.startsWith('#') && !processedLine.startsWith('-') && !processedLine.startsWith('>') && !processedLine.startsWith('>>')) {
+        unstructuredHeaderLines.push(processedLine);
+        continue;
+      }
+      if ((processedLine.startsWith('-') || processedLine.startsWith('>') || processedLine.startsWith('>>')) && !currentGroup) {
+        unstructuredHeaderLines.push(processedLine);
+        continue;
+      }
 
       // Atualiza automaticamente a IG se houver linha "# IG ... POR ECO COM X SEM EM DD/MM/AAAA" mantendo os dados da Eco intactos!
       const igEcoMatch = processedLine.match(/^#\s*IG\s*(?:(\d+)\s*(?:\+|sem\w*|s)\s*(\d+)?)?\s*POR\s+ECO\s+COM\s+(\d+)\s*SEM[A-Z]*(?:\s*E\s*(\d+)\s*DIAS?)?\s+EM\s+(\d{2})\/(\d{2})\/(\d{4})(.*)$/i);
@@ -548,6 +560,9 @@ window.parsePreviousConsultationData = function(prevRawText) {
     headerText: headerLines.join('\n'),
     headerLines,
     headerGroups,
+    unstructuredText: unstructuredHeaderLines.join('\n'),
+    isUnstructured: headerLines.length === 0,
+    rawText: raw,
     updatedIgLine: updatedIgGroup ? updatedIgGroup.hashLine : '',
     diagnosesToPromote: [],
     promotedFromAvaliacao: [],
@@ -672,6 +687,17 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
     "⚠️ Áudio sem conteúdo de consulta médica identificado.\nTranscrição captada no microfone: \"[coloque aqui apenas o que foi falado literalmente no áudio]\""
   * E deixe "codigos_cid_ciap": [].
 
+=== LEI SUPREMA 3: OBRIGATORIEDADE DO FORMATO PADRÃO DO MODELO SELECIONADO ===
+- Se a evolução anterior fornecida estiver em qualquer outro formato (texto corrido narrativo, evolução hospitalar, resumo de alta, tópicos não-SOAP, letras S/O/A/P, prontuário antigo ou sem cabeçalho "#"):
+  * É TERMINANTEMENTE PROIBIDO copiar, imitar ou adotar a estrutura ou layout da evolução antiga!
+  * A evolução de HOJE DEVE SER GERADA RIGOROSAMENTE NO MODELO DE REFERÊNCIA SELECIONADO (${templateObj.name}), contendo todas as seções obrigatórias:
+    1) Cabeçalho "#" com comorbidades (# Comorbidade), # MUC:, # Tabagista:, # Alergias:
+    2) SUBJETIVO (Anamnese completa e queixas em linguagem médica formal)
+    3) OBJETIVO (Ectoscopia base, sinais vitais e exame físico estruturado)
+    4) EXAMES COMPLEMENTARES (apenas se houver exames novos trazidos na consulta de hoje)
+    5) AVALIAÇÃO (Hipóteses diagnósticas sem traços e sem códigos CID-10 no texto)
+    6) CONDUTA (Em 1ª pessoa verbal do médico: Prescrevo, Oriento, Explico, Renovo medicações de uso contínuo, sem tópicos)
+
 === REGRAS CRÍTICAS E OBRIGATÓRIAS (VALEM PARA O PRÉ-NATAL E TODOS OS 7 MODELOS!) ===
 
 1. PADRÃO ESTRITO DO CABEÇALHO "#" (CONDIÇÕES DE SAÚDE, SUB-LINHAS COM TRAÇO "-", GPVPCA, IG POR ECO, VACINAS, SOROLOGIAS, TOXO E MUC):
@@ -763,7 +789,7 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - PRESCRIÇÕES MÉDICAS COMPLETAS:
      * Toda e qualquer medicação prescrita, ajustada ou renovada deve estar detalhada na CONDUTA com nome oficial brasileiro, dosagem, frequência, posologia e duração ("Prescrevo Ad-Til...", "Oriento manutenção de Endorus gotas...", "Oriento Paracetamol 100 mg/ml...").
      * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer de registrar as medicações que o médico prescreveu no consultório!
-   - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo receitas de uso contínuo (conforme # MUC)".
+   - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
 
 7. REGRAS ESPECÍFICAS DE TELESSAÚDE, PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
@@ -786,8 +812,9 @@ ${parsedPrev && !isTelessaudeTemplate ? `
      2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se o paciente não tomou ou suspendeu medicação por conta própria, relate no SUBJETIVO e ajuste a # MUC conforme a conduta atual.
      ${isPrenatalTemplate ? '3) No Pré-Natal, mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje logo abaixo deles!' : '3) NÃO copie os exames da evolução anterior! Inclua em EXAMES COMPLEMENTARES apenas os exames novos avaliados hoje.'}
 
-=== (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR (MANTER EXATAMENTE ESTAS LINHAS "#" E SUB-LINHAS "-"!) ===
-${parsedPrev.headerText || 'Nenhum cabeçalho anterior.'}
+=== (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR ===
+${parsedPrev.headerLines && parsedPrev.headerLines.length > 0 ? `(MANTER EXATAMENTE ESTAS LINHAS "#" E SUB-LINHAS "-"!):\n${parsedPrev.headerText}` : (previousConsultationText ? `(EVOLUÇÃO ANTERIOR EM OUTRO FORMATO — EXTRAIR COMORBIDADES PARA "#", "# MUC:", "# Tabagista:" E "# Alergias:", MAS GERAR ESTRITAMENTE NO MODELO PADRÃO!):\n${previousConsultationText}` : 'Nenhum cabeçalho anterior.')}
+${parsedPrev.unstructuredText ? `\nANOTAÇÕES DA EVOLUÇÃO ANTERIOR:\n${parsedPrev.unstructuredText}\n` : ''}
 ${isPrenatalTemplate ? `
 === (B) EXAMES ANTERIORES DO PRÉ-NATAL (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
 ${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES:\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
@@ -850,7 +877,7 @@ Responda em JSON válido contendo exatamente estas chaves:
   ${hasPreTranscribedAudio ? '' : '"transcricao_literal_do_audio": "Transcrição fiel e INTEGRAL de 100% do que foi falado no áudio do início ao fim separando [MÉDICO]: e [PACIENTE]: (incluindo todas as queixas, relatos de emergência e explicações!)",\n  '}"evolucao_completa": "Texto completo e detalhado da evolução estruturada seguindo fielmente o MODELO DE REFERÊNCIA, incluindo 100% de tudo o que foi dito na consulta e mantendo todas as #, sub-linhas '-' e regras de exames com quebras de linha \\n",
   "codigos_cid_ciap": ["Lista com os códigos CIAP-2 e CID-10 sugeridos para digitar fora da evolução no PEC (ou [] se não houver diagnóstico)"],
   "especialidade_sugerida_encaminhamento": "Se durante a consulta foi citado encaminhamento, informe a especialidade, caso contrário deixe string vazia",
-  "alertas_auditoria": ["Lista curta apenas se faltou algum dado crítico obrigatório"]
+  "alertas_auditoria": ["Lista curta se faltou algum dado crítico obrigatório. Se o campo '# Alergias:' ou '# Tabagista:' estiver ausente ou não informado na consulta, adicione obrigatoriamente nesta lista: '⚠️ Campo ALERGIAS ausente/não informado' e/ou '⚠️ Campo TABAGISMO ausente/não informado'"]
 }`;
 };
 

@@ -597,8 +597,11 @@
 
   function getSelectedSoapSubtypeHeader() {
     const selectedRadio = document.querySelector('input[name="soapVisitSubtype"]:checked');
-    const mode = selectedRadio ? selectedRadio.value : 'DEMANDA ESPONTÂNEA';
-    if (mode === 'NENHUM' || mode === 'NONE' || mode === '') {
+    if (!selectedRadio) {
+      return ''; // Desmarcado por padrão = Sem título ##
+    }
+    const mode = selectedRadio.value;
+    if (mode === 'NENHUM' || mode === 'NONE' || !mode) {
       return '';
     }
     if (mode === 'CONSULTA AGENDADA - 0800' || mode === 'CONSULTA AGENDADA') {
@@ -607,7 +610,10 @@
     if (mode === 'RETORNO MÉDICO') {
       return '## RETORNO MÉDICO ##';
     }
-    return '## DEMANDA ESPONTÂNEA ##';
+    if (mode === 'DEMANDA ESPONTÂNEA') {
+      return '## DEMANDA ESPONTÂNEA ##';
+    }
+    return '';
   }
 
   function togglePuericulturaZScorePanel() {
@@ -1020,8 +1026,7 @@
     if (liveBox) liveBox.style.display = 'none';
     if (liveEditor) liveEditor.value = '';
 
-    const defaultRadio = document.querySelector('input[name="soapVisitSubtype"][value="DEMANDA ESPONTÂNEA"]');
-    if (defaultRadio) defaultRadio.checked = true;
+    document.querySelectorAll('input[name="soapVisitSubtype"]').forEach(r => { r.checked = false; });
 
     clearZScoreInputs();
     renderPendingExamFilesUI();
@@ -1180,8 +1185,7 @@
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     if (liveBox) liveBox.style.display = 'none';
     if (liveExamEditor) liveExamEditor.value = '';
-    const defaultRadio = document.querySelector('input[name="soapVisitSubtype"][value="DEMANDA ESPONTÂNEA"]');
-    if (defaultRadio) defaultRadio.checked = true;
+    document.querySelectorAll('input[name="soapVisitSubtype"]').forEach(r => { r.checked = false; });
     renderPendingExamFilesUI();
     renderTemplateSelector();
     updateRecordingControlsUI();
@@ -1694,7 +1698,11 @@
           await window.ScribeDB.saveConsultation(nextItem);
 
           addDailyTokenUsage(result.tokensUsed || 0);
-          showToast(`✅ 100% — Evolução pronta: ${nextItem.patientLabel}`);
+          if (nextItem.auditAlerts && nextItem.auditAlerts.length > 0) {
+            showToast(`⚠️ ${nextItem.patientLabel} concluído com aviso: ${nextItem.auditAlerts.join(' • ')}`);
+          } else {
+            showToast(`✅ 100% — Evolução pronta: ${nextItem.patientLabel}`);
+          }
 
           if (state.autoCloudSync) {
             pushConsultationsToGeminiCloud(true).catch(() => {});
@@ -1709,7 +1717,10 @@
               pctBadge.textContent = '100%';
             }
             if (barFill) barFill.style.width = '100%';
-            bannerText.innerHTML = `✅ Prontuário de <strong>${escapeHtml(nextItem.patientLabel)}</strong> 100% concluído em ${Math.max(1, Math.round(elapsedSec))}s! <button type="button" id="btnBannerOpenFinished" style="margin-left:10px;padding:3px 10px;border-radius:6px;border:1px solid #166534;background:#fff;color:#166534;font-weight:700;cursor:pointer;">Abrir Evolução Agora</button>`;
+            const alertBadgeHtml = (nextItem.auditAlerts && nextItem.auditAlerts.length > 0)
+              ? ` <span style="background:#fee2e2;color:#991b1b;border:1px solid #ef4444;padding:2px 8px;border-radius:6px;font-size:11.5px;font-weight:700;margin-left:6px;">${escapeHtml(nextItem.auditAlerts.join(' • '))}</span>`
+              : '';
+            bannerText.innerHTML = `✅ Prontuário de <strong>${escapeHtml(nextItem.patientLabel)}</strong> 100% concluído em ${Math.max(1, Math.round(elapsedSec))}s!${alertBadgeHtml} <button type="button" id="btnBannerOpenFinished" style="margin-left:10px;padding:3px 10px;border-radius:6px;border:1px solid #166534;background:#fff;color:#166534;font-weight:700;cursor:pointer;">Abrir Evolução Agora</button>`;
             document.getElementById('btnBannerOpenFinished')?.addEventListener('click', () => {
               selectConsultationToView(nextItem.id);
             });
@@ -2024,6 +2035,27 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       soapSubtypeHeader
     );
 
+    const combinedAuditAlerts = Array.isArray(parsed.alertas_auditoria) ? [...parsed.alertas_auditoria] : [];
+
+    // Auditoria Determinística de Alergias e Tabagismo para atendimentos clínicos estruturados (exceto Telessaúde)
+    if (consultation.templateId !== 'telessaude') {
+      const alergiasMatch = cleanText.match(/^#\s*Alergias\s*:\s*(.*)$/im);
+      const alergiasFilled = alergiasMatch && alergiasMatch[1].trim().length > 0;
+      if (!alergiasFilled) {
+        if (!combinedAuditAlerts.some(a => /alergia/i.test(a))) {
+          combinedAuditAlerts.push('⚠️ Campo ALERGIAS ausente/não informado');
+        }
+      }
+
+      const tabagistaMatch = cleanText.match(/^#\s*Tabagist[ao]\s*:\s*(.*)$/im);
+      const tabagistaFilled = tabagistaMatch && tabagistaMatch[1].trim().length > 0;
+      if (!tabagistaFilled) {
+        if (!combinedAuditAlerts.some(a => /tabag/i.test(a))) {
+          combinedAuditAlerts.push('⚠️ Campo TABAGISMO ausente/não informado');
+        }
+      }
+    }
+
     return {
       evolutionText: cleanText,
       cidCiapCodes: codes,
@@ -2035,7 +2067,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         avaliacao: extractSectionFromText(cleanText, 'avaliacao'),
         conduta: extractSectionFromText(cleanText, 'conduta')
       },
-      auditAlerts: Array.isArray(parsed.alertas_auditoria) ? parsed.alertas_auditoria : [],
+      auditAlerts: combinedAuditAlerts,
       suggestedSpecialty: parsed.especialidade_sugerida_encaminhamento || '',
       tokensUsed,
       modelUsed: lastModelUsed
@@ -2599,6 +2631,27 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     // 1.1 Limpeza estrita de contaminação do SUBJETIVO com condutas médicas ou frases de IA em 3ª pessoa
     text = sanitizeSubjectiveAndConductPerspectives(text);
 
+    // 1.2 Garante padronização dos títulos de seções em formatos diversos/antigos para o padrão oficial UBS (SOAP)
+    text = text
+      .replace(/^(?:\d+[\.\-\)]\s*)?S\s*[:\-]\s*/gim, 'SUBJETIVO\n')
+      .replace(/^(?:\d+[\.\-\)]\s*)?ANAMNESE\s*[:\-]?\s*$/gim, 'SUBJETIVO')
+      .replace(/^(?:\d+[\.\-\)]\s*)?O\s*[:\-]\s*/gim, 'OBJETIVO\n')
+      .replace(/^(?:\d+[\.\-\)]\s*)?EXAME\s+F[ÍI]SICO\s*[:\-]?\s*$/gim, 'OBJETIVO')
+      .replace(/^(?:\d+[\.\-\)]\s*)?A\s*[:\-]\s*/gim, 'AVALIAÇÃO\n')
+      .replace(/^(?:\d+[\.\-\)]\s*)?HIP[ÓO]TESE(?:S)?(?:\s+DIAGN[ÓO]STICA[S]?)?\s*[:\-]?\s*$/gim, 'AVALIAÇÃO')
+      .replace(/^(?:\d+[\.\-\)]\s*)?(?:P|CD)\s*[:\-]\s*/gim, 'CONDUTA\n')
+      .replace(/^(?:\d+[\.\-\)]\s*)?PLANO(?:\s+TERAP[ÊE]UTICO)?\s*[:\-]?\s*$/gim, 'CONDUTA');
+
+    // 1.3 Se for Consulta Geral (SOAP) e faltar os campos # Alergias: ou # Tabagista: no cabeçalho, garante sua estrutura
+    if (templateId === 'geral' && /SUBJETIVO\b/i.test(text)) {
+      if (!/#\s*Tabagist[ao]\b/i.test(text)) {
+        text = text.replace(/(\n\s*(?:\d+[\.\-\)]\s*)?SUBJETIVO\b)/i, '\n# Tabagista:\n$1');
+      }
+      if (!/#\s*Alergias\b/i.test(text)) {
+        text = text.replace(/(\n\s*(?:\d+[\.\-\)]\s*)?SUBJETIVO\b)/i, '\n# Alergias:\n$1');
+      }
+    }
+
     // 2. Remove frases metalinguísticas inaceitáveis no Objetivo e garante ectoscopia padrão
     text = text.replace(/OBJETIVO\s*\n\s*(?:Exame\s+f[íi]sico\s+n[ãa]o\s+detalhado[^\n]*|Exame\s+f[íi]sico\s+n[ãa]o\s+mencionado[^\n]*|N[ãa]o\s+detalhado\s+na\s+transcri[çc][ãa]o[^\n]*)\n*/gi, 'OBJETIVO\nBEG, LOC, corada, hidratada, anictérica, acianótica.\n\n');
 
@@ -2668,6 +2721,15 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           .replace(/^Renovad[ao]\s+receita\b/i, 'Renovo receita')
           .replace(/^Retorno\s+agendado\b/i, 'Agendo retorno')
           .replace(/^Agendad[ao]\s+retorno\b/i, 'Agendo retorno');
+
+        // Garante que qualquer menção a renovação de MUC na Conduta seja escrita por extenso e nunca como #MUC
+        rawLine = rawLine
+          .replace(/renov(?:o|ada[s]?|ação)?\s+(?:de\s+)?receitas?\s+(?:de\s+uso\s+cont[íi]nuo\s+)?\(?conforme\s+#\s*MUC\)?/gi, 'Renovo medicações de uso contínuo')
+          .replace(/renov(?:o|ada[s]?|ação)?\s+(?:de\s+)?(?:receitas?\s+)?#\s*MUC\b/gi, 'Renovo medicações de uso contínuo')
+          .replace(/\s*\(#\s*MUC\)/gi, '')
+          .replace(/#\s*MUC\b/gi, 'medicações de uso contínuo')
+          .replace(/\(conforme\s+medicações\s+de\s+uso\s+contínuo\)/gi, 'de uso contínuo')
+          .replace(/\(conforme\s+#\s*MUC\)/gi, 'de uso contínuo');
         // Se já descreveu os sinais de alarme específicos, remove a frase genérica duplicada
         if (hasDetailedAlarmLine && /^Oriento sinais de alarme e(?:,\s*)? na presença/i.test(rawLine.trim())) {
           continue;
@@ -3600,6 +3662,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         ? `<span class="q-status st-done" style="background:#dcfce7;color:#166534;">☑️ Evoluído no PEC</span>`
         : `<span class="q-status" style="background:#f1f5f9;color:#475569;">📌 Falta Evoluir</span>`;
 
+      const auditBadge = (item.auditAlerts && item.auditAlerts.length > 0)
+        ? `<span class="q-status" style="background:#fee2e2;color:#991b1b;border:1px solid #ef4444;font-weight:700;" title="${escapeHtml(item.auditAlerts.join(' • '))}">⚠️ ${item.auditAlerts.length} aviso(s)</span>`
+        : '';
+
       const showProgressBar = (item.status === 'uploading' || item.status === 'queued');
       const card = document.createElement('div');
       card.className = 'history-card';
@@ -3612,6 +3678,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
               <span class="h-tpl-tag">${escapeHtml(item.templateName)}</span>
               ${statusHTML}
               ${pecBadge}
+              ${auditBadge}
             </div>
             <div class="h-snippet" id="qsnippet_${item.id}">${escapeHtml(snippet)}</div>
             <div id="qbar_wrap_${item.id}" style="display:${showProgressBar ? 'block' : 'none'};width:100%;max-width:440px;height:6px;background:#e0e7ff;border-radius:99px;overflow:hidden;margin-top:6px;">
@@ -3694,7 +3761,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const auditBox = document.getElementById('auditAlertsBox');
     if (consult.auditAlerts && consult.auditAlerts.length > 0) {
       auditBox.style.display = 'block';
-      auditBox.innerHTML = `<strong>🔎 Revisão de Campos:</strong> ${consult.auditAlerts.map(a => `<span class="audit-tag">${escapeHtml(a)}</span>`).join(' ')}`;
+      auditBox.innerHTML = `<strong>⚠️ Revisão de Campos Obrigatórios:</strong> ${consult.auditAlerts.map(a => `<span class="audit-tag" style="background:#fee2e2;border:1px solid #ef4444;color:#991b1b;font-weight:700;">${escapeHtml(a)}</span>`).join(' ')}`;
     } else {
       auditBox.style.display = 'none';
     }
