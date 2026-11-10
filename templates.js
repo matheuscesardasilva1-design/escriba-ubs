@@ -527,24 +527,36 @@ window.parsePreviousConsultationData = function(prevRawText) {
       } else if ((processedLine.startsWith('-') || processedLine.startsWith('>')) && currentGroup) {
         currentGroup.subLines.push(processedLine);
       }
-    } else if (currentSection === 'exames_labs') {
-      if (!trimmed) continue;
-      if (/^-\s*(?:US|USG|ECO|ECOCARDIO|RX|RAIO|TC|TOMOGRAFIA|RM|RESSON|MAMOGRAFIA)/i.test(trimmed)) {
+    } else if (currentSection === 'exames_labs' || currentSection === 'exames_usg') {
+      if (!trimmed || trimmed === '-') continue;
+      const isImagingLine = /^(?:-\s*)?(?:US\b|USG\b|ECO\b|ECOGRAFIA|ULTRASSOM|ULTRASSONOGRAFIA|ECOCARDIO|RX\b|RAIO|TC\b|TOMOGRAFIA|RM\b|RESSON|MAMOGRAFIA)/i.test(trimmed);
+      const isLabStartLine = /^(?:-\s*)?(?:LABS\b|LABORAT[ÓO]RIO|\d{2}\/\d{2}\/\d{2,4}\s*:)/i.test(trimmed);
+
+      if (isImagingLine) {
         flushUsgEntry();
         currentSection = 'exames_usg';
-        currentUsgEntry.push(trimmed);
-      } else if (trimmed.startsWith('-')) {
-        labExamLines.push(trimmed);
-      } else if (labExamLines.length > 0) {
-        labExamLines[labExamLines.length - 1] += ' ' + trimmed;
-      }
-    } else if (currentSection === 'exames_usg') {
-      if (!trimmed) continue;
-      if (trimmed.startsWith('-')) {
+        currentUsgEntry.push(trimmed.startsWith('-') ? trimmed : `- ${trimmed}`);
+      } else if (isLabStartLine) {
         flushUsgEntry();
-        currentUsgEntry.push(trimmed);
-      } else if (currentUsgEntry.length > 0) {
-        currentUsgEntry.push(trimmed);
+        currentSection = 'exames_labs';
+        labExamLines.push(trimmed.startsWith('-') ? trimmed : `- ${trimmed}`);
+      } else if (currentSection === 'exames_usg') {
+        if (trimmed.startsWith('-')) {
+          flushUsgEntry();
+          currentUsgEntry.push(trimmed);
+        } else if (currentUsgEntry.length > 0) {
+          currentUsgEntry.push(trimmed);
+        } else {
+          currentUsgEntry.push(`- ${trimmed}`);
+        }
+      } else {
+        if (trimmed.startsWith('-')) {
+          labExamLines.push(trimmed);
+        } else if (labExamLines.length > 0) {
+          labExamLines[labExamLines.length - 1] += ' ' + trimmed;
+        } else {
+          labExamLines.push(`- ${trimmed}`);
+        }
       }
     } else if (currentSection === 'avaliacao') {
       if (trimmed) avaliacaoLines.push(trimmed);
