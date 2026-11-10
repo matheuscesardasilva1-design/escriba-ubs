@@ -2740,6 +2740,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                   const anchorRe = new RegExp(`^(#\\s*${keyPrefixMatch[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\n]*)$`, 'im');
                   if (anchorRe.test(headerPart)) {
                     headerPart = headerPart.replace(anchorRe, `$1\n${missingSubs.join('\n')}`);
+                  } else if (/^#\s*MUC:/im.test(headerPart)) {
+                    headerPart = headerPart.replace(/^(#\s*MUC:)/im, `${block.main}\n${missingSubs.join('\n')}\n$1`);
+                  } else {
+                    headerPart = `${headerPart.trimEnd()}\n${block.main}\n${missingSubs.join('\n')}\n`;
                   }
                 }
               }
