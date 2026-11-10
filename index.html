@@ -121,7 +121,15 @@
         </div>
       </div>
 
-      <input type="search" id="patientIdentifier" name="ubs_patient_clinical_identifier" class="input-text" placeholder="Identificação, iniciais ou número do prontuário" autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <input type="search" id="patientIdentifier" name="ubs_patient_clinical_identifier" class="input-text" style="flex: 1; min-width: 190px;" placeholder="Identificação, iniciais ou número do prontuário" autocomplete="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
+        <input type="number" id="patientAgeInput" min="0" max="130" class="input-text" style="width: 130px;" placeholder="Idade (opc.)" title="Idade opcional do paciente (pode ser usada nos cálculos automáticos como TFG CKD-EPI)" autocomplete="off" data-lpignore="true" data-1p-ignore="true" data-form-type="other" />
+        <select id="patientSexSelect" class="select-box" style="width: 145px; padding: 9px 8px;" title="Sexo opcional (se não informado, será lido do PDF do exame caso conste com certeza)">
+          <option value="">Sexo (Auto/PDF)</option>
+          <option value="F">Feminino (F)</option>
+          <option value="M">Masculino (M)</option>
+        </select>
+      </div>
 
       <div class="recorder-box">
         <div class="rec-header">
@@ -348,6 +356,7 @@
               </button>
             </div>
           </div>
+          <div id="liveExamCalculatedSummary" style="display: none; margin-bottom: 8px; padding: 8px 11px; border-radius: 8px; background: #ecfdf5; border: 1.5px solid #6ee7b7; font-size: 12px; color: #065f46; line-height: 1.5;"></div>
           <textarea id="liveExamTranscriptionEditor" class="textarea-box" rows="3" style="font-family: monospace; font-size: 12px; background: #f0f9ff; border-color: #7dd3fc;" autocomplete="off"></textarea>
         </div>
       </div>

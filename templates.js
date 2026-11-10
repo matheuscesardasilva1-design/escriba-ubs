@@ -556,6 +556,77 @@ window.parsePreviousConsultationData = function(prevRawText) {
 
   const updatedIgGroup = headerGroups.find(g => /^#\s*IG\b/i.test(g.hashLine));
 
+  // Promove patologias CRÔNICAS ou IMPORTANTES da AVALIAÇÃO anterior para o cabeçalho "#",
+  // bloqueando estritamente queixas agudas, infecções transitórias e itens administrativos/rotina.
+  const acuteOrRoutineRegex = /\b(?:agud[oa]s?|ivas\b|resfriado|gripe|influenza|covid|sars-cov|dengue|zika|chikungunya|amigdalite|faringite|faringoamigdalite|sinusite|rinossinusite|otite|labirintite|traqueobronquite|bronquite\s+aguda|pneumonia|gastroenterite|geca\b|diarreia\s+aguda|virose|cistite|infec[çc][ãa]o\s+urin[áa]ria|infec[çc][ãa]o\s+do\s+trato\s+urin[áa]rio|itu\b|pielonefrite|uretrite|vaginose|candid[íi]ase|tricomon[íi]ase|conjuntivite|hord[ée]olo|ter[çc]ol|celulite|erisipela|impetigo|fur[úu]nculo|abscesso|escabiose|pediculose|herpes\s+zoster|tinea|micose\s+superficial|entorse|contus[ãa]o|distens[ãa]o|estiramento|contratura|trauma\b|ferimento|escoria[çc][ãa]o|queimadura|picada|mordedura|lombalgia\s+aguda|cervicalgia\s+aguda|dorsalgia\s+aguda|ciatalgia\s+aguda|cefaleia\s+aguda|dispepsia\s+aguda|epigastralgia\s+aguda|c[óo]lica\s+nefr[ée]tica|c[óo]lica\s+biliar|constipa[çc][ãa]o\s+aguda|disquesia|c[óo]lica\s+do\s+lactente|icter[íi]cia\s+neonatal|anemia\s+fisiol[óo]gica|estrabismo\s+fisiol[óo]gico|h[ée]rnia\s+umbilical\s+fisiol[óo]gica|rea[çc][ãa]o\s+vacinal|febre\s+sem\s+sinais|estado\s+gripal|tosse\s+aguda|odinofagia|dis[úu]ria|n[áa]useas|v[ôo]mitos|vertigem\s+aguda|puericultura|crescimento\s+e\s+desenvolvimento|eutrofia|pr[ée]-natal\s+de\s+(?:risco\s+habitual|baixo\s+risco)|gesta[çc][ãa]o\s+t[óo]pica|consulta\s+de\s+rotina|rotina|check-?up|exames\s+de\s+rotina|avalia[çc][ãa]o\s+de\s+exames|solicita[çc][ãa]o\s+de\s+exames|renova[çc][ãa]o\s+de\s+receita|emiss[ãa]o\s+de\s+laudo|atestado|orienta[çc][õo]es|sem\s+queixas|h[íi]gido|saud[áa]vel|pendente\s+realiza[çc][ãa]o|teste\s+do\s+olhinho|teste\s+do\s+pezinho|teste\s+da\s+orelhinha|teste\s+da\s+linguinha)/i;
+
+  const chronicOrImportantRegex = /\b(?:hipertens[ãa]o|has\b|diabet|dm\b|dm1\b|dm2\b|dmg\b|pr[ée]-diabet|resist[êe]ncia\s+insul[íi]nica|dislipidemia|dlp\b|hipercolesterolemia|hipertrigliceridemia|hipotireoidismo|hipertireoidismo|tireoidite|hashimoto|graves|b[óo]cio|n[óo]dulo\s+tireoid|obesidade|sobrepeso|s[íi]ndrome\s+metab[óo]lica|asma\b|dpoc\b|doen[çc]a\s+pulmonar\s+obstrutiva|bronquiectasia|fibrose\s+pulmonar|rinite\s+al[ée]rgica|apneia\s+do\s+sono|saos\b|insufici[êe]ncia\s+card[íi]aca|ic\b|icc\b|icfer\b|icfep\b|cardiopatia|coronariopatia|doen[çc]a\s+arterial\s+coronariana|dac\b|angina|infarto\s+pr[ée]vio|iam\b|fibrila[çc][ãa]o\s+atrial|flutter|arritmia|valvopatia|estenose\s+a[óo]rtica|insufici[êe]ncia\s+mitral|marca-?passo|avc\b|ave\b|ait\b|acidente\s+vascular|doen[çc]a\s+arterial\s+perif[ée]rica|daop\b|insufici[êe]ncia\s+venosa|varizes|trombose\s+venosa|tvp\b|tep\b|embolia\s+pulmonar|trombofilia|doen[çc]a\s+renal\s+cr[ôo]nica|drc\b|insufici[êe]ncia\s+renal\s+cr[ôo]nica|irc\b|nefropatia|nefrolit[íi]ase|lit[íi]ase\s+renal|c[áa]lculo\s+renal|rins?\s+polic[íi]sticos?|colelit[íi]ase|calculose\s+biliar|esteatose\s+hep[áa]tica|dheg\b|mash\b|nash\b|cirrose|hepatopatia|hepatite\s+[bc]\b|hepatite\s+cr[ôo]nica|hiv\b|aids\b|drge\b|doen[çc]a\s+do\s+refluxo|gastrite\s+cr[ôo]nica|[úu]lcera\s+p[ée]ptica|doen[çc]a\s+cel[íi]aca|doen[çc]a\s+de\s+crohn|retocolite\s+ulcerativa|doen[çc]a\s+inflamat[óo]ria\s+intestinal|s[íi]ndrome\s+do\s+intestino\s+irrit[áa]vel|diverticulose|doen[çc]a\s+diverticular|constipa[çc][ãa]o\s+cr[ôo]nica|hemorroid|depress[ãa]o|transtorno\s+depressivo|ansiedade|tag\b|transtorno\s+(?:de\s+ansiedade|do\s+p[âa]nico|obsessivo|afetivo\s+bipolar|bipolar|psic[óo]tico|de\s+personalidade|alimentar|do\s+espectro\s+autista)|tab\b|toc\b|tea\b|autismo|tdah\b|esquizofrenia|ins[ôo]nia\s+cr[ôo]nica|depend[êe]ncia\s+qu[íi]mica|etilismo|alcoolismo|dem[êe]ncia|alzheimer|parkinson|epilepsia|enxaqueca|migr[âa]nea|cefaleia\s+cr[ôo]nica|neuropatia|neuralgia|esclerose\s+m[úu]ltipla|sequela|fibromialgia|osteoartrose|osteoartrite|artrose|gonartrose|coxartrose|espondiloartrose|h[ée]rnia\s+de\s+disco|lombalgia\s+cr[ôo]nica|osteoporose|osteopenia|gota\b|hiperuricemia|artrite\s+reumatoide|l[úu]pus|les\b|espondilite|psor[íi]ase|dermatite\s+at[óo]pica|vitiligo|ros[áa]cea|hidradenite|anemia\s+(?:ferropriva|cr[ôo]nica|megalobl[áa]stica|falciforme)|talassemia|defici[êe]ncia\s+de\s+vitamina\s+(?:b12|d)|hiperplasia\s+prost[áa]tica|hpb\b|incontin[êe]ncia\s+urin[áa]ria|bexiga\s+hiperativa|s[íi]ndrome\s+dos\s+ov[áa]rios\s+polic[íi]sticos|sop\b|endometriose|adenomiose|miomatose|leiomioma|climat[ée]rio|menopausa|infertilidade|neoplasia|c[âa]ncer|carcinoma|linfoma|leucemia|melanoma|tumor|glaucoma|catarata|retinopatia|surdez|hipoacusia|cirurgia\s+bari[áa]trica|p[óo]s-?bari[áa]trica|colecistectomia|histerectomia|mastectomia|tireoidectomia|revasculariza[çc][ãa]o|angioplastia|stent\b|pr[ée]-?ecl[âa]mpsia|ecl[âa]mpsia|diabetes\s+gestacional|placenta\s+pr[ée]via|aloimuniza[çc][ãa]o|incompet[êe]ncia\s+istmocervical|gesta[çc][ãa]o\s+gemelar|gesta[çc][ãa]o\s+de\s+alto\s+risco|risco\s+(?:aumentado|elevado)\s+para\s+pr[ée]-?ecl[âa]mpsia|tuberculose|hansen[íi]ase|s[íi]filis|chagas|cr[ôo]nic[oa])/i;
+
+  const normCond = (s) => String(s || '')
+    .replace(/^#\s*/, '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+  const synonymGroups = [
+    ['has', 'hipertensao', 'hipertensaoarterial', 'hipertensaoarterialsistemica'],
+    ['dm', 'dm2', 'diabetes', 'diabetesmellitus', 'diabetesmellitustipo2', 'diabetestipo2'],
+    ['dm1', 'diabetesmellitustipo1', 'diabetestipo1'],
+    ['dmg', 'diabetesgestacional', 'diabetesmellitusgestacional'],
+    ['dlp', 'dislipidemia', 'hipercolesterolemia', 'hipertrigliceridemia', 'dislipidemiamista'],
+    ['tag', 'transtornodeansiedadegeneralizada', 'ansiedade', 'transtornodeansiedade'],
+    ['tdm', 'depressao', 'transtornodepressivo', 'transtornodepressivomaior', 'episodiodepressivo'],
+    ['drc', 'doencarenalcronica', 'insuficienciarenalcronica', 'irc'],
+    ['dpoc', 'doencapulmonarobstrutivacronica', 'enfisemapulmonar'],
+    ['drge', 'doencadorefluxogastroesofagico', 'refluxogastroesofagico'],
+    ['hpb', 'hiperplasiaprostaticabenigna', 'hiperplasiaprostatica'],
+    ['sop', 'sindromedosovariospolicisticos', 'ovariospolicisticos'],
+    ['ic', 'icc', 'insuficienciacardiaca', 'insuficienciacardiacacongestiva'],
+    ['fa', 'fibrilacaoatrial'],
+    ['tab', 'transtornoafetivobipolar', 'transtornobipolar']
+  ];
+
+  const areSameCondition = (a, b) => {
+    const na = normCond(a);
+    const nb = normCond(b);
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    if (na.length >= 4 && nb.length >= 4 && (na.includes(nb) || nb.includes(na))) return true;
+    for (const grp of synonymGroups) {
+      const aIn = grp.some(k => na === k || (k.length >= 5 && na.includes(k)));
+      const bIn = grp.some(k => nb === k || (k.length >= 5 && nb.includes(k)));
+      if (aIn && bIn) return true;
+    }
+    return false;
+  };
+  window.areMedicalConditionsEquivalent = areSameCondition;
+
+  const promotedFromAvaliacao = [];
+  for (const rawEvalLine of avaliacaoLines) {
+    // Divide apenas se houver separação explícita por " / " entre patologias distintas
+    const parts = rawEvalLine.split(/\s+\/\s+/);
+    for (const part of parts) {
+      let cleaned = part
+        .replace(/^[\s\-\*#•\d\.\)]+/, '')
+        .replace(/^(?:Hip[óo]tese(?:s)?(?:\s+diagn[óo]stica[s]?)?|Diagn[óo]stico(?:s)?)\s*:\s*/i, '')
+        .replace(/\s*\((?:CID(?:-1[01])?|CIAP(?:-2)?)[^)]*\)/gi, '')
+        .replace(/\s*(?:,|—|-|\()\s*(?:compensad[oa]s?|descompensad[oa]s?|controlad[oa]s?|n[ãa]o\s+controlad[oa]s?|controle\s+[^\n,)]+|em\s+(?:tratamento|acompanhamento|investiga[çc][ãa]o|remiss[ãa]o|uso\s+de)[^\n,)]*|est[áa]vel|inst[áa]vel|em\s+melhora|resolvida)\)?\s*$/i, '')
+        .trim();
+
+      if (!cleaned || cleaned.length < 3 || cleaned.length > 95) continue;
+      if (acuteOrRoutineRegex.test(cleaned) && !/\bcr[ôo]nic[oa]\b/i.test(cleaned)) continue;
+      if (!chronicOrImportantRegex.test(cleaned)) continue;
+
+      const candidateHash = `# ${cleaned.replace(/^#\s*/, '')}`;
+      const alreadyInHeader = headerLines.some(hl => hl.startsWith('#') && areSameCondition(hl, candidateHash));
+      const alreadyPromoted = promotedFromAvaliacao.some(pl => areSameCondition(pl, candidateHash));
+
+      if (!alreadyInHeader && !alreadyPromoted) {
+        promotedFromAvaliacao.push(candidateHash);
+      }
+    }
+  }
+
   return {
     headerText: headerLines.join('\n'),
     headerLines,
@@ -564,8 +635,8 @@ window.parsePreviousConsultationData = function(prevRawText) {
     isUnstructured: headerLines.length === 0,
     rawText: raw,
     updatedIgLine: updatedIgGroup ? updatedIgGroup.hashLine : '',
-    diagnosesToPromote: [],
-    promotedFromAvaliacao: [],
+    diagnosesToPromote: promotedFromAvaliacao,
+    promotedFromAvaliacao,
     labExamLines,
     labLines: labExamLines,
     usgExamLines,
@@ -611,7 +682,7 @@ Responda APENAS com a transcrição literal completa, linha por linha, do iníci
 // ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader, hasPreTranscribedAudio = false) {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader, hasPreTranscribedAudio = false, patientAge = '', patientSex = '') {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   const notesExamDetection = window.detectExamsInText(quickNotes);
   const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
@@ -701,9 +772,10 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
 === REGRAS CRÍTICAS E OBRIGATÓRIAS (VALEM PARA O PRÉ-NATAL E TODOS OS 7 MODELOS!) ===
 
 1. PADRÃO ESTRITO DO CABEÇALHO "#" (CONDIÇÕES DE SAÚDE, SUB-LINHAS COM TRAÇO "-", GPVPCA, IG POR ECO, VACINAS, SOROLOGIAS, TOXO E MUC):
-   - PRESERVAÇÃO FIEL DAS "#" ANTERIORES E PROIBIÇÃO ABSOLUTA DE POLUIR O CABEÇALHO "#" COM FRASES DA AVALIAÇÃO:
+   - PRESERVAÇÃO FIEL DAS "#" ANTERIORES + PROMOÇÃO DE PATOLOGIAS CRÔNICAS/IMPORTANTES DA AVALIAÇÃO ANTERIOR (BLOQUEANDO QUEIXAS AGUDAS!):
      * Quando houver evolução prévia, você DEVE MANTER EXATAMENTE as linhas "#" (ex.: "# HAS", "# Dislipidemia", "# Colelitiase", "# TAG", "# ovolactovegetariana") E TODAS AS SUB-LINHAS COM TRAÇO ("- ...") que já estavam no cabeçalho "#" da evolução anterior (ex.: "- Aguardando com CX geral via gercon", "- Gestação atual não planejada", "- Encaminhada para pneumologia via gercon").
-     * É TERMINANTEMENTE PROIBIDO copiar frases descritivas da seção AVALIAÇÃO (antiga ou de hoje) para dentro do cabeçalho "#" do topo! NUNCA escreva no cabeçalho "#" linhas duplicadas ou longas como "# Hipótese: ...", "# Hipertensão arterial sistêmica, controle irregular", "# Dislipidemia, controle insatisfatório", "# Transtorno depressivo maior (em tratamento)", "# Síndrome desabsortiva secundária à colelitíase" ou "# Cistos hepáticos a esclarecer (achado em TC)". As hipóteses e problemas avaliados hoje ficam na seção "AVALIAÇÃO", e NÃO no cabeçalho "#" do topo!
+     * PROMOÇÃO OBRIGATÓRIA DE PATOLOGIAS CRÔNICAS DA AVALIAÇÃO ANTERIOR PARA AS "#": Se na seção "AVALIAÇÃO" da consulta anterior constar alguma PATOLOGIA CRÔNICA ou CONDIÇÃO CLÍNICA IMPORTANTE que ainda não estava listada nas "#" do topo (ex.: Hipertensão arterial, Diabetes Mellitus, Dislipidemia, Hipotireoidismo, Depressão, Ansiedade/TAG, Asma, DPOC, Doença renal crônica, Colelitíase, Esteatose hepática, Obesidade, Fibromialgia, Osteoporose, Cardiopatia, etc.), você DEVE PUXÁ-LA para o cabeçalho "#" como uma nova linha limpa (ex.: "# Diabetes Mellitus tipo 2", "# Hipotireoidismo"), removendo adjetivos transitórios como "controle irregular" ou "em tratamento" e evitando duplicar caso já exista sinônimo nas "#" (ex.: não adicione "# Hipertensão" se já houver "# HAS").
+     * PROIBIÇÃO ABSOLUTA DE PUXAR QUEIXAS AGUDAS PARA AS "#": JAMAIS puxe queixas agudas, infecções transitórias ou motivos pontuais da Avaliação anterior (como IVAS, resfriado, amigdalite, sinusite, gastroenterite/diarreia aguda, cistite/ITU, lombalgia aguda, dengue, puericultura/rotina) para dentro do cabeçalho "#"! As queixas agudas de hoje ficam exclusivamente na seção "AVALIAÇÃO" de hoje.
    - PADRÃO OBRIGATÓRIO DO HISTÓRICO OBSTÉTRICO (PARIDADE) NO PRÉ-NATAL:
      * NUNCA assuma "G01" como padrão se a paridade não foi informada!
      * Quando a paridade constar na evolução anterior, nas notas ou for falada no áudio, escreva SEMPRE no formato compacto sem espaços com 2 dígitos após o G: exemplo "# G01PV0PC0A0", "# G02PV1PC0A0", "# G03PV1PC1A0", mantendo na linha de baixo qualquer observação com traço "- " que já existia (ex.: "- Gestação atual não planejada"). Se a paridade não foi informada em lugar nenhum, mantenha "# G PV PC A" em branco para o médico preencher.
@@ -764,10 +836,19 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - FORMATO COMPACTO OBRIGATÓRIO PARA EXAMES LABORATORIAIS (PROIBIDO UNIDADES DE MEDIDA E PROIBIDO SUB-ÍNDICES REDUNDANTES!):
      * Escreva TODOS os exames laboratoriais da mesma data em UMA ÚNICA LINHA iniciando com "- LABS DD/MM/AAAA: " separados por " | ", usando APENAS SIGLAS MÉDICAS CURTAS + VALOR NUMÉRICO (SEM escrever dois-pontos ":" após cada sigla e SEM escrever unidades como mg/dL, g/dL, U/L, milh./mm³, fL, pg, mEq/L, ng/mL, µUI/mL!).
      * É TERMINANTEMENTE PROIBIDO escrever "Hemograma (Eritrócitos: ... | HCM: ... | CHCM: ... | RDW: ... | VPM: ...)", "Glicemia estimada média", "Colesterol Não-HDL" ou "Relação Colesterol Total/HDL"!
+     * CÁLCULO AUTOMÁTICO DE TFG (CKD-EPI 2021) E CLASSIFICAÇÃO KDIGO (G1 A G5):
+       - Dados de idade/sexo informados manualmente pelo médico: Idade = "${patientAge || 'não informada manualmente'}", Sexo = "${patientSex || 'não informado manualmente'}".
+       - Sempre que houver Creatinina ("Creat"), verifique a idade (no campo manual acima ou impressa no cabeçalho do PDF/laudo) e o sexo (no campo manual acima ou impresso no PDF/laudo).
+       - Se e SOMENTE SE você tiver CERTEZA ABSOLUTA tanto da idade (>= 18 anos) quanto do sexo (M ou F), calcule a TFG pela fórmula CKD-EPI 2021 e sua classificação (G1 >=90, G2 60-89, G3a 45-59, G3b 30-44, G4 15-29, G5 <15) e escreva logo após a Creatinina exatamente neste formato: "Creat X,XX | TFG XX (CKD-EPI GX, [idade]a, [M ou F])".
+       - Se faltar idade ou sexo ou se não tiver certeza absoluta, NÃO CALCULE A TFG e NÃO INVENTE DADOS (escreva apenas "Creat X,XX")!
+     * CÁLCULO AUTOMÁTICO DO ÍNDICE DE SATURAÇÃO DE TRANSFERRINA (IST %):
+       - Sempre que houver perfil do ferro com Ferro sérico ("Ferro") e TIBC / CTLF / CLLF / Transferrina, calcule automaticamente o Índice de Saturação de Transferrina em % (IST = Ferro / TIBC * 100; ou se houver apenas Transferrina sem TIBC: TIBC = Transferrina * 1,25) e coloque ao lado a indicação "(calculado)": exemplo "Ferro 114 | Ferritina 267,6 | Transferrina 223,1 | TIBC 274 | IST 41,6% (calculado)".
+     * SANGUE OCULTO NAS FEZES SEMPRE COM A SIGLA "SOF" NA MESMA LINHA DOS DEMAIS EXAMES:
+       - Quando houver Pesquisa de Sangue Oculto nas Fezes, inclua OBRIGATORIAMENTE em conjunto com os demais exames na mesma linha "- LABS DD/MM/AAAA:" usando a sigla "SOF" ("SOF negativo" ou "SOF positivo"). NUNCA coloque em linha separada!
      * Use OBRIGATORIAMENTE este padrão limpo de siglas:
-       - LABS DD/MM/AAAA: Hb 14,1 | Ht 41 | VCM 89,3 | Leuco 11.300 | Plaq 457.700 | RNI 1,02 | KPTT 35s | GJ 110 | HbA1c 5,8% | CT 154 | HDL 35,4 | LDL 90,8 | TAG 186 | Creat 0,91 | Ureia 19 | TGO 21 | TGP 34 | GGT 231 | BT 0,50 (BD 0,20 / BI 0,30) | FA 84 | PCR 5 | Ferro 114 | Ferritina 267,6 | Transferrina 223,1 | TIBC 274 | TSH 1,40 | T4L 0,57 | B12 294 | Na 139 | K 4,43 | EQU sem alterações | EPF negativo | SOF negativo
+       - LABS DD/MM/AAAA: Hb 14,1 | Ht 41 | VCM 89,3 | Leuco 11.300 | Plaq 457.700 | RNI 1,02 | KPTT 35s | GJ 110 | HbA1c 5,8% | CT 154 | HDL 35,4 | LDL 90,8 | TAG 186 | Creat 0,91 | TFG 92 (CKD-EPI G1) | Ureia 19 | TGO 21 | TGP 34 | GGT 231 | BT 0,50 (BD 0,20 / BI 0,30) | FA 84 | PCR 5 | Ferro 114 | Ferritina 267,6 | Transferrina 223,1 | TIBC 274 | IST 41,6% (calculado) | TSH 1,40 | T4L 0,57 | B12 294 | Na 139 | K 4,43 | EQU sem alterações | EPF negativo | SOF negativo
    - TÍTULO CORRETO DA SEÇÃO DE EXAMES:
-     * Na Consulta Geral (SOAP) e demais consultas fora do Pré-Natal, coloque tanos os exames laboratoriais ("- LABS ...") quanto os exames de imagem ("- TC ...", "- USG ...", "- RX ...", "- ECOCARDIO ...") dentro da seção "EXAMES COMPLEMENTARES" (NUNCA coloque uma Tomografia "- TC" debaixo do título "ULTRASSONOGRAFIA"!).
+     * Na Consulta Geral (SOAP) e demais consultas fora do Pré-Natal, coloque tanto os exames laboratoriais ("- LABS ...") quanto os exames de imagem ("- TC ...", "- USG ...", "- RX ...", "- ECOCARDIO ...") dentro da seção "EXAMES COMPLEMENTARES" (NUNCA coloque uma Tomografia "- TC" debaixo do título "ULTRASSONOGRAFIA"!).
      * Apenas na Consulta de Pré-Natal separe em "EXAMES COMPLEMENTARES" (para "- LABS") e "ULTRASSONOGRAFIA" (para "- US OBSTÉTRICA / MORFOLÓGICA").
    - PROIBIDO ESCREVER "N/R" OU "Não realizado" para exames que não constam no laudo.
 
@@ -804,23 +885,23 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'Filtre e descarte qualquer interrupção paralela de terceiros/enfermagem falando de outro paciente.'}
    - Quando o [MÉDICO] estiver explicando alterações de exames para o paciente, JAMAIS escreva no SUBJETIVO que "Paciente refere tal alteração".
 ${parsedPrev && !isTelessaudeTemplate ? `
-9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR (SEM POLUIR AS "#" COM FRASES DA AVALIAÇÃO!):
-   - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo, ${isPrenatalTemplate ? '(B) os Exames Laboratoriais e Ultrassonografias anteriores do Pré-Natal, e (C)' : 'e (B)'} a Avaliação e Conduta da última consulta.
+9. IMPORTAÇÃO OBRIGATÓRIA DOS DADOS DA EVOLUÇÃO ANTERIOR (PROMOVENDO PATOLOGIAS CRÔNICAS E BLOQUEANDO QUEIXAS AGUDAS NAS "#"!):
+   - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo + Patologias Crônicas da Avaliação anterior, ${isPrenatalTemplate ? '(B) os Exames Laboratoriais e Ultrassonografias anteriores do Pré-Natal, e (C)' : 'e (B)'} a Avaliação e Conduta da última consulta.
    - ATENÇÃO: O SUBJETIVO e o OBJETIVO antigos foram removidos propositalmente para que você construa o SUBJETIVO e o OBJETIVO de hoje 100% a partir da consulta de HOJE!
    - Siga obrigatoriamente:
-     1) Copie FIELMENTE as linhas "#" e as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo. NUNCA copie frases da AVALIAÇÃO anterior nem da AVALIAÇÃO de hoje para dentro do cabeçalho "#" do topo!
+     1) Copie FIELMENTE as linhas "#" e as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo. Além disso, inclua no cabeçalho "#" as PATOLOGIAS CRÔNICAS ou CONDIÇÕES IMPORTANTES diagnosticadas na AVALIAÇÃO anterior (sem adjetivos de status como "controle irregular" e sem duplicar sinônimos). JAMAIS puxe queixas agudas (IVAS, amigdalite, gastroenterite, ITU, etc.) para as "#"!
      2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se o paciente não tomou ou suspendeu medicação por conta própria, relate no SUBJETIVO e ajuste a # MUC conforme a conduta atual.
      ${isPrenatalTemplate ? '3) No Pré-Natal, mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje logo abaixo deles!' : '3) NÃO copie os exames da evolução anterior! Inclua em EXAMES COMPLEMENTARES apenas os exames novos avaliados hoje.'}
 
 === (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR ===
-${parsedPrev.headerLines && parsedPrev.headerLines.length > 0 ? `(MANTER EXATAMENTE ESTAS LINHAS "#" E SUB-LINHAS "-"!):\n${parsedPrev.headerText}` : (previousConsultationText ? `(EVOLUÇÃO ANTERIOR EM OUTRO FORMATO — EXTRAIR COMORBIDADES PARA "#", "# MUC:", "# Tabagista:" E "# Alergias:", MAS GERAR ESTRITAMENTE NO MODELO PADRÃO!):\n${previousConsultationText}` : 'Nenhum cabeçalho anterior.')}
+${parsedPrev.headerLines && parsedPrev.headerLines.length > 0 ? `(MANTER EXATAMENTE ESTAS LINHAS "#" E SUB-LINHAS "-"!):\n${parsedPrev.headerText}` : (previousConsultationText ? `(EVOLUÇÃO ANTERIOR EM OUTRO FORMATO — EXTRAIR COMORBIDADES CRÔNICAS PARA "#", "# MUC:", "# Tabagista:" E "# Alergias:", MAS GERAR ESTRITAMENTE NO MODELO PADRÃO!):\n${previousConsultationText}` : 'Nenhum cabeçalho anterior.')}${parsedPrev.promotedFromAvaliacao && parsedPrev.promotedFromAvaliacao.length > 0 ? `\n\nPATOLOGIAS CRÔNICAS/IMPORTANTES DA AVALIAÇÃO ANTERIOR A INCLUIR NO CABEÇALHO "#":\n${parsedPrev.promotedFromAvaliacao.join('\n')}` : ''}
 ${parsedPrev.unstructuredText ? `\nANOTAÇÕES DA EVOLUÇÃO ANTERIOR:\n${parsedPrev.unstructuredText}\n` : ''}
 ${isPrenatalTemplate ? `
 === (B) EXAMES ANTERIORES DO PRÉ-NATAL (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
 ${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES:\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
 ${parsedPrev.usgExamLines.length > 0 ? '\nULTRASSONOGRAFIAS / IMAGEM ANTERIORES:\n' + parsedPrev.usgExamLines.join('\n\n') : ''}
 ` : ''}
-=== (${isPrenatalTemplate ? 'C' : 'B'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (APENAS PARA ATUALIZAR # MUC E CHECAR ADESÃO — NÃO COPIAR FRASES DA AVALIAÇÃO PARA AS "#"!) ===
+=== (${isPrenatalTemplate ? 'C' : 'B'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (PARA ATUALIZAR # MUC, CHECAR ADESÃO E PROMOVER APENAS PATOLOGIAS CRÔNICAS PARA AS "#") ===
 AVALIAÇÃO ANTERIOR:
 ${parsedPrev.avaliacaoText || 'Não informada.'}
 CONDUTA ANTERIOR:
@@ -884,16 +965,25 @@ Responda em JSON válido contendo exatamente estas chaves:
 // ============================================================================
 // GERADOR DE PROMPT PARA TRANSCRIÇÃO INSTANTÂNEA DE EXAMES (ANEXOS OU NOTAS RÁPIDAS)
 // ============================================================================
-window.buildInstantExamTranscriptionPrompt = function(notesText) {
+window.buildInstantExamTranscriptionPrompt = function(notesText, patientAge = '', patientSex = '') {
   return `Você é um Médico de Família e Comunidade na APS/UBS.
 Analise TODOS os exames complementares fornecidos (sejam arquivos PDF/imagens anexados E/OU exames colados/escritos nas Anotações Rápidas abaixo) e converta 100% dos resultados de exames para o formato padrão de prontuário abaixo.
 ${notesText ? `\n=== TEXTO COLADO / ESCRITO NAS ANOTAÇÕES RÁPIDAS ===\n${notesText}\n` : ''}
+${patientAge || patientSex ? `\n=== DADOS DO PACIENTE INFORMADOS PELO MÉDICO ===\nIdade: ${patientAge || 'verificar no PDF/laudo'} | Sexo: ${patientSex || 'verificar no PDF/laudo'}\n` : ''}
 REGRAS OBRIGATÓRIAS:
-1. TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF OU NO TEXTO COLADO: Inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma, perfil lipídico, tireoide, hormônios, vitaminas, ferro/ferritina, sorologias, urina/EQU, urocultura, parasitológico, exames de imagem, etc.). Ignore valores de referência do laboratório e cabeçalhos burocráticos.
+1. TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF OU NO TEXTO COLADO: Inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma, perfil lipídico, tireoide, hormônios, vitaminas, ferro/ferritina/transferrina/TIBC, sorologias, urina/EQU, urocultura, parasitológico EPF, sangue oculto nas fezes SOF, exames de imagem, etc.). Ignore valores de referência do laboratório e cabeçalhos burocráticos.
 2. PROIBIDO ESCREVER "N/R" OU "Não realizado": Só inclua exames que efetivamente possuem resultado informado.
 3. FORMATO EXATO (DIFERENCIANDO EXAME LABORATORIAL DE EXAME DE IMAGEM):
-   - SE FOR EXAME LABORATORIAL (todos os exames da mesma data na mesma linha, iniciando com "- LABS [DD/MM/AAAA]: " ou "- LABS: " se não houver data, separados por " | ", usando abreviações médicas limpas + valor):
-     Exemplo: - LABS 17/08/2026: Hb 15,3 | Ht 43,7 | Leuco 6.990 | Plaq 303.000 | GJ 90,9 | HbA1c 4,4% | Creat 0,97 | Ureia 22,2 | Sódio 140 | K 4,6 | TGO 18 | TGP 18 | CT 195,1 | HDL 33,8 | LDL 143,6 | TAG 74 | TSH 0,81 | EQU: pH 6,0, Leucócitos 25/uL
+   - SE FOR EXAME LABORATORIAL (todos os exames da mesma data em UMA ÚNICA LINHA, iniciando com "- LABS [DD/MM/AAAA]: " ou "- LABS: " se não houver data, separados por " | ", usando siglas médicas curtas + valor numérico, SEM unidades de medida como mg/dL, g/dL, U/L, fL, pg):
+     * CÁLCULO AUTOMÁTICO DE TFG (CKD-EPI 2021) E CLASSIFICAÇÃO (G1 A G5):
+       - Sempre que houver Creatinina ("Creat"), verifique a IDADE (informada pelo médico acima ou descrita no cabeçalho do PDF/laudo) e o SEXO (informado acima ou descrito no PDF/laudo).
+       - Se e SOMENTE SE você tiver CERTEZA ABSOLUTA tanto da idade (>= 18 anos) quanto do sexo (M ou F) nos dados do exame/atendimento, calcule a TFG CKD-EPI 2021 e sua classificação (G1 >=90, G2 60-89, G3a 45-59, G3b 30-44, G4 15-29, G5 <15) e inclua logo após a Creatinina exatamente neste formato: "Creat X,XX | TFG XX (CKD-EPI GX, [idade]a, [M ou F])".
+       - SE NÃO TIVER CERTEZA ABSOLUTA DA IDADE OU DO SEXO: NÃO CALCULE A TFG e NÃO MOSTRE DADO DUVIDOSO (escreva apenas "Creat X,XX")!
+     * CÁLCULO AUTOMÁTICO DO ÍNDICE DE SATURAÇÃO DE TRANSFERRINA (IST %):
+       - Ao ter o perfil do ferro com Ferro sérico ("Ferro") e TIBC / CTLF / CLLF / Transferrina, calcule automaticamente o Índice de Saturação de Transferrina em % (IST = Ferro / TIBC * 100; ou se houver apenas Transferrina: TIBC = Transferrina * 1,25) e coloque ao lado "(calculado)": exemplo "Ferro 114 | Ferritina 267,6 | Transferrina 223,1 | TIBC 274 | IST 41,6% (calculado)".
+     * SANGUE OCULTO NAS FEZES COM A SIGLA "SOF":
+       - Quando houver Sangue Oculto nas Fezes, coloque SEMPRE em conjunto com os demais exames na mesma linha "- LABS" usando a sigla "SOF" ("SOF negativo" ou "SOF positivo").
+     Exemplo: - LABS 17/08/2026: Hb 15,3 | Ht 43,7 | VCM 89 | Leuco 6.990 | Plaq 303.000 | GJ 90,9 | HbA1c 4,4% | Creat 0,97 | TFG 92 (CKD-EPI G1, 48a, M) | Ureia 22,2 | Na 140 | K 4,6 | TGO 18 | TGP 18 | CT 195,1 | HDL 33,8 | LDL 143,6 | TAG 74 | Ferro 114 | Ferritina 267,6 | Transferrina 223,1 | TIBC 274 | IST 41,6% (calculado) | TSH 0,81 | EQU sem alterações | EPF negativo | SOF negativo
    - SE FOR EXAME DE IMAGEM / MÉTODOS GRÁFICOS (iniciando com "- [MODALIDADE E REGIÃO EM MAIÚSCULO] [DD/MM/AAAA se houver]: " em texto corrido conciso na mesma linha, sem tópicos soltos):
      Exemplo 1: - USG ABDOME TOTAL 12/09/2026: Fígado com dimensões normais e aumento difuso da ecogenicidade compatível com esteatose hepática leve. Demais estruturas sem alterações.
      Exemplo 2: - ECOCARDIO TT 20/11/2025: FE 52,2%. Ventrículo esquerdo com hipertrofia excêntrica, disfunção sistólica global leve por hipocinesia difusa e disfunção diastólica padrão déficit de relaxamento.

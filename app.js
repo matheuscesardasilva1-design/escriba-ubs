@@ -736,6 +736,79 @@
     }
   }
 
+  function getCurrentPatientAgeAndSex() {
+    const ageInput = document.getElementById('patientAgeInput');
+    const sexSelect = document.getElementById('patientSexSelect');
+    const rawAge = ageInput ? parseInt(ageInput.value, 10) : NaN;
+    const age = (!isNaN(rawAge) && rawAge >= 1 && rawAge <= 125) ? String(rawAge) : '';
+    const rawSex = sexSelect ? sexSelect.value.trim().toUpperCase() : '';
+    const sex = (rawSex === 'M' || rawSex === 'F') ? rawSex : '';
+    return { age, sex };
+  }
+
+  function renderLiveExamCalculatedSummaryBanner(calculations) {
+    const summaryEl = document.getElementById('liveExamCalculatedSummary');
+    if (!summaryEl) return;
+    if (!Array.isArray(calculations) || calculations.length === 0) {
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+      return;
+    }
+
+    const badges = [];
+    for (const item of calculations) {
+      if (item.type === 'ckdepi') {
+        const isReduced = item.egfr < 60;
+        const bg = isReduced ? '#fef3c7' : '#dcfce7';
+        const border = isReduced ? '#f59e0b' : '#22c55e';
+        const color = isReduced ? '#92400e' : '#166534';
+        badges.push(
+          `<span style="display:inline-flex;align-items:center;gap:5px;background:${bg};color:${color};border:1px solid ${border};padding:3px 9px;border-radius:99px;font-weight:700;">` +
+          `🧮 TFG CKD-EPI: ${item.egfr} mL/min/1,73m² — Classificação ${item.stageCode} (${item.stageDesc}) • [Creat ${item.scr} | ${item.age}a, ${item.sex}]` +
+          `</span>`
+        );
+      } else if (item.type === 'ckdepi_missing') {
+        const missingParts = [];
+        if (item.missingAge) missingParts.push('idade');
+        if (item.missingSex) missingParts.push('sexo');
+        badges.push(
+          `<span style="display:inline-flex;align-items:center;gap:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;padding:3px 9px;border-radius:99px;font-weight:600;">` +
+          `ℹ️ Creat ${item.scr} detectada — TFG CKD-EPI não calculada por falta de confirmação de ${missingParts.join(' e ')} (preencha no topo se desejar calcular)` +
+          `</span>`
+        );
+      } else if (item.type === 'ist') {
+        badges.push(
+          `<span style="display:inline-flex;align-items:center;gap:5px;background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc;padding:3px 9px;border-radius:99px;font-weight:700;">` +
+          `🩸 Índice de Saturação de Transferrina: IST ${item.istFormatted} (calculado)` +
+          `</span>`
+        );
+      }
+    }
+
+    if (badges.length === 0) {
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+      return;
+    }
+
+    summaryEl.style.display = 'flex';
+    summaryEl.style.flexWrap = 'wrap';
+    summaryEl.style.gap = '6px';
+    summaryEl.innerHTML = badges.join('');
+  }
+
+  function refreshLiveExamCalculationsFromInputs() {
+    if (!state.rawPreTranscribedExamsText) return;
+    const liveBox = document.getElementById('liveExamTranscriptionBox');
+    const liveEditor = document.getElementById('liveExamTranscriptionEditor');
+    if (!liveBox || liveBox.style.display === 'none' || !liveEditor) return;
+    const { age, sex } = getCurrentPatientAgeAndSex();
+    const { formattedText, calculations } = formatAllExamLinesWithCalculations(state.rawPreTranscribedExamsText, age, sex);
+    state.preTranscribedExamsText = formattedText;
+    liveEditor.value = formattedText;
+    renderLiveExamCalculatedSummaryBanner(calculations);
+  }
+
   async function transcribePendingExamsNow() {
     const quickNotesVal = document.getElementById('quickNotesInput')?.value.trim() || '';
     const hasAttachedFiles = state.pendingExamFiles && state.pendingExamFiles.length > 0;
@@ -753,8 +826,13 @@
     const btnNotesNow = document.getElementById('btnFormatNotesExamNow');
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     const liveEditor = document.getElementById('liveExamTranscriptionEditor');
+    const summaryEl = document.getElementById('liveExamCalculatedSummary');
 
     if (liveBox) liveBox.style.display = 'block';
+    if (summaryEl) {
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+    }
     if (liveEditor) liveEditor.value = '⏳ [10%] Lendo e formatando os exames no padrão Laboratorial (- LABS ... | ...) / Imagem (- EXAME: texto corrido)...';
     if (btnNow) {
       btnNow.disabled = true;
@@ -791,7 +869,8 @@
           }
         }
       }
-      parts.push({ text: window.buildInstantExamTranscriptionPrompt(quickNotesVal) });
+      const { age: patientAge, sex: patientSex } = getCurrentPatientAgeAndSex();
+      parts.push({ text: window.buildInstantExamTranscriptionPrompt(quickNotesVal, patientAge, patientSex) });
 
       const requestBody = {
         contents: [{ role: 'user', parts }],
@@ -800,17 +879,22 @@
 
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
       clearInterval(examTimer);
-      let examText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-      examText = fixBrazilianMedicationSpelling(examText);
+      let rawExamText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+      rawExamText = fixBrazilianMedicationSpelling(rawExamText);
+      state.rawPreTranscribedExamsText = rawExamText;
 
+      const { formattedText: examText, calculations } = formatAllExamLinesWithCalculations(rawExamText, patientAge, patientSex);
       state.preTranscribedExamsText = examText;
       if (liveEditor) liveEditor.value = examText;
+      renderLiveExamCalculatedSummaryBanner(calculations);
 
       // Se já houver uma consulta sendo gravada, salva os exames pré-transcritos nela imediatamente
       if (state.recordingConsultationId) {
         const existing = await window.ScribeDB.getConsultation(state.recordingConsultationId);
         if (existing) {
           existing.preTranscribedExamsText = examText;
+          existing.patientAge = patientAge;
+          existing.patientSex = patientSex;
           await window.ScribeDB.saveConsultation(existing);
         }
       }
@@ -907,9 +991,12 @@
         }
       } else {
         consultId = 'cons_' + now + '_' + Math.random().toString(36).slice(2, 6);
+        const { age: patientAge, sex: patientSex } = getCurrentPatientAgeAndSex();
         const newConsultation = {
           id: consultId,
           patientLabel: (patientInput && patientInput.value.trim()) || `Atendimento ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+          patientAge,
+          patientSex,
           templateId: tpl.id,
           templateName: tpl.name,
           templateIcon: tpl.icon,
@@ -1013,18 +1100,28 @@
     state.selectedTemplateId = 'geral';
     state.pendingExamFiles = [];
     state.preTranscribedExamsText = '';
+    state.rawPreTranscribedExamsText = '';
 
     const patientInput = document.getElementById('patientIdentifier');
+    const ageInput = document.getElementById('patientAgeInput');
+    const sexSelect = document.getElementById('patientSexSelect');
     const quickNotesInput = document.getElementById('quickNotesInput');
     const prevConsultInput = document.getElementById('previousConsultationInput');
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     const liveEditor = document.getElementById('liveExamTranscriptionEditor');
+    const summaryEl = document.getElementById('liveExamCalculatedSummary');
 
     if (patientInput) patientInput.value = '';
+    if (ageInput) ageInput.value = '';
+    if (sexSelect) sexSelect.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
     if (liveBox) liveBox.style.display = 'none';
     if (liveEditor) liveEditor.value = '';
+    if (summaryEl) {
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+    }
 
     document.querySelectorAll('input[name="soapVisitSubtype"]').forEach(r => { r.checked = false; });
 
@@ -1153,6 +1250,10 @@
     const currentZScore = getCalculatedZScoreText();
     const currentTpl = state.templates[state.selectedTemplateId];
     const attachedExams = [...state.pendingExamFiles];
+    const { age: currentPatientAge, sex: currentPatientSex } = getCurrentPatientAgeAndSex();
+    const ageInput = document.getElementById('patientAgeInput');
+    const sexSelect = document.getElementById('patientSexSelect');
+    const summaryEl = document.getElementById('liveExamCalculatedSummary');
 
     await new Promise((resolve) => {
       state.mediaRecorder.onstop = () => resolve();
@@ -1182,9 +1283,14 @@
     state.recordingSeconds = 0;
     state.pendingExamFiles = [];
     state.preTranscribedExamsText = '';
+    state.rawPreTranscribedExamsText = '';
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     if (liveBox) liveBox.style.display = 'none';
     if (liveExamEditor) liveExamEditor.value = '';
+    if (summaryEl) {
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+    }
     document.querySelectorAll('input[name="soapVisitSubtype"]').forEach(r => { r.checked = false; });
     renderPendingExamFilesUI();
     renderTemplateSelector();
@@ -1200,6 +1306,8 @@
     const consult = await window.ScribeDB.getConsultation(finishingId);
     if (consult) {
       if (currentLabel) consult.patientLabel = currentLabel;
+      if (currentPatientAge) consult.patientAge = currentPatientAge;
+      if (currentPatientSex) consult.patientSex = currentPatientSex;
       consult.templateId = currentTpl.id;
       consult.templateName = currentTpl.name;
       consult.templateIcon = currentTpl.icon;
@@ -1221,6 +1329,8 @@
     }
 
     if (patientInput) patientInput.value = '';
+    if (ageInput) ageInput.value = '';
+    if (sexSelect) sexSelect.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
     clearZScoreInputs();
@@ -1346,6 +1456,10 @@
       : (state.preTranscribedExamsText || '');
     const currentZScore = getCalculatedZScoreText();
     const attachedExams = [...state.pendingExamFiles];
+    const { age: currentPatientAge, sex: currentPatientSex } = getCurrentPatientAgeAndSex();
+    const ageInput = document.getElementById('patientAgeInput');
+    const sexSelect = document.getElementById('patientSexSelect');
+    const summaryEl = document.getElementById('liveExamCalculatedSummary');
 
     let lastCreatedId = null;
 
@@ -1363,6 +1477,8 @@
       const newConsultation = {
         id: consultId,
         patientLabel: label,
+        patientAge: currentPatientAge,
+        patientSex: currentPatientSex,
         templateId: tpl.id,
         templateName: tpl.name,
         templateIcon: tpl.icon,
@@ -1401,11 +1517,18 @@
 
     state.pendingExamFiles = [];
     state.preTranscribedExamsText = '';
+    state.rawPreTranscribedExamsText = '';
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     if (liveBox) liveBox.style.display = 'none';
     if (liveExamEditor) liveExamEditor.value = '';
+    if (summaryEl) {
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+    }
     renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
+    if (ageInput) ageInput.value = '';
+    if (sexSelect) sexSelect.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
     updateQuickNotesExamBadge();
@@ -1436,6 +1559,10 @@
     }
 
     const patientInput = document.getElementById('patientIdentifier');
+    const ageInput = document.getElementById('patientAgeInput');
+    const sexSelect = document.getElementById('patientSexSelect');
+    const summaryEl = document.getElementById('liveExamCalculatedSummary');
+    const { age: currentPatientAge, sex: currentPatientSex } = getCurrentPatientAgeAndSex();
     const tpl = state.templates[state.selectedTemplateId];
     const now = Date.now();
     const consultId = 'cons_' + now + '_txt';
@@ -1443,6 +1570,8 @@
     const newConsultation = {
       id: consultId,
       patientLabel: (patientInput && patientInput.value.trim()) || `Atendimento ${new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`,
+      patientAge: currentPatientAge,
+      patientSex: currentPatientSex,
       templateId: tpl.id,
       templateName: tpl.name,
       templateIcon: tpl.icon,
@@ -1474,11 +1603,18 @@
 
     state.pendingExamFiles = [];
     state.preTranscribedExamsText = '';
+    state.rawPreTranscribedExamsText = '';
     const liveBox = document.getElementById('liveExamTranscriptionBox');
     if (liveBox) liveBox.style.display = 'none';
     if (liveExamEditor) liveExamEditor.value = '';
+    if (summaryEl) {
+      summaryEl.style.display = 'none';
+      summaryEl.innerHTML = '';
+    }
     renderPendingExamFilesUI();
     if (patientInput) patientInput.value = '';
+    if (ageInput) ageInput.value = '';
+    if (sexSelect) sexSelect.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
     updateQuickNotesExamBadge();
@@ -1873,6 +2009,8 @@
     // condutas para a máscara clínica sem omitir absolutamente nada!
     // =========================================================================
     const hasPreTranscribedDialogue = Boolean(verbatimTranscript && verbatimTranscript.length >= 15);
+    const consultPatientAge = consultation.patientAge || getCurrentPatientAgeAndSex().age || '';
+    const consultPatientSex = consultation.patientSex || getCurrentPatientAgeAndSex().sex || '';
     const promptText = window.buildMedicalEvolutionPrompt(
       tpl,
       consultation.quickNotes,
@@ -1882,7 +2020,9 @@
       consultation.previousConsultationText || '',
       preExams,
       soapSubtypeHeader,
-      hasPreTranscribedDialogue
+      hasPreTranscribedDialogue,
+      consultPatientAge,
+      consultPatientSex
     );
 
     const parts = [];
@@ -1986,7 +2126,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         consultation.previousEvolutionText || '',
         consultation.previousConsultationText || '',
         preExams,
-        soapSubtypeHeader
+        soapSubtypeHeader,
+        false,
+        consultPatientAge,
+        consultPatientSex
       );
       const rescueBody = {
         systemInstruction: medicalSystemInstruction,
@@ -2032,7 +2175,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       Array.isArray(parsed.codigos_cid_ciap) ? parsed.codigos_cid_ciap : [],
       consultation.templateId,
       consultation.previousConsultationText || '',
-      soapSubtypeHeader
+      soapSubtypeHeader,
+      consultPatientAge,
+      consultPatientSex
     );
 
     const combinedAuditAlerts = Array.isArray(parsed.alertas_auditoria) ? [...parsed.alertas_auditoria] : [];
@@ -2153,14 +2298,68 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     return { evolucao_completa: cleaned };
   }
 
+  // Calculadora determinística da TFG pela equação CKD-EPI (2021) + Classificação KDIGO (G1 a G5)
+  // Regra de segurança estrita: SÓ calcula quando Creatinina, Idade (>= 18 anos) e Sexo ('M' ou 'F') são 100% confirmados.
+  function calculateCkdEpi2021(scrRaw, ageRaw, sexRaw) {
+    const scr = parseFloat(String(scrRaw || '').replace(',', '.'));
+    const age = parseInt(String(ageRaw || ''), 10);
+    const sex = String(sexRaw || '').trim().toUpperCase();
+    if (isNaN(scr) || scr <= 0 || scr >= 35) return null;
+    if (isNaN(age) || age < 18 || age > 125) return null;
+    if (sex !== 'M' && sex !== 'F') return null;
+
+    const kappa = sex === 'F' ? 0.7 : 0.9;
+    const alpha = sex === 'F' ? -0.241 : -0.302;
+    const sexFactor = sex === 'F' ? 1.012 : 1.0;
+    const ratio = scr / kappa;
+    const egfrExact = 142 * Math.pow(Math.min(ratio, 1), alpha) * Math.pow(Math.max(ratio, 1), -1.200) * Math.pow(0.9938, age) * sexFactor;
+    const egfr = Math.round(egfrExact);
+
+    let stageCode = 'G1';
+    let stageDesc = 'Normal ou elevada';
+    if (egfr >= 90) {
+      stageCode = 'G1';
+      stageDesc = 'Normal ou elevada';
+    } else if (egfr >= 60) {
+      stageCode = 'G2';
+      stageDesc = 'Levemente diminuída';
+    } else if (egfr >= 45) {
+      stageCode = 'G3a';
+      stageDesc = 'Leve a moderadamente diminuída';
+    } else if (egfr >= 30) {
+      stageCode = 'G3b';
+      stageDesc = 'Moderada a gravemente diminuída';
+    } else if (egfr >= 15) {
+      stageCode = 'G4';
+      stageDesc = 'Gravemente diminuída';
+    } else {
+      stageCode = 'G5';
+      stageDesc = 'Falência renal';
+    }
+
+    return { egfr, stageCode, stageDesc, age, sex };
+  }
+
   // Limpa e compacta linhas de exames laboratoriais no formato padrão limpo da APS (sem unidades prolixas e sem índices redundantes)
-  function formatCleanCompactLabLine(rawLine) {
+  // Também executa os cálculos determinísticos de TFG (CKD-EPI 2021), IST % (calculado) e padronização de SOF.
+  function formatCleanCompactLabLine(rawLine, manualAge = '', manualSex = '', calcCollector = null) {
     if (!rawLine || typeof rawLine !== 'string') return '';
     let l = rawLine.trim();
     if (!l.startsWith('- LABS')) return l;
 
-    // Remove unidades de medida desnecessárias no prontuário médico
-    l = l.replace(/\s*(?:milh\.\/mm³|milhões\/mm³|g\/dL|mg\/dL|µg\/dL|ug\/dL|pg|fL|%|U\/L|u\/L|µUI\/mL|uUI\/mL|ng\/mL|mEq\/L|segundos|seg|\/mm³|\/µL|\/uL)\b/gi, '');
+    // Extrai eventual idade e sexo que o modelo tenha lido diretamente do cabeçalho do PDF dentro da tag CKD-EPI
+    let pdfAge = '';
+    let pdfSex = '';
+    const pdfMetaMatch = l.match(/CKD-EPI[^)]*?\b([1-9][0-9]{1,2})\s*(?:a|anos)\b[^)]*?\b(M|F|Masculino|Feminino)\b/i)
+      || l.match(/\b([1-9][0-9]{1,2})\s*(?:a|anos)\s*,\s*(M|F|Masculino|Feminino)\b/i);
+    if (pdfMetaMatch) {
+      pdfAge = pdfMetaMatch[1];
+      const sRaw = pdfMetaMatch[2].toUpperCase();
+      pdfSex = sRaw.startsWith('F') ? 'F' : (sRaw.startsWith('M') ? 'M' : '');
+    }
+
+    // Remove unidades de medida desnecessárias no prontuário médico (preservando % para HbA1c e IST!)
+    l = l.replace(/\s*(?:milh\.\/mm³|milhões\/mm³|mL\/min\/1[.,]73\s*m²|mL\/min|g\/dL|mg\/dL|µg\/dL|ug\/dL|pg|fL|U\/L|u\/L|µUI\/mL|uUI\/mL|ng\/mL|mEq\/L|segundos|seg|\/mm³|\/µL|\/uL)\b/gi, '');
 
     // Remove redundâncias laboratoriais
     l = l.replace(/Glicemia estimada média\s*:\s*[^|)]+/gi, '');
@@ -2170,7 +2369,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     l = l.replace(/Proteína C Reativa Quantitativa/gi, 'PCR');
     l = l.replace(/Proteína C Reativa/gi, 'PCR');
     l = l.replace(/Pesquisa Quantitativa\s*:\s*/gi, '');
-    l = l.replace(/TIBC \(Capacidade de Ligação do Ferro\)/gi, 'TIBC');
+    l = l.replace(/TIBC\s*\(Capacidade[^)]+\)/gi, 'TIBC');
+    l = l.replace(/Capacidade Total de Liga[çc][ãa]o do Ferro(?:\s*\(TIBC\)|\s*\(CTLF\))?/gi, 'TIBC');
+    l = l.replace(/Capacidade Latente de Liga[çc][ãa]o do Ferro(?:\s*\(CLLF\))?/gi, 'CLLF');
+    l = l.replace(/[ÍI]ndice de Satura[çc][ãa]o d[ae] Transferrina(?:\s*\(IST\))?/gi, 'IST');
+    l = l.replace(/Satura[çc][ãa]o d[ae] Transferrina(?:\s*\(IST\))?/gi, 'IST');
     l = l.replace(/TGO \(AST\)/gi, 'TGO');
     l = l.replace(/TGP \(ALT\)/gi, 'TGP');
     l = l.replace(/Hemoglobina Glicada \(HbA1c\)/gi, 'HbA1c');
@@ -2189,7 +2392,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     l = l.replace(/Potássio/gi, 'K');
     l = l.replace(/Sódio/gi, 'Na');
     l = l.replace(/Parasitológico de Fezes\s*:\s*Negativo/gi, 'EPF negativo');
-    l = l.replace(/Sangue Oculto nas Fezes\s*:\s*Negativa?/gi, 'SOF negativo');
+
+    // Padronização estrita de Sangue Oculto nas Fezes com a sigla SOF
+    l = l.replace(/(?:Pesquisa\s+de\s+)?Sangue\s+Oculto(?:\s+nas\s+Fezes)?\s*(?:\([^)]*\))?\s*:?\s*(Negativ[oa]|Ausente|N[ãa]o\s+reagente)/gi, 'SOF negativo');
+    l = l.replace(/(?:Pesquisa\s+de\s+)?Sangue\s+Oculto(?:\s+nas\s+Fezes)?\s*(?:\([^)]*\))?\s*:?\s*(Positiv[oa]|Presente|Reagente)/gi, 'SOF positivo');
+    l = l.replace(/\b(?:PSOF|SOF)\s*:?\s*(Negativ[oa]|Ausente|N[ãa]o\s+reagente)\b/gi, 'SOF negativo');
+    l = l.replace(/\b(?:PSOF|SOF)\s*:?\s*(Positiv[oa]|Presente|Reagente)\b/gi, 'SOF positivo');
     l = l.replace(/Leucócitos Fecais\s*:\s*Negativa?/gi, 'Leucócitos fecais negativos');
 
     // Descompacta Hemograma prolixo com parênteses
@@ -2218,11 +2426,98 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     l = l.replace(/EQU\s*\([^)]*Elementos anormais negativos[^)]*\)/gi, 'EQU sem alterações');
 
     // Limpa dois-pontos desnecessários entre sigla e valor
-    l = l.replace(/\b(Hb|Ht|VCM|Leuco|Plaq|GJ|HbA1c|CT|HDL|LDL|TAG|Creat|Ureia|TGO|TGP|GGT|FA|PCR|Ferro|Ferritina|Transferrina|TIBC|TSH|T4L|B12|Na|K)\s*:\s*([0-9,.]+)/g, '$1 $2');
+    l = l.replace(/\b(Hb|Ht|VCM|Leuco|Plaq|GJ|HbA1c|CT|HDL|LDL|TAG|Creat|Ureia|TGO|TGP|GGT|FA|PCR|Ferro|Ferritina|Transferrina|TIBC|CTLF|CLLF|IST|TSH|T4L|B12|Na|K)\s*:\s*([0-9,.]+)/g, '$1 $2');
     l = l.replace(/\b(TAP|KPTT)\s*:\s*/gi, '$1 ');
 
-    // Limpa separadores duplicados ou vazios
-    l = l.replace(/\s*\|\s*\|\s*/g, ' | ')
+    // 1) CÁLCULO AUTOMÁTICO DO PERFIL DO FERRO -> IST % (calculado)
+    const ferroMatch = l.match(/\bFerro\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    const tibcMatch = l.match(/\b(?:TIBC|CTLF|CLF)\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    const cllfMatch = l.match(/\b(?:CLLF|UIBC)\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    const transfMatch = l.match(/\bTransferrina\s+([0-9]+(?:[.,][0-9]+)?)/i);
+
+    if (ferroMatch) {
+      const ferroVal = parseFloat(ferroMatch[1].replace(',', '.'));
+      let tibcVal = NaN;
+      if (tibcMatch) {
+        tibcVal = parseFloat(tibcMatch[1].replace(',', '.'));
+      } else if (cllfMatch) {
+        const cllfVal = parseFloat(cllfMatch[1].replace(',', '.'));
+        if (!isNaN(cllfVal) && cllfVal > 0) tibcVal = ferroVal + cllfVal;
+      } else if (transfMatch) {
+        const transfVal = parseFloat(transfMatch[1].replace(',', '.'));
+        if (!isNaN(transfVal) && transfVal > 0) tibcVal = transfVal * 1.25;
+      }
+
+      if (!isNaN(ferroVal) && ferroVal > 0 && !isNaN(tibcVal) && tibcVal > 0) {
+        const istNum = (ferroVal / tibcVal) * 100;
+        const istRounded = Math.round(istNum * 10) / 10;
+        const istFormatted = Number.isInteger(istRounded)
+          ? `${istRounded}%`
+          : `${istRounded.toFixed(1).replace('.', ',')}%`;
+        const istTargetTag = `IST ${istFormatted} (calculado)`;
+
+        if (/\bIST\s+[0-9.,]+\s*%?(?:\s*\(calculado\))?/i.test(l)) {
+          l = l.replace(/\bIST\s+[0-9.,]+\s*%?(?:\s*\(calculado\))?/gi, istTargetTag);
+        } else {
+          // Insere logo após o último marcador do perfil de ferro (TIBC, CTLF, CLLF, Transferrina, Ferritina ou Ferro)
+          const ironAnchorRe = /(\b(?:TIBC|CTLF|CLLF|Transferrina|Ferritina|Ferro)\s+[0-9]+(?:[.,][0-9]+)?)(?!.*\b(?:TIBC|CTLF|CLLF|Transferrina|Ferritina|Ferro)\s+[0-9])/i;
+          if (ironAnchorRe.test(l)) {
+            l = l.replace(ironAnchorRe, `$1 | ${istTargetTag}`);
+          } else {
+            l += ` | ${istTargetTag}`;
+          }
+        }
+
+        if (Array.isArray(calcCollector)) {
+          calcCollector.push({ type: 'ist', istFormatted });
+        }
+      } else if (/\bIST\s+([0-9]+(?:[.,][0-9]+)?)\s*%?\s*\(calculado\)/i.test(l)) {
+        const mIst = l.match(/\bIST\s+([0-9]+(?:[.,][0-9]+)?)\s*%?\s*\(calculado\)/i);
+        const istFormatted = `${mIst[1].replace('.', ',')}%`;
+        l = l.replace(/\bIST\s+[0-9.,]+\s*%?\s*\(calculado\)/gi, `IST ${istFormatted} (calculado)`);
+        if (Array.isArray(calcCollector)) {
+          calcCollector.push({ type: 'ist', istFormatted });
+        }
+      }
+    }
+
+    // 2) CÁLCULO AUTOMÁTICO DA TFG (CKD-EPI 2021) + CLASSIFICAÇÃO KDIGO (SOMENTE SE IDADE E SEXO CONFIRMADOS)
+    const creatMatch = l.match(/\bCreat\s+([0-9]+(?:[.,][0-9]+)?)/i);
+    if (creatMatch) {
+      const scrStr = creatMatch[1].replace('.', ',');
+      const effectiveAge = manualAge || pdfAge;
+      const effectiveSex = manualSex || pdfSex;
+      const ckd = calculateCkdEpi2021(scrStr, effectiveAge, effectiveSex);
+
+      // Remove qualquer segmento TFG prévio junto à Creatinina para substituir pelo valor determinístico exato (ou omitir se incerto)
+      l = l.replace(/\bCreat\s+[0-9]+(?:[.,][0-9]+)?(?:\s*\|\s*TFG\s*[^|]+|\s*\(\s*TFG\s*[^)]+\))?/i, `Creat ${scrStr}`);
+
+      if (ckd) {
+        l = l.replace(new RegExp(`\\bCreat\\s+${scrStr.replace(',', '[.,]')}`, 'i'), `Creat ${scrStr} | TFG ${ckd.egfr} (CKD-EPI ${ckd.stageCode})`);
+        if (Array.isArray(calcCollector)) {
+          calcCollector.push({
+            type: 'ckdepi',
+            scr: scrStr,
+            egfr: ckd.egfr,
+            stageCode: ckd.stageCode,
+            stageDesc: ckd.stageDesc,
+            age: ckd.age,
+            sex: ckd.sex
+          });
+        }
+      } else if (Array.isArray(calcCollector)) {
+        calcCollector.push({
+          type: 'ckdepi_missing',
+          scr: scrStr,
+          missingAge: !effectiveAge || parseInt(effectiveAge, 10) < 18,
+          missingSex: !effectiveSex
+        });
+      }
+    }
+
+    // Limpa separadores duplicados ou vazios e padroniza espaços ao redor de "|"
+    l = l.replace(/\s*\|\s*/g, ' | ')
+         .replace(/(?:\s*\|\s*){2,}/g, ' | ')
          .replace(/\s*\|\s*$/g, '')
          .replace(/:\s*\|\s*/g, ': ')
          .replace(/\s+/g, ' ')
@@ -2231,9 +2526,56 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     return l;
   }
 
+  // Formata todas as linhas de exames (unificando eventual linha separada de SOF dentro de - LABS e coletando cálculos)
+  function formatAllExamLinesWithCalculations(examBlockText, manualAge = '', manualSex = '') {
+    if (!examBlockText || typeof examBlockText !== 'string') {
+      return { formattedText: '', calculations: [] };
+    }
+    const rawLines = examBlockText.split('\n');
+    const pendingSofItems = [];
+    const keptLines = [];
+
+    for (const rawL of rawLines) {
+      const t = rawL.trim();
+      // Se o modelo colocou Sangue Oculto nas Fezes (SOF) em uma linha separada, captura para juntar na linha - LABS
+      const standaloneSofMatch = t.match(/^-\s*(?:(?:Pesquisa\s+de\s+)?Sangue\s+Oculto(?:\s+nas\s+Fezes)?|PSOF|SOF)(?:\s*\([^)]*\))?\s*:?\s*(Negativ[oa]|Positiv[oa]|Ausente|Presente|N[ãa]o\s+reagente|Reagente)\b/i);
+      if (standaloneSofMatch) {
+        const isPos = /positiv|presente|^(?!n[ãa]o\s+)reagente/i.test(standaloneSofMatch[1]);
+        pendingSofItems.push(isPos ? 'SOF positivo' : 'SOF negativo');
+        continue;
+      }
+      keptLines.push(rawL);
+    }
+
+    if (pendingSofItems.length > 0) {
+      const labsIdx = keptLines.findIndex(l => l.trim().startsWith('- LABS'));
+      const sofSuffix = pendingSofItems.join(' | ');
+      if (labsIdx >= 0) {
+        if (!/\bSOF\s+(?:negativo|positivo)/i.test(keptLines[labsIdx])) {
+          keptLines[labsIdx] = `${keptLines[labsIdx].trim()} | ${sofSuffix}`;
+        }
+      } else {
+        keptLines.unshift(`- LABS: ${sofSuffix}`);
+      }
+    }
+
+    const calculations = [];
+    const formattedLines = keptLines.map(line => {
+      if (line.trim().startsWith('- LABS')) {
+        return formatCleanCompactLabLine(line, manualAge, manualSex, calculations);
+      }
+      return line;
+    });
+
+    return {
+      formattedText: formattedLines.join('\n'),
+      calculations
+    };
+  }
+
   // Garante deterministicamente via código que NENHUMA condição de saúde anterior ("#"), NENHUMA sub-linha ("- "),
   // NENHUMA informação de Ecografia na IG, NENHUM exame anterior e NENHUMA formatação de Vacinas/Sorologias/Paridade sejam perdidos!
-  function enforcePreviousHeaderAndExams(evolutionText, previousConsultationText, templateId, soapSubtypeHeader) {
+  function enforcePreviousHeaderAndExams(evolutionText, previousConsultationText, templateId, soapSubtypeHeader, patientAge = '', patientSex = '') {
     let text = String(evolutionText || '');
     if (!text || /Áudio sem conteúdo de consulta médica/i.test(text)) return text;
 
@@ -2312,7 +2654,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       return '# SOROLOGIAS:\n' + dateLines.map(dl => (dl.startsWith('-') ? dl : `- ${dl.replace(/^-\s*/, '')}`)).join('\n');
     });
 
-    // 6. Se houver Evolução Anterior colada, garante que NENHUMA "#" anterior, NENHUMA sub-linha "- " e NENHUM exame anterior tenham sido omitidos
+    // 6. Se houver Evolução Anterior colada, garante que NENHUMA "#" anterior, NENHUMA patologia crônica/importante da AVALIAÇÃO anterior,
+    // NENHUMA sub-linha "- " e NENHUM exame anterior (no Pré-Natal) tenham sido omitidos
     const parsedPrev = (previousConsultationText && window.parsePreviousConsultationData)
       ? window.parsePreviousConsultationData(previousConsultationText)
       : null;
@@ -2330,7 +2673,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         }
       }
 
-      // 6b. Verifica todas as condições "#" e sub-linhas ("- " ou ">> ") do cabeçalho anterior + diagnósticos promovidos da AVALIAÇÃO anterior (nos 7 modelos!)
+      // 6b. Verifica todas as condições "#" e sub-linhas ("- " ou ">> ") do cabeçalho anterior + patologias crônicas/importantes promovidas da AVALIAÇÃO anterior
       const subjSplit = text.match(/^([\s\S]*?)(\n\s*(?:\d+\.\s*)?SUBJETIVO\b[\s\S]*)$/i);
       if (subjSplit) {
         let headerPart = subjSplit[1];
@@ -2341,9 +2684,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
           .replace(/[^a-z0-9]/g, '');
 
-        // Agrupa o cabeçalho anterior em blocos: cada linha "#" + suas sub-linhas ("- " ou ">> ") imediatamente abaixo
+        // Agrupa o cabeçalho anterior + patologias crônicas promovidas da AVALIAÇÃO anterior em blocos
         const prevSourceLines = [
-          ...(parsedPrev.headerLines || [])
+          ...(parsedPrev.headerLines || []),
+          ...(parsedPrev.promotedFromAvaliacao || [])
         ];
         const prevBlocks = [];
         for (const line of prevSourceLines) {
@@ -2357,11 +2701,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           }
         }
 
-        // Limpeza de frases descritivas da Avaliação que tenham sido indevidamente colocadas no cabeçalho "#":
+        // Limpa apenas sufixos transitórios de status das linhas "#" (sem apagar a patologia crônica!) e bloqueia queixas agudas no cabeçalho "#"
         headerPart = headerPart
-          .replace(/^#\s*Hip[óo]tese\s*:[^\n]*\n?/gim, '')
-          .replace(/^#\s*.*(?:controle irregular|controle insatisfat[óo]rio|em tratamento|achado em TC|achado de imagem|expelida clinicamente)[^\n]*\n?/gim, '')
-          .replace(/^#\s*(?:S[íi]ndrome\s+d[ie]sabsortiva|Cistos?\s+hep[áa]ticos?|Nefrolit[íi]ase|SOF\s+positivo)[^\n]*\n?/gim, '');
+          .replace(/^#\s*Hip[óo]tese\s*:\s*/gim, '# ')
+          .replace(/^(#\s*[^\n,;()-]+?)\s*(?:[,;-]\s*|\s+\(\s*)(?:compensad[oa]|descompensad[oa]|controlad[oa]|em\s+controle|bom\s+controle|controle\s+adequad[oa]|controle\s+irregular|controle\s+insatisfat[óo]rio|em\s+tratamento|em\s+acompanhamento|em\s+investiga[çc][ãa]o|sem\s+queixas|est[áa]vel)[^\n]*$/gim, '$1')
+          .replace(/^#\s*(?:IVAS|Infec[çc][ãa]o\s+de\s+vias\s+a[ée]reas\s+superiores|Nasofaringite\s+aguda|Resfriado\s+comum|S[íi]ndrome\s+gripal|Gripe|Amigdalite\s+aguda|Faringoamigdalite|Faringite\s+aguda|Sinusite\s+aguda|Rinossinusite\s+aguda|Otite\s+m[ée]dia\s+aguda|Otite\s+externa\s+aguda|Gastroenterite\s+aguda|GECA|Diarreia\s+aguda|Viroses?|Dengue|Cistite\s+aguda|Infec[çc][ãa]o\s+do\s+trato\s+urin[áa]rio|ITU\s+baixa|ITU\s+aguda|Lombalgia\s+aguda|Cervicalgia\s+aguda|Cefaleia\s+aguda|SOF\s+positivo|Puericultura\s+de\s+rotina|Consulta\s+de\s+rotina|Check-?up|Renova[çc][ãa]o\s+de\s+receita)[^\n]*\n?/gim, '');
 
         for (const block of prevBlocks) {
           const mainUpper = block.main.toUpperCase();
@@ -2403,9 +2747,15 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             continue;
           }
 
-          // É uma condição clínica/cirúrgica/hábito/diagnóstico (ex.: "# Hipertensão arterial", "# ovolactovegetariana", "# Risco aumentado para pré-eclâmpsia", etc.)
+          // É uma condição clínica/cirúrgica/hábito/diagnóstico crônico (ex.: "# Hipertensão arterial sistêmica", "# DM2", "# Hipotireoidismo", etc.)
           const mainNorm = normalizeCompare(block.main);
-          if (mainNorm && !normalizeCompare(headerPart).includes(mainNorm)) {
+          const existingHeaderLines = headerPart.split('\n').map(l => l.trim()).filter(l => l.startsWith('#'));
+          const alreadyEquivalentInHeader = existingHeaderLines.some(existingLine =>
+            normalizeCompare(existingLine).includes(mainNorm) ||
+            (window.areMedicalConditionsEquivalent && window.areMedicalConditionsEquivalent(existingLine, block.main))
+          );
+
+          if (mainNorm && !normalizeCompare(headerPart).includes(mainNorm) && !alreadyEquivalentInHeader) {
             const fullBlockText = [block.main, ...block.subs].join('\n');
             // Insere no local exato conforme o modelo (Pré-Natal, LGBTQIAP+, Puericultura, Visita Domiciliar, Interconsulta ou SOAP Geral)
             if (/^Medica[çc][õo]es em uso:/im.test(headerPart)) {
@@ -2469,6 +2819,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
         const currentLabLines = [];
         const currentUsgLines = [];
+        const standaloneSofs = [];
         let inUsgSubblock = false;
 
         for (const rawL of rawExamArea.split('\n')) {
@@ -2482,6 +2833,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             inUsgSubblock = false;
             continue;
           }
+          const sofLineMatch = t.match(/^-\s*(?:(?:Pesquisa\s+de\s+)?Sangue\s+Oculto(?:\s+nas\s+Fezes)?|PSOF|SOF)(?:\s*\([^)]*\))?\s*:?\s*(Negativ[oa]|Positiv[oa]|Ausente|Presente|N[ãa]o\s+reagente|Reagente)\b/i);
+          if (sofLineMatch) {
+            const isPos = /positiv|presente|^(?!n[ãa]o\s+)reagente/i.test(sofLineMatch[1]);
+            standaloneSofs.push(isPos ? 'SOF positivo' : 'SOF negativo');
+            continue;
+          }
           const isUsgLine = /^-\s*(?:US\b|USG\b|ECO\b|ECOGRAFIA|ULTRASSOM|ULTRASSONOGRAFIA)/i.test(t)
             || /\b(?:DMSG|CCN|saco gestacional|feto único|placenta|líquido amniótico|biometria fetal)\b/i.test(t);
 
@@ -2489,6 +2846,18 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             currentUsgLines.push(t);
           } else {
             currentLabLines.push(t);
+          }
+        }
+
+        if (standaloneSofs.length > 0) {
+          const sofJoined = standaloneSofs.join(' | ');
+          const targetLabIdx = currentLabLines.findIndex(l => l.startsWith('- LABS'));
+          if (targetLabIdx >= 0) {
+            if (!/\bSOF\s+(?:negativo|positivo)/i.test(currentLabLines[targetLabIdx])) {
+              currentLabLines[targetLabIdx] = `${currentLabLines[targetLabIdx]} | ${sofJoined}`;
+            }
+          } else {
+            currentLabLines.unshift(`- LABS: ${sofJoined}`);
           }
         }
 
@@ -2553,7 +2922,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         }
 
         const rebuiltSections = [];
-        const cleanedFinalLabs = finalLabs.map(formatCleanCompactLabLine);
+        const cleanedFinalLabs = finalLabs.map(line => formatCleanCompactLabLine(line, patientAge, patientSex));
         if (!isPrenatal) {
           // No SOAP Geral e demais consultas fora do Pré-Natal:
           // Unifica todos os exames complementares sob o título "EXAMES COMPLEMENTARES" (sem criar "ULTRASSONOGRAFIA" para abrigar TC, RX ou Ecocardio!)
@@ -2615,7 +2984,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     return beforeSubj + subjContent + '\n' + afterSubj;
   }
 
-  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId, previousConsultationText = '', soapSubtypeHeader = '') {
+  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId, previousConsultationText = '', soapSubtypeHeader = '', patientAge = '', patientSex = '') {
     let text = fixBrazilianMedicationSpelling(evolutionText || '');
 
     // 1. Limpeza de linguagem informal / gírias no Subjetivo para adequação à semiologia médica formal
@@ -2666,7 +3035,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    text = enforcePreviousHeaderAndExams(text, previousConsultationText, templateId, soapSubtypeHeader);
+    text = enforcePreviousHeaderAndExams(text, previousConsultationText, templateId, soapSubtypeHeader, patientAge, patientSex);
     const extractedCodes = Array.isArray(existingCodes) ? [...existingCodes] : [];
 
     // Na Puericultura, garante que nunca apareça "# Alimentação:" ou "# Aleitamento:" no cabeçalho "#" inicial
@@ -4642,6 +5011,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     document.getElementById('btnCancelRec')?.addEventListener('click', cancelCurrentRecording);
     document.getElementById('btnClearAllSheetTop')?.addEventListener('click', clearAllCurrentSheet);
     document.getElementById('btnClearAllSheetBottom')?.addEventListener('click', clearAllCurrentSheet);
+    document.getElementById('patientAgeInput')?.addEventListener('input', refreshLiveExamCalculationsFromInputs);
+    document.getElementById('patientAgeInput')?.addEventListener('change', refreshLiveExamCalculationsFromInputs);
+    document.getElementById('patientSexSelect')?.addEventListener('change', refreshLiveExamCalculationsFromInputs);
     document.getElementById('btnChangeTemplateModel')?.addEventListener('click', () => {
       state.templateLocked = false;
       state.selectedTemplateId = 'geral';
