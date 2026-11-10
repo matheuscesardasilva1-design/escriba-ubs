@@ -282,8 +282,72 @@
     localStorage.setItem('ubs_custom_templates_v10', JSON.stringify(state.templates));
   }
 
+  // Limites diários oficiais por Chave API no Google AI Studio (Modelos Multimodais de Áudio)
+  const MODEL_QUOTA_CATALOG = [
+    { id: 'gemini-3.5-flash-lite', label: '⚡ Gemini 3.5 Flash Lite', dailyLimit: 500, rpmLimit: 15 },
+    { id: 'gemini-3.1-flash-lite', label: '⚡ Gemini 3.1 Flash Lite', dailyLimit: 500, rpmLimit: 15 },
+    { id: 'gemini-2.5-flash',      label: '💎 Gemini 2.5 Flash',      dailyLimit: 20,  rpmLimit: 10 },
+    { id: 'gemini-3-flash',        label: '💎 Gemini 3 Flash',        dailyLimit: 20,  rpmLimit: 10 },
+    { id: 'gemini-3.8-flash',      label: '💎 Gemini 3.8 Flash',      dailyLimit: 20,  rpmLimit: 10 },
+    { id: 'gemini-3.6-flash',      label: '💎 Gemini 3.6 Flash',      dailyLimit: 20,  rpmLimit: 10 },
+    { id: 'gemini-2.5-flash-lite', label: '⚡ Gemini 2.5 Flash Lite', dailyLimit: 500, rpmLimit: 15 }
+  ];
+
+  function normalizeModelForQuota(modelName) {
+    const clean = String(modelName || '').replace(/^models\//, '').trim();
+    if (clean === 'gemini-3-flash-preview') return 'gemini-3-flash';
+    return clean;
+  }
+
+  function getModelDailyLimit(modelName) {
+    const norm = normalizeModelForQuota(modelName);
+    const found = MODEL_QUOTA_CATALOG.find(m => m.id === norm);
+    if (found) return found.dailyLimit;
+    if (norm.includes('lite')) return 500;
+    if (norm.includes('gemma')) return 14400;
+    return 20;
+  }
+
   function getTodayKey() {
     return 'ubs_tokens_' + new Date().toISOString().slice(0, 10);
+  }
+
+  function getTodayPerKeyQuotaStorageKey() {
+    return 'ubs_per_key_quota_' + new Date().toISOString().slice(0, 10);
+  }
+
+  function loadTodayPerKeyQuotaMap() {
+    try {
+      const raw = localStorage.getItem(getTodayPerKeyQuotaStorageKey());
+      return raw ? JSON.parse(raw) : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function saveTodayPerKeyQuotaMap(mapObj) {
+    try {
+      localStorage.setItem(getTodayPerKeyQuotaStorageKey(), JSON.stringify(mapObj || {}));
+    } catch (_) {}
+  }
+
+  function recordKeyModelUsage(apiKey, modelName, tokensUsed = 0) {
+    const keyHash = getKeyShortHash(apiKey);
+    const normModel = normalizeModelForQuota(modelName);
+    const map = loadTodayPerKeyQuotaMap();
+    if (!map[keyHash]) {
+      map[keyHash] = { totalRequests: 0, totalTokens: 0, lastModel: '', updatedAt: 0, byModel: {} };
+    }
+    if (!map[keyHash].byModel[normModel]) {
+      map[keyHash].byModel[normModel] = { requests: 0, tokens: 0 };
+    }
+    map[keyHash].totalRequests += 1;
+    map[keyHash].totalTokens += (tokensUsed || 0);
+    map[keyHash].lastModel = normModel;
+    map[keyHash].updatedAt = Date.now();
+    map[keyHash].byModel[normModel].requests += 1;
+    map[keyHash].byModel[normModel].tokens += (tokensUsed || 0);
+    saveTodayPerKeyQuotaMap(map);
   }
 
   function loadDailyTokenStats() {
@@ -307,6 +371,7 @@
       count: state.dailyConsultationsProcessed
     }));
     updateTokenMonitorUI();
+    renderApiKeysQuotaDashboard();
   }
 
   function formatModelName(model) {
@@ -321,6 +386,7 @@
     if (clean.includes('3.8-flash')) return 'Gemini 3.8 Flash';
     if (clean.includes('3.6-flash')) return 'Gemini 3.6 Flash';
     if (clean.includes('2.5-flash') && !clean.includes('lite')) return 'Gemini 2.5 Flash';
+    if (clean.includes('3-flash')) return 'Gemini 3 Flash';
     if (clean.includes('gemma')) return 'Gemma 4';
     if (clean.includes('3.5-flash-lite')) return 'Gemini 3.5 Flash Lite';
     if (clean.includes('3.1-flash-lite')) return 'Gemini 3.1 Flash Lite';
@@ -328,21 +394,81 @@
     return clean;
   }
 
+  function getAggregatedQuotaSummaryForTopbar(overrideModel) {
+    const keys = getSavedApiKeysList();
+    const pref = localStorage.getItem('ubs_preferred_model') || 'auto';
+    const targetModel = normalizeModelForQuota(
+      overrideModel
+      || (pref !== 'auto' ? pref : '')
+      || localStorage.getItem('ubs_working_model_' + getKeyShortHash(keys[0] || ''))
+      || 'gemini-3.5-flash-lite'
+    );
+    const modelLimitPerKey = getModelDailyLimit(targetModel);
+    const quotaMap = loadTodayPerKeyQuotaMap();
+
+    if (keys.length === 0) {
+      return {
+        keysCount: 0,
+        targetModel,
+        totalLimit: modelLimitPerKey,
+        totalUsed: 0,
+        totalAvail: 0
+      };
+    }
+
+    let totalLimit = 0;
+    let totalUsed = 0;
+    let totalAvail = 0;
+
+    for (const k of keys) {
+      const kHash = getKeyShortHash(k);
+      const exhausted = getExhaustedModelsForToday(k).map(normalizeModelForQuota);
+      const disabled = getDisabledModelsForKey(k).map(normalizeModelForQuota);
+      const usedOnKeyModel = quotaMap[kHash]?.byModel?.[targetModel]?.requests || 0;
+
+      if (disabled.includes(targetModel)) {
+        continue;
+      }
+      totalLimit += modelLimitPerKey;
+      if (exhausted.includes(targetModel)) {
+        totalUsed += modelLimitPerKey;
+      } else {
+        const cappedUsed = Math.min(modelLimitPerKey, usedOnKeyModel);
+        totalUsed += cappedUsed;
+        totalAvail += Math.max(0, modelLimitPerKey - cappedUsed);
+      }
+    }
+
+    return {
+      keysCount: keys.length,
+      targetModel,
+      totalLimit,
+      totalUsed,
+      totalAvail
+    };
+  }
+
   function updateTokenMonitorUI(modelUsed) {
     const now = Date.now();
     state.recentApiCallsTimestamps = (state.recentApiCallsTimestamps || []).filter(ts => now - ts < 60000);
     const rpmLastMinute = state.recentApiCallsTimestamps.length;
-    const usedCalls = state.dailyConsultationsProcessed || 0;
-    const activeModel = modelUsed || localStorage.getItem('ubs_working_model_' + getKeyShortHash(getSavedApiKey())) || '';
-    const activeModelStr = activeModel ? ` • ${formatModelName(activeModel)}` : '';
+    const summary = getAggregatedQuotaSummaryForTopbar(modelUsed);
+    const modelShort = formatModelName(summary.targetModel).replace(/^Gemini\s+/i, '');
+    const keyLabel = summary.keysCount > 1 ? `${summary.keysCount} Chaves` : '1 Chave';
 
     const elDaily = document.getElementById('dailyTokenCounter');
     if (elDaily) {
-      if (rpmLastMinute >= 12) {
-        elDaily.textContent = `🟡 Aguardando fila rápida (${usedCalls} hoje)${activeModelStr}`;
+      if (summary.keysCount === 0) {
+        elDaily.textContent = `🔑 Sem Chave API (Clique para configurar)`;
+        elDaily.style.color = '#dc2626';
+      } else if (rpmLastMinute >= 12) {
+        elDaily.textContent = `🟡 Fila rápida • Usado: ${summary.totalUsed}/${summary.totalLimit} (${summary.totalAvail} disp.)`;
+        elDaily.style.color = '#d97706';
+      } else if (summary.totalAvail === 0 && summary.totalLimit > 0) {
+        elDaily.textContent = `🟠 ${modelShort}: ${summary.totalUsed}/${summary.totalLimit} (0 disp. — alterna auto)`;
         elDaily.style.color = '#d97706';
       } else {
-        elDaily.textContent = `🟢 Sistema Pronto (${usedCalls} hoje)${activeModelStr}`;
+        elDaily.textContent = `🟢 ${keyLabel}: ${summary.totalUsed} usados • ${summary.totalAvail}/${summary.totalLimit} disp. (${modelShort})`;
         elDaily.style.color = '#059669';
       }
     }
@@ -3334,7 +3460,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                 const liveResult = await callGeminiLiveWebSocket(requestBody, currentKey, model, onStatusUpdate);
                 if (liveResult && liveResult.responseJson) {
                   rememberWorkingModelForKey(model, currentKey);
+                  recordKeyModelUsage(currentKey, model, liveResult.responseJson?.usageMetadata?.totalTokenCount || 0);
                   updateTokenMonitorUI(model);
+                  renderApiKeysQuotaDashboard();
                   return liveResult;
                 }
               } catch (wsErr) {
@@ -3365,7 +3493,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             if (res.ok) {
               const responseJson = await res.json();
               rememberWorkingModelForKey(model, currentKey);
+              recordKeyModelUsage(currentKey, model, responseJson?.usageMetadata?.totalTokenCount || 0);
               updateTokenMonitorUI(model);
+              renderApiKeysQuotaDashboard();
               return { responseJson, modelUsed: model };
             }
 
@@ -3378,7 +3508,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                 const liveResult = await callGeminiLiveWebSocket(bodyForModel, currentKey, model, onStatusUpdate);
                 if (liveResult && liveResult.responseJson) {
                   rememberWorkingModelForKey(model, currentKey);
+                  recordKeyModelUsage(currentKey, model, liveResult.responseJson?.usageMetadata?.totalTokenCount || 0);
                   updateTokenMonitorUI(model);
+                  renderApiKeysQuotaDashboard();
                   return liveResult;
                 }
               } catch (_) {}
@@ -3443,6 +3575,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
               // marca este modelo como esgotado hoje e pula IMEDIATAMENTE (0s de espera) para o próximo modelo da conta (ex: gemini-3.5-flash-lite com 500/dia)!
               if (isDailyQuota) {
                 markModelExhaustedForToday(model, currentKey);
+                updateTokenMonitorUI();
+                renderApiKeysQuotaDashboard();
                 allFailedByDailyQuota = true;
                 const nextModel = modelsToTry[mIdx + 1] || (keysToTry[kIdx + 1] ? 'próxima chave' : '');
                 if (elDaily && nextModel) {
@@ -4987,11 +5121,13 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
   }
 
   function updateApiKeyStatusBadge() {
-    const key = getSavedApiKey();
+    const keys = getSavedApiKeysList();
     const btn = document.getElementById('btnOpenApiKeyModal');
     if (!btn) return;
-    if (key) {
-      btn.innerHTML = `🔒 Credencial Ativa`;
+    if (keys.length > 0) {
+      btn.innerHTML = keys.length > 1
+        ? `🔒 ${keys.length} Chaves Ativas`
+        : `🔒 Credencial Ativa`;
       btn.classList.add('key-ok');
     } else {
       btn.innerHTML = `🔑 Credencial API`;
@@ -4999,12 +5135,302 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
   }
 
+  function renderApiKeysQuotaDashboard() {
+    const container = document.getElementById('apiKeysQuotaDashboard');
+    if (!container) return;
+
+    const keys = getSavedApiKeysList();
+    const quotaMap = loadTodayPerKeyQuotaMap();
+    const pref = localStorage.getItem('ubs_preferred_model') || 'auto';
+
+    if (keys.length === 0) {
+      container.innerHTML = `
+        <div style="padding:12px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#991b1b; font-size:0.82rem;">
+          ⚠️ <strong>Nenhuma Chave API cadastrada.</strong> Insira sua chave abaixo para visualizar os limites diários (usado vs. disponível) de cada chave e modelo.
+        </div>
+      `;
+      return;
+    }
+
+    // Cálculo global somando todas as chaves configuradas
+    let globalAllModelsLimit = 0;
+    let globalAllModelsUsed = 0;
+    let globalAllModelsAvail = 0;
+    let globalRequestsTrackedToday = 0;
+    let globalTokensTrackedToday = 0;
+
+    const keyCardsHtml = keys.map((apiKey, idx) => {
+      const kHash = getKeyShortHash(apiKey);
+      const maskedKey = `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
+      const keyStats = quotaMap[kHash] || { totalRequests: 0, totalTokens: 0, lastModel: '', byModel: {} };
+      const exhaustedList = getExhaustedModelsForToday(apiKey).map(normalizeModelForQuota);
+      const disabledList = getDisabledModelsForKey(apiKey).map(normalizeModelForQuota);
+      const workingModel = normalizeModelForQuota(localStorage.getItem('ubs_working_model_' + kHash) || '');
+
+      globalRequestsTrackedToday += (keyStats.totalRequests || 0);
+      globalTokensTrackedToday += (keyStats.totalTokens || 0);
+
+      let keyTotalLimit = 0;
+      let keyTotalUsedEffective = 0;
+      let keyTotalAvail = 0;
+      let availableModelsCount = 0;
+
+      const rowsHtml = MODEL_QUOTA_CATALOG.map(m => {
+        const isDisabled = disabledList.includes(m.id);
+        const isExhausted = exhaustedList.includes(m.id);
+        const usedReqs = keyStats.byModel?.[m.id]?.requests || 0;
+        const limit = m.dailyLimit;
+
+        let avail = 0;
+        let effectiveUsed = usedReqs;
+        if (!isDisabled) {
+          keyTotalLimit += limit;
+          if (isExhausted) {
+            avail = 0;
+            effectiveUsed = Math.max(usedReqs, limit);
+          } else {
+            avail = Math.max(0, limit - usedReqs);
+            if (avail > 0) availableModelsCount += 1;
+          }
+          keyTotalUsedEffective += Math.min(limit, effectiveUsed);
+          keyTotalAvail += avail;
+        }
+
+        let statusBadge = '';
+        if (isDisabled) {
+          statusBadge = `<span style="color:#64748b; font-weight:600;">⚪ Indisponível na conta</span>`;
+        } else if (isExhausted || avail === 0) {
+          statusBadge = `<span style="color:#dc2626; font-weight:700;">🔴 Esgotado Hoje (0 disp.)</span>`;
+        } else if (usedReqs > 0) {
+          statusBadge = `<span style="color:#0284c7; font-weight:700;">🟢 Em uso (${avail} disp.)</span>`;
+        } else {
+          statusBadge = `<span style="color:#16a34a; font-weight:600;">🟢 100% Disponível</span>`;
+        }
+
+        const isActiveHighlight = (pref !== 'auto' && normalizeModelForQuota(pref) === m.id) || (pref === 'auto' && workingModel === m.id);
+
+        return `
+          <tr style="border-bottom:1px solid #e2e8f0; ${isActiveHighlight ? 'background:#eff6ff;' : ''}">
+            <td style="padding:5px 6px; font-weight:${isActiveHighlight ? '700' : '500'}; color:#1e293b;">
+              ${m.label} ${isActiveHighlight ? '<span style="font-size:0.68rem; background:#dbeafe; color:#1d4ed8; padding:1px 5px; border-radius:4px; margin-left:4px;">Em uso</span>' : ''}
+            </td>
+            <td style="padding:5px 6px; text-align:center; color:#475569; font-weight:600;">${limit}/dia</td>
+            <td style="padding:5px 6px; text-align:center; color:${usedReqs > 0 || isExhausted ? '#0f172a' : '#94a3b8'}; font-weight:700;">
+              ${isExhausted && usedReqs === 0 ? `${limit} (429)` : usedReqs}
+            </td>
+            <td style="padding:5px 6px; text-align:center; font-weight:800; color:${avail > 0 ? '#15803d' : '#dc2626'};">
+              ${isDisabled ? '—' : avail}
+            </td>
+            <td style="padding:5px 6px; text-align:right; font-size:0.74rem;">${statusBadge}</td>
+          </tr>
+        `;
+      }).join('');
+
+      globalAllModelsLimit += keyTotalLimit;
+      globalAllModelsUsed += keyTotalUsedEffective;
+      globalAllModelsAvail += keyTotalAvail;
+
+      const pctUsed = keyTotalLimit > 0 ? Math.min(100, Math.round((keyTotalUsedEffective / keyTotalLimit) * 100)) : 0;
+      const pctAvail = Math.max(0, 100 - pctUsed);
+      const barColor = availableModelsCount === 0
+        ? '#dc2626'
+        : (pctUsed >= 75 ? '#f59e0b' : '#16a34a');
+
+      const keyStatusPill = availableModelsCount === 0
+        ? `<span style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; padding:2px 8px; border-radius:999px; font-size:0.73rem; font-weight:700;">🔴 Limite Diário Atingido</span>`
+        : (keyStats.totalRequests > 0 || exhaustedList.length > 0
+          ? `<span style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; padding:2px 8px; border-radius:999px; font-size:0.73rem; font-weight:700;">🟢 Ativa • ${keyTotalAvail} req. disponíveis</span>`
+          : `<span style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; padding:2px 8px; border-radius:999px; font-size:0.73rem; font-weight:700;">🟢 100% Livre (${keyTotalAvail} disp.)</span>`);
+
+      return `
+        <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:8px; padding:10px 12px; margin-bottom:10px; box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-weight:800; font-size:0.84rem; color:#0f172a;">🔑 Chave #${idx + 1}</span>
+              <code style="background:#f1f5f9; color:#334155; padding:2px 6px; border-radius:4px; font-size:0.76rem; border:1px solid #e2e8f0;">${maskedKey}</code>
+              ${idx === 0 ? '<span style="font-size:0.68rem; color:#0369a1; background:#e0f2fe; padding:1px 6px; border-radius:4px; font-weight:600;">Principal</span>' : '<span style="font-size:0.68rem; color:#6d28d9; background:#ede9fe; padding:1px 6px; border-radius:4px; font-weight:600;">Reserva Automática</span>'}
+            </div>
+            <div>${keyStatusPill}</div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#475569; margin-bottom:4px;">
+            <span>Usado nesta chave hoje: <strong>${keyStats.totalRequests || 0} chamadas</strong> (${(keyStats.totalTokens || 0).toLocaleString('pt-BR')} tokens)</span>
+            <span>Capacidade restante na chave: <strong style="color:#15803d;">${keyTotalAvail}</strong> de <strong>${keyTotalLimit}</strong> req/dia (${pctAvail}% livre)</span>
+          </div>
+
+          <div style="width:100%; height:7px; background:#e2e8f0; border-radius:999px; overflow:hidden; margin-bottom:8px;">
+            <div style="width:${pctUsed}%; height:100%; background:${barColor}; transition:width 0.3s ease;"></div>
+          </div>
+
+          <div style="overflow-x:auto;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.76rem;">
+              <thead>
+                <tr style="background:#f8fafc; border-bottom:1px solid #cbd5e1; color:#475569;">
+                  <th style="padding:4px 6px; text-align:left;">Modelo de Áudio/Texto</th>
+                  <th style="padding:4px 6px; text-align:center;">Limite/Dia</th>
+                  <th style="padding:4px 6px; text-align:center;">Usado Hoje</th>
+                  <th style="padding:4px 6px; text-align:center;">Disponível</th>
+                  <th style="padding:4px 6px; text-align:right;">Status Hoje</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const topSummary = getAggregatedQuotaSummaryForTopbar();
+    const activeModelLabel = formatModelName(topSummary.targetModel);
+
+    container.innerHTML = `
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(145px, 1fr)); gap:8px; margin-bottom:10px;">
+        <div style="background:#ffffff; border:1px solid #bae6fd; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:0.7rem; color:#0369a1; font-weight:700; text-transform:uppercase;">Chaves Configuradas</div>
+          <div style="font-size:1.05rem; font-weight:800; color:#0f172a; margin-top:2px;">🔑 ${keys.length} ${keys.length === 1 ? 'Chave' : 'Chaves'}</div>
+          <div style="font-size:0.71rem; color:#64748b;">Rotação automática ativa</div>
+        </div>
+        <div style="background:#ffffff; border:1px solid #bbf7d0; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:0.7rem; color:#15803d; font-weight:700; text-transform:uppercase;">Modelo Ativo (${activeModelLabel})</div>
+          <div style="font-size:1.05rem; font-weight:800; color:#15803d; margin-top:2px;">🟢 ${topSummary.totalAvail} disp. / ${topSummary.totalLimit}</div>
+          <div style="font-size:0.71rem; color:#64748b;">Usado hoje: <strong>${topSummary.totalUsed}</strong> req.</div>
+        </div>
+        <div style="background:#ffffff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:0.7rem; color:#6d28d9; font-weight:700; text-transform:uppercase;">Soma Todos os Modelos</div>
+          <div style="font-size:1.05rem; font-weight:800; color:#4c1d95; margin-top:2px;">⚡ ${globalAllModelsAvail} disponíveis</div>
+          <div style="font-size:0.71rem; color:#64748b;">De ${globalAllModelsLimit} req/dia totais</div>
+        </div>
+        <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">
+          <div style="font-size:0.7rem; color:#475569; font-weight:700; text-transform:uppercase;">Consumo Hoje</div>
+          <div style="font-size:1.05rem; font-weight:800; color:#0f172a; margin-top:2px;">📊 ${state.dailyConsultationsProcessed} atend.</div>
+          <div style="font-size:0.71rem; color:#64748b;">${globalRequestsTrackedToday} chamadas (${(state.dailyTokensUsed || globalTokensTrackedToday).toLocaleString('pt-BR')} tok)</div>
+        </div>
+      </div>
+      ${keyCardsHtml}
+    `;
+  }
+
+  async function probeAllKeysLiveQuota() {
+    const keys = getSavedApiKeysList();
+    if (keys.length === 0) {
+      showToast('⚠️ Cadastre e salve pelo menos uma Chave API primeiro.');
+      return;
+    }
+
+    const btn = document.getElementById('btnProbeKeysQuota');
+    const origText = btn ? btn.innerHTML : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Verificando no Google...';
+    }
+
+    const modelsToProbe = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3-flash'];
+
+    try {
+      for (let kIdx = 0; kIdx < keys.length; kIdx++) {
+        const apiKey = keys[kIdx];
+        const kHash = getKeyShortHash(apiKey);
+        if (btn) {
+          btn.innerHTML = `⏳ Testando Chave #${kIdx + 1}/${keys.length}...`;
+        }
+
+        // 1. Verifica na listagem de modelos quais existem nessa conta
+        let availableSet = null;
+        try {
+          const listResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+          if (listResp.ok) {
+            const listData = await listResp.json();
+            if (Array.isArray(listData.models)) {
+              availableSet = new Set(
+                listData.models
+                  .filter(m => !Array.isArray(m.supportedGenerationMethods) || m.supportedGenerationMethods.includes('generateContent'))
+                  .map(m => normalizeModelForQuota(m.name))
+              );
+            }
+          }
+        } catch (_) {}
+
+        // 2. Faz um ping ultraleve (1 token) nos modelos principais para detectar se já bateu 429 fora deste navegador
+        for (const modelId of modelsToProbe) {
+          if (availableSet && !availableSet.has(modelId) && !(modelId === 'gemini-3-flash' && availableSet.has('gemini-3-flash-preview'))) {
+            continue;
+          }
+          const endpointModel = (modelId === 'gemini-3-flash' && availableSet && availableSet.has('gemini-3-flash-preview') && !availableSet.has('gemini-3-flash'))
+            ? 'gemini-3-flash-preview'
+            : modelId;
+
+          try {
+            const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${endpointModel}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [{ role: 'user', parts: [{ text: 'ok' }] }],
+                generationConfig: { maxOutputTokens: 1 }
+              })
+            });
+
+            if (resp.ok) {
+              // Se respondeu 200 OK, garante que não está marcado como esgotado indevidamente
+              const storageKey = getDailyExhaustedModelsKey(apiKey);
+              const currentExhausted = getExhaustedModelsForToday(apiKey).filter(
+                m => normalizeModelForQuota(m) !== modelId
+              );
+              localStorage.setItem(storageKey, JSON.stringify(currentExhausted));
+              recordKeyModelUsage(apiKey, modelId, 2);
+            } else if (resp.status === 429) {
+              const errJson = await resp.json().catch(() => ({}));
+              const errMsg = errJson?.error?.message || '';
+              if (/PerDay|daily|quota|exhausted/i.test(errMsg)) {
+                markModelExhaustedForToday(modelId, apiKey);
+              }
+            } else if (resp.status === 404) {
+              markModelDisabledForKey(modelId, apiKey);
+            }
+          } catch (_) {}
+        }
+
+        delete cachedDiscoveredModelsByKey[kHash];
+      }
+
+      updateTokenMonitorUI();
+      renderApiKeysQuotaDashboard();
+      showToast('✅ Saldo das chaves verificado em tempo real no Google!');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = origText || '🔍 Verificar Saldo Real no Google';
+      }
+    }
+  }
+
+  function resetTodayQuotaStats() {
+    if (!confirm('Deseja zerar os contadores locais de uso de hoje e limpar bloqueios 429 temporários das chaves?')) return;
+    const keys = getSavedApiKeysList();
+    for (const k of keys) {
+      localStorage.removeItem(getDailyExhaustedModelsKey(k));
+      localStorage.removeItem('ubs_disabled_models_' + getKeyShortHash(k));
+    }
+    localStorage.removeItem(getTodayPerKeyQuotaStorageKey());
+    localStorage.removeItem(getTodayKey());
+    state.dailyTokensUsed = 0;
+    state.dailyConsultationsProcessed = 0;
+    updateTokenMonitorUI();
+    renderApiKeysQuotaDashboard();
+    showToast('🔄 Mostrador de cotas de hoje reiniciado!');
+  }
+
   function openApiKeyModal() {
     const modal = document.getElementById('apiKeyModal');
+    const keys = getSavedApiKeysList();
     const input = document.getElementById('apiKeyInput');
-    if (input) input.value = getSavedApiKey();
+    const extraInput = document.getElementById('extraApiKeysInput');
+    if (input) input.value = keys[0] || getSavedApiKey() || '';
+    if (extraInput) extraInput.value = keys.slice(1).join('\n');
     const sel = document.getElementById('preferredModelSelect');
     if (sel) sel.value = localStorage.getItem('ubs_preferred_model') || 'auto';
+    renderApiKeysQuotaDashboard();
     if (modal) modal.style.display = 'flex';
   }
 
@@ -5439,47 +5865,59 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     });
 
     document.getElementById('btnOpenApiKeyModal')?.addEventListener('click', openApiKeyModal);
+    document.getElementById('btnOpenQuotaMonitor')?.addEventListener('click', openApiKeyModal);
+    document.getElementById('btnProbeKeysQuota')?.addEventListener('click', probeAllKeysLiveQuota);
+    document.getElementById('btnResetTodayQuotaStats')?.addEventListener('click', resetTodayQuotaStats);
     document.getElementById('btnCloseApiKeyModal')?.addEventListener('click', () => {
       document.getElementById('apiKeyModal').style.display = 'none';
     });
 
     const saveApiKeyHandler = async (e) => {
       if (e && e.preventDefault) e.preventDefault();
-      const key = document.getElementById('apiKeyInput')?.value.trim() || '';
+      const mainKey = document.getElementById('apiKeyInput')?.value.trim() || '';
+      const extraKeys = document.getElementById('extraApiKeysInput')?.value.trim() || '';
+      const combinedKeysRaw = [mainKey, extraKeys].filter(Boolean).join('\n').trim();
       const mode = document.querySelector('input[name="keyStorageMode"]:checked')?.value || 'permanent';
-      if (!key) {
+      if (!combinedKeysRaw) {
         localStorage.removeItem('ubs_gemini_api_key');
         sessionStorage.removeItem('ubs_gemini_api_key');
       } else if (mode === 'session') {
-        sessionStorage.setItem('ubs_gemini_api_key', key);
+        sessionStorage.setItem('ubs_gemini_api_key', combinedKeysRaw);
         localStorage.removeItem('ubs_gemini_api_key');
       } else {
-        localStorage.setItem('ubs_gemini_api_key', key);
+        localStorage.setItem('ubs_gemini_api_key', combinedKeysRaw);
         sessionStorage.removeItem('ubs_gemini_api_key');
       }
 
       // Salva no Gerenciador de Senhas do Google Chrome vinculado à conta fixa "Chave API Gemini - Prontuário APS"
       try {
-        if (key && window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
+        if (mainKey && window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
           const cred = new window.PasswordCredential({
             id: 'Chave API Gemini - Prontuário APS',
             name: 'Chave API Gemini - Prontuário APS',
-            password: key
+            password: mainKey
           });
           await navigator.credentials.store(cred);
         }
       } catch (_) {}
 
       updateApiKeyStatusBadge();
+      updateTokenMonitorUI();
+      renderApiKeysQuotaDashboard();
       const prefModel = document.getElementById('preferredModelSelect')?.value || 'auto';
       localStorage.setItem('ubs_preferred_model', prefModel);
-      if (prefModel !== 'auto') {
-        rememberWorkingModelForKey(prefModel, key);
+      const savedKeysList = getSavedApiKeysList();
+      for (const k of savedKeysList) {
+        if (prefModel !== 'auto') {
+          rememberWorkingModelForKey(prefModel, k);
+        }
+        delete cachedDiscoveredModelsByKey[getKeyShortHash(k)];
       }
-      delete cachedDiscoveredModelsByKey[getKeyShortHash(key)];
 
       document.getElementById('apiKeyModal').style.display = 'none';
-      showToast('🔒 Credencial salva com sucesso!');
+      showToast(savedKeysList.length > 1
+        ? `🔒 ${savedKeysList.length} Chaves API salvas com rotação automática!`
+        : '🔒 Credencial salva com sucesso!');
       retryAllPendingConsultations();
       processQueueInBackground();
     };
@@ -5487,11 +5925,15 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     document.getElementById('preferredModelSelect')?.addEventListener('change', (e) => {
       const chosen = e.target.value;
       localStorage.setItem('ubs_preferred_model', chosen);
-      const key = getSavedApiKey();
-      if (key && chosen !== 'auto') {
-        rememberWorkingModelForKey(chosen, key);
-        delete cachedDiscoveredModelsByKey[getKeyShortHash(key)];
+      const savedKeysList = getSavedApiKeysList();
+      for (const k of savedKeysList) {
+        if (chosen !== 'auto') {
+          rememberWorkingModelForKey(chosen, k);
+          delete cachedDiscoveredModelsByKey[getKeyShortHash(k)];
+        }
       }
+      updateTokenMonitorUI();
+      renderApiKeysQuotaDashboard();
       showToast(`⚡ Modelo preferido alterado para: ${formatModelName(chosen)}`);
     });
 
