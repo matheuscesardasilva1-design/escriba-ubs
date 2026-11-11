@@ -114,7 +114,7 @@
 
   function rememberWorkingModelForKey(modelName, apiKey) {
     const clean = String(modelName || '').replace(/^models\//, '').trim();
-    if (clean) {
+    if (clean && !clean.includes('3.7') && !clean.includes('live') && !clean.includes('gemma')) {
       localStorage.setItem('ubs_working_model_' + getKeyShortHash(apiKey), clean);
     }
   }
@@ -123,12 +123,20 @@
     const disabled = getDisabledModelsForKey(apiKey);
     const exhaustedToday = getExhaustedModelsForToday(apiKey);
     const workKey = 'ubs_working_model_' + getKeyShortHash(apiKey);
-    const remembered = localStorage.getItem(workKey) || '';
-    const preferredModel = localStorage.getItem('ubs_preferred_model') || 'auto';
+    let remembered = localStorage.getItem(workKey) || '';
+    let preferredModel = localStorage.getItem('ubs_preferred_model') || 'auto';
+    if (remembered.includes('3.7') || remembered.includes('live') || remembered.includes('gemma')) {
+      localStorage.removeItem(workKey);
+      remembered = '';
+    }
+    if (preferredModel.includes('3.7') || preferredModel.includes('live') || preferredModel.includes('gemma')) {
+      localStorage.removeItem('ubs_preferred_model');
+      preferredModel = 'auto';
+    }
     const keyHash = getKeyShortHash(apiKey);
 
     const filterAndOrder = (rawList) => {
-      const valid = rawList.filter(m => !disabled.includes(m) && !exhaustedToday.includes(m));
+      const valid = rawList.filter(m => !disabled.includes(m) && !exhaustedToday.includes(m) && !m.includes('3.7') && !m.includes('live') && !m.includes('gemma') && !m.includes('pro'));
       // 1. Se o usuário escolheu um modelo preferido fixo na interface, coloca-o no topo absoluto!
       if (preferredModel && preferredModel !== 'auto' && valid.includes(preferredModel)) {
         return [preferredModel, ...valid.filter(m => m !== preferredModel)];
@@ -2033,8 +2041,8 @@
             showToast(`✅ 100% — Evolução pronta: ${nextItem.patientLabel}`);
           }
 
-          if (state.autoCloudSync) {
-            pushConsultationsToGeminiCloud(true).catch(() => {});
+          if (state.autoCloudSync || getSavedSyncPin()) {
+            pushConsultationsToCloud(true).catch(() => {});
           }
 
           if (banner && bannerText) {
@@ -2382,19 +2390,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     // Auditoria Determinística de Alergias e Tabagismo para atendimentos clínicos estruturados (exceto Telessaúde)
     if (consultation.templateId !== 'telessaude') {
-      const alergiasMatch = cleanText.match(/^#\s*Alergias?\s*:\s*(.*)$/im);
-      const alergiasUnstructured = /^#\s*(?:Nega\s+alergias|Sem\s+alergias|Alergia\s+a\s+\S+)/im.test(cleanText);
-      const alergiasFilled = (alergiasMatch && alergiasMatch[1].trim().length > 0) || alergiasUnstructured;
-      if (!alergiasFilled) {
-        combinedAuditAlerts.push('⚠️ Campo ALERGIAS ausente/não informado');
-      }
-
-      const tabagistaMatch = cleanText.match(/^#\s*Tabagist[ao]\s*:\s*(.*)$/im);
-      const tabagistaUnstructured = /^#\s*(?:Tabagist[ao]\s+passiv[oa]|Ex-?tabagista|Tabagismo\s*:\s*\S+|Nega\s+tabagismo|Sem\s+tabagismo)/im.test(cleanText);
-      const tabagistaFilled = (tabagistaMatch && tabagistaMatch[1].trim().length > 0) || tabagistaUnstructured;
-      if (!tabagistaFilled) {
-        combinedAuditAlerts.push('⚠️ Campo TABAGISMO ausente/não informado');
-      }
+      const dynamicAlerts = getActiveAuditAlertsForEvolution(cleanText, consultation.templateId);
+      combinedAuditAlerts.push(...dynamicAlerts);
     }
 
     return {
@@ -2413,6 +2410,35 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       tokensUsed,
       modelUsed: lastModelUsed
     };
+  }
+
+  // Auditoria Determinística de Alergias e Tabagismo para atendimentos clínicos estruturados (elimina falsos positivos)
+  function getActiveAuditAlertsForEvolution(evolutionText, templateId) {
+    if (templateId === 'telessaude') return [];
+    const text = String(evolutionText || '');
+    if (!text.trim()) return [];
+
+    const alerts = [];
+
+    // Auditoria de Alergias
+    const alergiasMatch = text.match(/^#\s*Alergias?\s*:\s*(.*)$/im);
+    const alergiasUnstructured = /^#\s*(?:Nega\s+alergias|Sem\s+alergias|Alergia\s+a\s+\S+)/im.test(text)
+      || /\b(?:Alergias?\s*:\s*\S+|Alergia\s+medicamentosa|Nega\s+alergias)\b/i.test(text);
+    const alergiasFilled = (alergiasMatch && alergiasMatch[1].trim().length > 0) || alergiasUnstructured;
+    if (!alergiasFilled) {
+      alerts.push('⚠️ Campo ALERGIAS ausente/não informado');
+    }
+
+    // Auditoria de Tabagismo (Tabagista ativo, Tabagista passiva/passivo, Ex-tabagista, Nega tabagismo, Esposo tabagista)
+    const tabagistaMatch = text.match(/^#\s*Tabagist[ao]\s*:\s*(.*)$/im);
+    const tabagistaUnstructured = /^#\s*(?:Tabagist[ao]\s+passiv[oa]|Ex-?tabagista|Tabagismo\s*:\s*\S+|Nega\s+tabagismo|Sem\s+tabagismo)/im.test(text)
+      || /\b(?:Tabagist[ao]\s*:\s*\S+|Tabagist[ao]\s+passiv[oa]|Ex-?tabagista|Nega\s+tabagismo|Esposo\s+tabagista)\b/i.test(text);
+    const tabagistaFilled = (tabagistaMatch && tabagistaMatch[1].trim().length > 0) || tabagistaUnstructured;
+    if (!tabagistaFilled) {
+      alerts.push('⚠️ Campo TABAGISMO ausente/não informado');
+    }
+
+    return alerts;
   }
 
   // Corretor determinístico de ortografia farmacológica oficial do Brasil (DCB / ANVISA / RENAME)
@@ -2940,6 +2966,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     // 1. Converte linhas "#" desestruturadas de tabagismo (ex: "# Tabagista passiva\n- Esposo tabagista", "# Ex-tabagista", "# Nega tabagismo")
     // para o formato oficial "# Tabagista: <valor>" sem perder sub-linhas como "- Esposo tabagista"
     let extractedTabagismoFromHeader = '';
+    headerPart = headerPart.replace(/^#\s*Tabagist([ao])\s+passiv([oa])\s*\n\s*-\s*([^\n]+)$/gim, (_, g1, g2, extra) => {
+      const val = `Tabagista passiv${g2} (${extra.trim()})`;
+      extractedTabagismoFromHeader = val;
+      return `# Tabagista: ${val}`;
+    });
     headerPart = headerPart.replace(/^#\s*Tabagist([ao])\s+passiv([oa])(?:\s*[:\-–]\s*([^\n]+))?\s*$/gim, (_, g1, g2, extra) => {
       const val = extra ? `Tabagista passiv${g2} (${extra.trim()})` : `Tabagista passiv${g2}`;
       extractedTabagismoFromHeader = val;
@@ -2975,7 +3006,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
 
     // Se "# Tabagista: Tabagista passiva" tem logo abaixo "- Esposo tabagista", incorpora ou preserva
-    headerPart = headerPart.replace(/^(#\s*Tabagist[ao]\s*:\s*Tabagist[ao]\s+passiv[oa])\s*\n-\s*([^\n]+)$/gim, '$1 ($2)');
+    headerPart = headerPart.replace(/^(#\s*Tabagist[ao]\s*:\s*Tabagist[ao]\s+passiv[oa])\s*\n\s*-\s*([^\n]+)$/gim, '$1 ($2)');
 
     // 2. Converte linhas "#" desestruturadas de alergias (ex: "# Nega alergias", "# Sem alergias medicamentosas")
     headerPart = headerPart.replace(/^#\s*(?:Nega\s+alergias?(?:\s+medicamentosas)?|Sem\s+alergias?(?:\s+conhecidas)?)\s*$/gim, '# Alergias: Nega');
@@ -3983,7 +4014,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             }
 
             const abortCtrl = new AbortController();
-            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), 65000);
+            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), 45000);
             let res;
             try {
               res = await fetch(url, {
@@ -4125,6 +4156,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             if (networkErr && networkErr.name === 'AbortError') {
               lastError = new Error(`Tempo limite excedido no modelo ${model}, alternando automaticamente...`);
               if (onStatusUpdate) onStatusUpdate(`⚡ Alternando modelo (${formatModelName(model)} demorou)...`);
+              markModelExhaustedForToday(model, currentKey);
               break; // Pula imediatamente para o próximo modelo sem travar!
             }
             lastError = networkErr;
@@ -4152,32 +4184,40 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
   }
 
   async function uploadLargeFileToGeminiFileAPI(blob, mimeType, apiKey) {
-    const startUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`;
-    const startRes = await fetch(startUrl, {
-      method: 'POST',
-      headers: {
-        'X-Goog-Upload-Protocol': 'resumable',
-        'X-Goog-Upload-Command': 'start',
-        'X-Goog-Upload-Header-Content-Length': String(blob.size),
-        'X-Goog-Upload-Header-Content-Type': mimeType,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ file: { display_name: 'ubs_file_' + Date.now() } })
-    });
-    const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
-    if (!uploadUrl) throw new Error('Falha ao iniciar upload de arquivo grande.');
+    const abortCtrl = new AbortController();
+    const timeoutId = setTimeout(() => abortCtrl.abort(), 60000);
+    try {
+      const startUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`;
+      const startRes = await fetch(startUrl, {
+        method: 'POST',
+        headers: {
+          'X-Goog-Upload-Protocol': 'resumable',
+          'X-Goog-Upload-Command': 'start',
+          'X-Goog-Upload-Header-Content-Length': String(blob.size),
+          'X-Goog-Upload-Header-Content-Type': mimeType,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ file: { display_name: 'ubs_file_' + Date.now() } }),
+        signal: abortCtrl.signal
+      });
+      const uploadUrl = startRes.headers.get('X-Goog-Upload-URL');
+      if (!uploadUrl) throw new Error('Falha ao iniciar upload de arquivo grande.');
 
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Length': String(blob.size),
-        'X-Goog-Upload-Offset': '0',
-        'X-Goog-Upload-Command': 'upload, finalize'
-      },
-      body: blob
-    });
-    const fileInfo = await uploadRes.json();
-    return fileInfo?.file?.uri;
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Length': String(blob.size),
+          'X-Goog-Upload-Offset': '0',
+          'X-Goog-Upload-Command': 'upload, finalize'
+        },
+        body: blob,
+        signal: abortCtrl.signal
+      });
+      const fileInfo = await uploadRes.json();
+      return fileInfo?.file?.uri;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   const TELESSAUDE_SLUG_MAP = {
@@ -4641,15 +4681,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             needsSave = true;
           }
           if (Array.isArray(c.auditAlerts) && c.auditAlerts.length > 0) {
-            const hasTabFilled = /^#\s*Tabagist[ao]\s*:\s*\S+/im.test(c.evolutionText) || /^#\s*(?:Tabagist[ao]\s+passiv[oa]|Ex-?tabagista)/im.test(c.evolutionText);
-            const hasAlergFilled = /^#\s*Alergias?\s*:\s*\S+/im.test(c.evolutionText);
-            const filteredAlerts = c.auditAlerts.filter(a => {
-              if (/tabag/i.test(a) && hasTabFilled) return false;
-              if (/alergia/i.test(a) && hasAlergFilled) return false;
-              return true;
-            });
-            if (filteredAlerts.length !== c.auditAlerts.length) {
-              c.auditAlerts = filteredAlerts;
+            const freshAlerts = getActiveAuditAlertsForEvolution(c.evolutionText, c.templateId);
+            if (JSON.stringify(c.auditAlerts) !== JSON.stringify(freshAlerts)) {
+              c.auditAlerts = freshAlerts;
               needsSave = true;
             }
           }
@@ -4661,6 +4695,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
 
     await refreshQueueSidebar();
+
+    // Se o médico tem PIN fixo configurado, sincroniza silenciosamente atendimentos e limites de cotas da nuvem
+    if (getSavedSyncPin()) {
+      pullConsultationsFromCloud(true).catch(() => {});
+    }
 
     if (recoveredCount > 0 || nextDayAutoQueuedCount > 0) {
       const total = recoveredCount + nextDayAutoQueuedCount;
@@ -5043,10 +5082,17 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       errBanner.style.display = 'none';
     }
 
+    // Revalida deterministicamente alertas de auditoria da evolução aberta para eliminar qualquer falso positivo salvo anteriormente
+    const activeAlerts = getActiveAuditAlertsForEvolution(consult.evolutionText, consult.templateId);
+    if (consult.auditAlerts && JSON.stringify(consult.auditAlerts) !== JSON.stringify(activeAlerts)) {
+      consult.auditAlerts = activeAlerts;
+      window.ScribeDB.saveConsultation(consult).catch(() => {});
+    }
+
     const auditBox = document.getElementById('auditAlertsBox');
-    if (consult.auditAlerts && consult.auditAlerts.length > 0) {
+    if (activeAlerts && activeAlerts.length > 0) {
       auditBox.style.display = 'block';
-      auditBox.innerHTML = `<strong>⚠️ Revisão de Campos Obrigatórios:</strong> ${consult.auditAlerts.map(a => `<span class="audit-tag" style="background:#fee2e2;border:1px solid #ef4444;color:#991b1b;font-weight:700;">${escapeHtml(a)}</span>`).join(' ')}`;
+      auditBox.innerHTML = `<strong>⚠️ Revisão de Campos Obrigatórios:</strong> ${activeAlerts.map(a => `<span class="audit-tag" style="background:#fee2e2;border:1px solid #ef4444;color:#991b1b;font-weight:700;">${escapeHtml(a)}</span>`).join(' ')}`;
     } else {
       auditBox.style.display = 'none';
     }
@@ -5616,6 +5662,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     return new TextDecoder().decode(decrypted);
   }
 
+  // Salva plantão e cotas de API na nuvem com criptografia E2EE (AES-256) dividida em chunks seguros de 3000 chars
   async function pushConsultationsToCloud(silent = false) {
     const pinInput = document.getElementById('syncFixedPinInput');
     let pin = (pinInput?.value || '').trim() || getSavedSyncPin();
@@ -5633,12 +5680,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     setSavedSyncPin(pin);
 
     if (!silent && statusEl) {
-      statusEl.textContent = '🔒 Criptografando atendimentos com seu PIN e enviando para a nuvem...';
+      statusEl.textContent = '🔒 Criptografando atendimentos e limites de API com seu PIN...';
     }
 
     try {
       const all = await window.ScribeDB.getAllConsultations();
-      const recent = all.slice(0, 60);
+      const recent = all.slice(0, 50);
       const syncItems = [];
 
       for (const c of recent) {
@@ -5668,23 +5715,24 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           evolvedInPEC: Boolean(c.evolvedInPEC),
           evolvedAt: c.evolvedAt || null
         };
-
-        // Se ainda não foi transcrito e tem áudio recente, embute para poder transcrever em casa
-        if (c.status !== 'done' && c.chunkCount > 0 && !c.audioDeleted) {
-          try {
-            const blob = await window.ScribeDB.assembleAudioBlob(c.id, c.mimeType);
-            if (blob && blob.size > 0 && blob.size < 12 * 1024 * 1024) {
-              copy.embeddedAudioBase64 = await blobToBase64(blob);
-            }
-          } catch (_) {}
-        }
-
         syncItems.push(copy);
       }
 
+      // Prepara mapa de cotas e limites do dia para sincronizar entre Posto e Casa
+      const currentQuotaMap = loadTodayPerKeyQuotaMap();
+      const keysList = getSavedApiKeysList();
+      const currentExhaustedMap = {};
+      for (const k of keysList) {
+        const kh = getKeyShortHash(k);
+        currentExhaustedMap[kh] = getExhaustedModelsForToday(k);
+      }
+
       const payloadRaw = JSON.stringify({
-        syncVersion: 2,
+        syncVersion: 3,
         syncedAt: Date.now(),
+        todayDate: new Date().toISOString().slice(0, 10),
+        todayQuotaMap: currentQuotaMap,
+        todayExhaustedMap: currentExhaustedMap,
         consultations: syncItems
       });
 
@@ -5692,26 +5740,42 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const encryptedData = await encryptWithPin(payloadRaw, pin);
       const topic = await getTopicForPin(pin);
 
-      const res = await fetch(`https://ntfy.sh/${topic}`, {
-        method: 'POST',
-        headers: {
-          'Title': 'Plantao UBS Sincronizado',
-          'Priority': 'low',
-          'Tags': 'hospital,stethoscope'
-        },
-        body: encryptedData
-      });
+      // Divide em chunks de no máximo 3000 caracteres para respeitar o limite de 4096 bytes do ntfy.sh
+      // Isso garante retenção completa por 12 HORAS sem expirar em 3h e sem erro 413 Payload Too Large!
+      const CHUNK_SIZE = 3000;
+      const syncBatchId = 'sync_' + Date.now();
+      const totalChunks = Math.ceil(encryptedData.length / CHUNK_SIZE) || 1;
 
-      if (!res.ok) {
-        throw new Error(`Servidor de sincronização retornou status ${res.status}`);
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkText = encryptedData.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+        const msgBody = JSON.stringify({
+          syncBatchId,
+          part: i + 1,
+          total: totalChunks,
+          chunk: chunkText
+        });
+
+        const res = await fetch(`https://ntfy.sh/${topic}`, {
+          method: 'POST',
+          headers: {
+            'Title': `Plantao Part ${i + 1}/${totalChunks}`,
+            'Priority': 'low',
+            'Tags': 'hospital'
+          },
+          body: msgBody
+        });
+
+        if (!res.ok) {
+          throw new Error(`Servidor de sincronização retornou status ${res.status} na parte ${i + 1}`);
+        }
       }
 
       const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       if (!silent) {
         if (statusEl) {
-          statusEl.innerHTML = `✅ <strong>${syncItems.length} atendimento(s) salvos na nuvem às ${timeStr}!</strong><br>Ao chegar em casa, abra o sistema com o seu PIN e clique em <em>"Puxar Plantão em Casa"</em>.`;
+          statusEl.innerHTML = `✅ <strong>${syncItems.length} atendimento(s) e limites da API salvos na nuvem às ${timeStr}!</strong><br>No outro computador, basta abrir o sistema com seu PIN para sincronizar automaticamente.`;
         }
-        showToast(`☁️ Plantão (${syncItems.length} atendimentos) sincronizado na nuvem!`);
+        showToast(`☁️ Plantão (${syncItems.length} atendimentos + limites API) sincronizado na nuvem!`);
       }
     } catch (err) {
       if (!silent && statusEl) {
@@ -5720,21 +5784,23 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
   }
 
-  async function pullConsultationsFromCloud() {
+  async function pullConsultationsFromCloud(silent = false) {
     const pinInput = document.getElementById('syncFixedPinInput');
     let pin = (pinInput?.value || '').trim() || getSavedSyncPin();
     const statusEl = document.getElementById('cloudSyncStatusText');
 
     if (!pin) {
-      if (statusEl) {
-        statusEl.innerHTML = '⚠️ <strong>Digite seu PIN Fixo no campo acima</strong> (o mesmo que você usou no Posto).';
+      if (!silent) {
+        if (statusEl) {
+          statusEl.innerHTML = '⚠️ <strong>Digite seu PIN Fixo no campo acima</strong> (o mesmo que você usou no Posto).';
+        }
+        pinInput?.focus();
       }
-      pinInput?.focus();
       return;
     }
     setSavedSyncPin(pin);
 
-    if (statusEl) {
+    if (!silent && statusEl) {
       statusEl.textContent = '⏳ Conectando à nuvem e localizando seu plantão com seu PIN...';
     }
 
@@ -5748,46 +5814,72 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const text = await res.text();
       const lines = text.trim().split('\n').filter(Boolean);
       if (lines.length === 0) {
-        if (statusEl) {
+        if (!silent && statusEl) {
           statusEl.textContent = 'ℹ️ Nenhum plantão recente encontrado para este PIN. No computador do posto, clique em "Salvar Plantão no Posto" antes de sair.';
         }
         return;
       }
 
-      // Encontra a mensagem mais recente enviada para o tópico do PIN
-      let latestMsg = null;
-      for (let i = lines.length - 1; i >= 0; i--) {
+      // Agrupa mensagens por syncBatchId
+      const batches = {};
+      for (const line of lines) {
         try {
-          const obj = JSON.parse(lines[i]);
-          if (obj.event === 'message') {
-            latestMsg = obj;
-            break;
+          const obj = JSON.parse(line);
+          if (obj.event === 'message' && obj.message) {
+            try {
+              const msgData = JSON.parse(obj.message);
+              if (msgData.syncBatchId && msgData.chunk && msgData.part && msgData.total) {
+                if (!batches[msgData.syncBatchId]) {
+                  batches[msgData.syncBatchId] = {
+                    total: msgData.total,
+                    parts: {}
+                  };
+                }
+                batches[msgData.syncBatchId].parts[msgData.part] = msgData.chunk;
+              }
+            } catch (_) {
+              // Formato antigo legacy (não-chunked)
+              if (obj.message.length > 50 && !batches['legacy']) {
+                batches['legacy'] = { total: 1, parts: { 1: obj.message } };
+              }
+            }
           }
         } catch (_) {}
       }
 
-      if (!latestMsg) {
-        throw new Error('Nenhum dado de plantão válido encontrado no servidor.');
+      // Encontra o batch mais recente completo
+      const batchIds = Object.keys(batches).sort().reverse();
+      let chosenBatch = null;
+      for (const bid of batchIds) {
+        const b = batches[bid];
+        const partsCount = Object.keys(b.parts).length;
+        if (partsCount === b.total) {
+          chosenBatch = b;
+          break;
+        }
       }
 
-      let encryptedPayload = '';
-      if (latestMsg.attachment && latestMsg.attachment.url) {
-        if (statusEl) statusEl.textContent = '⏳ Baixando pacote do plantão da nuvem...';
-        const attRes = await fetch(latestMsg.attachment.url);
-        if (!attRes.ok) throw new Error('Falha ao baixar pacote completo do plantão.');
-        encryptedPayload = await attRes.text();
-      } else {
-        encryptedPayload = latestMsg.message || '';
+      if (!chosenBatch) {
+        if (!silent && statusEl) {
+          statusEl.textContent = 'ℹ️ Nenhum pacote completo de plantão encontrado no servidor. Tente reenviar do Posto.';
+        }
+        return;
       }
 
-      if (!encryptedPayload) {
+      // Remonta os chunks em ordem
+      let fullEncrypted = '';
+      for (let p = 1; p <= chosenBatch.total; p++) {
+        fullEncrypted += (chosenBatch.parts[p] || '');
+      }
+
+      if (!fullEncrypted) {
         throw new Error('Conteúdo vazio recebido do servidor.');
       }
 
-      if (statusEl) statusEl.textContent = '🔓 Descriptografando atendimentos com seu PIN...';
+      if (!silent && statusEl) statusEl.textContent = '🔓 Descriptografando atendimentos com seu PIN...';
       let decryptedRaw = '';
       try {
-        decryptedRaw = await decryptWithPin(encryptedPayload, pin);
+        decryptedRaw = await decryptWithPin(fullEncrypted, pin);
       } catch (decErr) {
         throw new Error('PIN incorreto ou dados corrompidos. Verifique se o PIN digitado é exatamente o mesmo cadastrado no Posto.');
       }
@@ -5795,44 +5887,79 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const parsed = JSON.parse(decryptedRaw);
       const remoteList = Array.isArray(parsed.consultations) ? parsed.consultations : [];
 
+      // 1. Sincroniza e importa Atendimentos
       let importedCount = 0;
       for (const item of remoteList) {
         if (!item || !item.id) continue;
         const local = await window.ScribeDB.getConsultation(item.id);
-        const embeddedB64 = item.embeddedAudioBase64;
-        delete item.embeddedAudioBase64;
-
         if (!local || (item.updatedAt || 0) > (local.updatedAt || 0) || (!local.evolutionText && item.evolutionText)) {
           await window.ScribeDB.saveConsultation({
             ...(local || {}),
             ...item
           });
-          if (embeddedB64) {
-            try {
-              const byteChars = atob(embeddedB64);
-              const byteNumbers = new Array(byteChars.length);
-              for (let i = 0; i < byteChars.length; i++) {
-                byteNumbers[i] = byteChars.charCodeAt(i);
-              }
-              const audioBlob = new Blob([new Uint8Array(byteNumbers)], { type: item.mimeType || 'audio/webm' });
-              await window.ScribeDB.saveAudioChunk(item.id, 0, audioBlob, item.mimeType || 'audio/webm');
-            } catch (_) {}
-          }
           importedCount++;
+        }
+      }
+
+      // 2. Sincroniza e mescla os LIMITES E COTAS DA API USADOS NO POSTO HOJE!
+      if (parsed.todayQuotaMap && typeof parsed.todayQuotaMap === 'object') {
+        const localQuota = loadTodayPerKeyQuotaMap();
+        const mergedQuota = { ...localQuota };
+        for (const [kHash, cloudStats] of Object.entries(parsed.todayQuotaMap)) {
+          if (!mergedQuota[kHash]) {
+            mergedQuota[kHash] = cloudStats;
+          } else {
+            mergedQuota[kHash].totalRequests = Math.max(mergedQuota[kHash].totalRequests || 0, cloudStats.totalRequests || 0);
+            mergedQuota[kHash].totalTokens = Math.max(mergedQuota[kHash].totalTokens || 0, cloudStats.totalTokens || 0);
+            mergedQuota[kHash].lastModel = cloudStats.lastModel || mergedQuota[kHash].lastModel;
+            mergedQuota[kHash].updatedAt = Math.max(mergedQuota[kHash].updatedAt || 0, cloudStats.updatedAt || 0);
+            mergedQuota[kHash].byModel = mergedQuota[kHash].byModel || {};
+            if (cloudStats.byModel) {
+              for (const [mName, mStats] of Object.entries(cloudStats.byModel)) {
+                if (!mergedQuota[kHash].byModel[mName]) {
+                  mergedQuota[kHash].byModel[mName] = mStats;
+                } else {
+                  mergedQuota[kHash].byModel[mName].requests = Math.max(mergedQuota[kHash].byModel[mName].requests || 0, mStats.requests || 0);
+                  mergedQuota[kHash].byModel[mName].tokens = Math.max(mergedQuota[kHash].byModel[mName].tokens || 0, mStats.tokens || 0);
+                }
+              }
+            }
+          }
+        }
+        saveTodayPerKeyQuotaMap(mergedQuota);
+      }
+
+      // 3. Sincroniza modelos que bateram 429 no Posto
+      if (parsed.todayExhaustedMap) {
+        const keys = getSavedApiKeysList();
+        for (const [kHash, models] of Object.entries(parsed.todayExhaustedMap)) {
+          if (Array.isArray(models)) {
+            for (const k of keys) {
+              if (getKeyShortHash(k) === kHash) {
+                for (const m of models) {
+                  markModelExhaustedForToday(m, k);
+                }
+              }
+            }
+          }
         }
       }
 
       await refreshQueueSidebar();
       updateStorageStatsUI();
+      renderApiKeysQuotaDashboard();
+      updateTokenMonitorUI();
 
-      if (statusEl) {
-        statusEl.innerHTML = `✅ <strong>${remoteList.length} atendimento(s) sincronizados com sucesso (${importedCount} novos/atualizados)!</strong><br>Disponíveis agora no seu <em>"Meu Histórico"</em> para evoluir no PEC.`;
+      if (!silent) {
+        if (statusEl) {
+          statusEl.innerHTML = `✅ <strong>${remoteList.length} atendimento(s) e cotas de API sincronizados com sucesso (${importedCount} novos/atualizados)!</strong><br>Disponíveis agora no seu <em>"Meu Histórico"</em> para evoluir no PEC.`;
+        }
+        showToast(`📥 ${remoteList.length} atendimento(s) e cotas de API puxados da nuvem!`);
+        switchMainPage('pageHistory');
       }
-      showToast(`📥 ${remoteList.length} atendimento(s) puxados da nuvem com sucesso!`);
-      switchMainPage('pageHistory');
       processQueueInBackground();
     } catch (err) {
-      if (statusEl) {
+      if (!silent && statusEl) {
         statusEl.textContent = `⚠️ Falha ao puxar da nuvem: ${err.message}`;
       }
     }
@@ -6738,7 +6865,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         return;
       }
       setSavedSyncPin(pin);
-      showToast('💾 PIN Fixo Pessoal salvo neste navegador!');
+      state.autoCloudSync = true;
+      localStorage.setItem('ubs_auto_cloud_sync', 'true');
+      const chk = document.getElementById('chkAutoCloudSync');
+      if (chk) chk.checked = true;
+      showToast('💾 PIN salvo! Sincronizando com a nuvem...');
+      pushConsultationsToCloud(false).catch(() => {});
     });
     document.getElementById('syncFixedPinInput')?.addEventListener('change', (e) => {
       setSavedSyncPin(e.target.value);
