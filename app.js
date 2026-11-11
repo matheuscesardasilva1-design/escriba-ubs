@@ -6183,6 +6183,40 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       localStorage.setItem('ubs_selected_mic', state.selectedMicDeviceId);
     });
 
+    // Proteção global contra comportamento padrão do navegador ao arrastar arquivos:
+    // No Chrome/Edge/Safari (Windows e Mac), soltar um PDF/arquivo fora ou sobre elementos-filhos
+    // da zona de drop faz o navegador navegar e abrir o PDF em uma nova guia!
+    // Ouvir dragover/drop em window/document com preventDefault() e capturar os arquivos resolve definitivamente!
+    window.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }, false);
+
+    window.addEventListener('drop', (e) => {
+      // Se soltar em qualquer lugar que não foi tratado especificamente, cancela para não abrir nova guia
+      e.preventDefault();
+      e.stopPropagation();
+    }, false);
+
+    const routeDroppedFiles = (filesList) => {
+      if (!filesList || filesList.length === 0) return;
+      const allFiles = Array.from(filesList);
+      const isExam = (f) => {
+        const type = (f.type || '').toLowerCase();
+        const name = (f.name || '').toLowerCase();
+        return type === 'application/pdf' || type.startsWith('image/') || /\.pdf$/i.test(name) || /\.(png|jpe?g|webp|bmp|gif)$/i.test(name);
+      };
+      const examDocs = allFiles.filter(isExam);
+      const audioDocs = allFiles.filter(f => !isExam(f));
+
+      if (examDocs.length > 0) {
+        addExamFilesToCurrentSession(examDocs);
+      }
+      if (audioDocs.length > 0) {
+        handleExternalAudioUpload(audioDocs);
+      }
+    };
+
     // Anexo Discreto de PDFs / Imagens de Exames (Botão, Drag-and-Drop e Ctrl+V global!)
     document.getElementById('examFilesInput')?.addEventListener('change', (e) => {
       if (e.target.files && e.target.files.length > 0) {
@@ -6193,18 +6227,32 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     const examDropZone = document.getElementById('examDropZone');
     if (examDropZone) {
-      examDropZone.addEventListener('dragover', (e) => {
+      examDropZone.addEventListener('dragenter', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         examDropZone.classList.add('drag-active');
       });
-      examDropZone.addEventListener('dragleave', () => {
-        examDropZone.classList.remove('drag-active');
+      examDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        examDropZone.classList.add('drag-active');
+      });
+      examDropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        // Só remove se o mouse realmente saiu da caixa de exames
+        if (!examDropZone.contains(e.relatedTarget)) {
+          examDropZone.classList.remove('drag-active');
+        }
       });
       examDropZone.addEventListener('drop', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         examDropZone.classList.remove('drag-active');
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          addExamFilesToCurrentSession(e.dataTransfer.files);
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length > 0) {
+          routeDroppedFiles(dt.files);
         }
       });
     }
@@ -6232,22 +6280,31 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     const dropZone = document.getElementById('whatsappDropZone');
     if (dropZone) {
-      dropZone.addEventListener('dragover', (e) => {
+      dropZone.addEventListener('dragenter', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropZone.classList.add('drag-active');
       });
-      dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-active');
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        dropZone.classList.add('drag-active');
+      });
+      dropZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!dropZone.contains(e.relatedTarget)) {
+          dropZone.classList.remove('drag-active');
+        }
       });
       dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         dropZone.classList.remove('drag-active');
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-          const allFiles = Array.from(e.dataTransfer.files);
-          const examDocs = allFiles.filter(f => f.type === 'application/pdf' || f.type.startsWith('image/') || /\.pdf$/i.test(f.name));
-          const audioDocs = allFiles.filter(f => !examDocs.includes(f));
-          if (examDocs.length > 0) addExamFilesToCurrentSession(examDocs);
-          if (audioDocs.length > 0) handleExternalAudioUpload(audioDocs);
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length > 0) {
+          routeDroppedFiles(dt.files);
         }
       });
     }

@@ -525,15 +525,17 @@ body {
 /* --- ANEXO DE LAUDOS PDF & VISITA DOMICILIAR --- */
 .exam-attach-box {
   background: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  border: 1.5px dashed #94a3b8;
   border-radius: 9px;
   padding: 10px 14px;
   margin-bottom: 12px;
+  transition: all 0.2s ease;
 }
 
 .exam-attach-box.drag-active {
-  background: var(--primary-soft);
-  border-color: var(--primary);
+  background: #eff6ff !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 }
 
 .exam-attach-header {
@@ -582,13 +584,21 @@ body {
 }
 
 .drop-zone {
-  border: 1px dashed #cbd5e1;
+  border: 1.5px dashed #94a3b8;
   background: #f8fafc;
   color: var(--text-muted);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 12px;
   text-align: center;
+  transition: all 0.2s ease;
+}
+
+.drop-zone.drag-active {
+  background: #eff6ff !important;
+  border-color: #2563eb !important;
+  color: #1e3a8a !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
 }
 
 /* --- TELA 2: MEU HISTÓRICO (AGRUPADO POR DATA IGUAL AO PRINT 2) --- */
