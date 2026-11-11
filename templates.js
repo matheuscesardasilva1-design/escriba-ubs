@@ -1107,39 +1107,70 @@ Responda APENAS com as linhas formatadas dos exames, prontas para copiar e colar
 };
 
 // ============================================================================
-// GERADOR DE PROMPT PARA ENCAMINHAMENTO (REGULAÇÃO ESTADUAL / TELESSAÚDE)
+// GERADOR DE PROMPT PARA ENCAMINHAMENTO (REGULAÇÃO ESTADUAL / TELESSAÚDERS / REGULASUS)
 // ============================================================================
 window.buildReferralPrompt = function({
   templateId,
   templateName,
   evolucaoTexto,
   especialidade,
-  prioridade,
   dadosExtrasRegulacao,
-  quickNotes
+  quickNotes,
+  telessaudeProtocolText
 }) {
-  return `Você é um Médico Regulador e Médico de Família especialista em protocolos de Regulação Estadual do SUS (SISREG / CROSS / GERCON / Telessaúde).
-Sua missão é redigir o TEXTO CLÍNICO DE ENCAMINHAMENTO MÉDICO direto, técnico, fluido e pronto para copiar e colar na caixa de justificativa clínica da Regulação Estadual.
+  const hasProtocolText = Boolean(telessaudeProtocolText && telessaudeProtocolText.trim().length > 100);
+  const protocolBlock = hasProtocolText
+    ? `\n=== DIRETRIZES OFICIAIS DO PROTOCOLO TELESSAÚDERS (${especialidade.toUpperCase()}) ===\n${telessaudeProtocolText.slice(0, 95000)}\n=== FIM DO PROTOCOLO TELESSAÚDERS ===\n`
+    : '';
 
-=== CONTEXTO DO ATENDIMENTO ===
-- Tipo de Atendimento na UBS: ${templateName} (${templateId})
-- Especialidade / Serviço de Destino Solicitado: ${especialidade || 'A definir conforme quadro clínico'}
-- Classificação de Prioridade Sugerida: ${prioridade || 'Avaliar conforme critérios clínicos'}
-- Exames Prévios / Tratamentos Já Tentados / Dados Extras colados do PEC: ${dadosExtrasRegulacao || 'Vide evolução clínica'}
-- Notas Rápidas da Consulta: ${quickNotes || 'Vide evolução clínica'}
+  return `Você é um Médico Regulador experiente e Médico de Família da APS especialista nos Protocolos de Regulação Ambulatorial do TelessaúdeRS / RegulaSUS (SES-RS / GERCON / SISREG).
 
-=== EVOLUÇÃO CLÍNICA E EXAMES DA CONSULTA ===
+Sua missão é gerar uma solicitação médica de encaminhamento com enquadramento oficial no protocolo do TelessaúdeRS para a especialidade solicitada: "${especialidade}".
+
+=== CONTEXTO DA CONSULTA NA UBS ===
+- Tipo de Atendimento: ${templateName || 'Consulta APS'} (${templateId || 'geral'})
+- Especialidade Solicitada: ${especialidade}
+- Dados Extras / Tratamentos Prévios Informados: ${dadosExtrasRegulacao || 'Vide evolução clínica'}
+- Notas Rápidas: ${quickNotes || 'Nenhuma'}
+${protocolBlock}
+=== EVOLUÇÃO CLÍNICA COMPLETA DO PACIENTE ===
 ${evolucaoTexto}
 
-=== REGRAS DE FORMATAÇÃO DO ENCAMINHAMENTO (SIGA RIGOROSAMENTE) ===
-1. PROIBIDO USAR TÍTULOS NUMERADOS BUROCRÁTICOS:
-   - NÃO escreva títulos como "1. QUADRO CLÍNICO E HISTÓRIA DA DOENÇA ATUAL (COM TEMPO DE EVOLUÇÃO):", "2. ANTECEDENTES...", "3. EXAME FÍSICO...", nem cabeçalhos longos!
-2. FORMATO DE TEXTO CLÍNICO DIRETO E FLUIDO (EM PARÁGRAFOS CURTOS E OBJETIVOS):
-   - Escreva diretamente o texto médico de encaminhamento pronto para colar no sistema de regulação:
-     * 1º Parágrafo (Quadro Clínico, Antecedentes e MUC): Apresente o paciente, comorbidades prévias, medicações em uso contínuo (com doses) e a história clínica detalhada do problema que motiva o encaminhamento para ${especialidade || 'a especialidade'} (com tempo de evolução, sintomas associados, impacto funcional e tratamentos já tentados na APS).
-     * 2º Parágrafo (Exame Físico e Sinais Vitais): Descreva de forma direta os achados relevantes do exame físico, sinais vitais/antropometria (sem inventar dados não examinados).
-     * 3º Parágrafo (Exames Complementares Realizados): Cite os resultados dos exames laboratoriais e/ou de imagem já realizados com suas respectivas datas. Se algum exame essencial para a regulação não constar nos dados, deixe indicado de forma limpa "[Inserir data/resultado de ... se disponível]".
-     * 4º Parágrafo (Hipótese e Justificativa para Regulação): Encerre com a hipótese diagnóstica e a justificativa objetiva solicitando avaliação/seguimento em ${especialidade || 'atenção especializada'}.
+=== REGRAS MANDATÓRIAS (SIGA COM MÁXIMA RIGIDEZ MÉDICA) ===
 
-Responda APENAS com o texto clínico limpo do encaminhamento, sem títulos numerados e sem comentários extras antes ou depois.`;
+1. ENQUADRAMENTO CLÍNICO NO PROTOCOLO TELESSAÚDERS:
+   - Identifique no protocolo do TelessaúdeRS para ${especialidade} (ou em seu conhecimento médico aprofundado dos protocolos RegulaSUS/TelessaúdeRS) qual é a patologia ou condição clínica específica do paciente (exemplo: "Protocolo 4 – Miomatose", "Protocolo 1 – Sangramento Uterino Anormal", "Protocolo 1 – Hipertensão Arterial Sistêmica Resistente", "Protocolo de Gonartrose", etc.).
+   - Indique em 1 linha o critério clínico específico do protocolo no qual o paciente se enquadra.
+
+2. FILTRO ESTRITO DE RELEVÂNCIA CLÍNICA (PROIBIDO POLUIR COM DADOS NÃO PERTINENTES):
+   - O texto de justificativa para o regulador deve conter EXCLUSIVAMENTE dados clínicos, queixas, exame físico, exames complementares e tratamentos diretamente pertinentes à especialidade "${especialidade}" e ao quadro que motivou o encaminhamento!
+   - REGRA DE OURO: É TERMINANTEMENTE PROIBIDO incluir informações irrelevantes de outros aparelhos ou especialidades sem relação com o quadro (por exemplo: em encaminhamento para Ginecologia, JAMAIS cite avaliação oftalmológica, catarata, queixas ortopédicas isoladas, dermatite facial leve ou queixas respiratórias compensadas; em encaminhamento para Ortopedia, não cite exames ginecológicos de rotina normais, etc.).
+   - Comorbidades crônicas de impacto sistêmico relevante (HAS, DM, tabagismo, alergias graves) devem ser resumidas em 1 única linha somente se interferirem diretamente na condução do caso.
+
+3. PREENCHIMENTO COMPLETO DAS INFORMAÇÕES PRESENTES:
+   - Redija o texto em 2 a 3 parágrafos técnicos, fluidos e objetivos, prontos para colar na caixa de justificativa do sistema de regulação estadual (GERCON/SISREG):
+     * Parágrafo 1: História clínica detalhada do problema específico (tempo de evolução, sintomas cardinais, impacto funcional, tratamentos já realizados na APS com doses, posologias e tempo de uso).
+     * Parágrafo 2: Exame físico direcionado e objetivo focado na queixa (dados vitais/antropometria pertinentes).
+     * Parágrafo 3: Exames laboratoriais e exames de imagem pertinentes com datas e laudos objetivos.
+
+4. IDENTIFICAÇÃO DE INFORMAÇÕES E EXAMES PENDENTES SEGUNDO O TELESSAÚDERS:
+   - Compare os dados presentes na evolução com o "Conteúdo descritivo mínimo que o encaminhamento deve ter" e os critérios de encaminhamento do protocolo do TelessaúdeRS para a condição identificada.
+   - Se faltar algum exame complementar obrigatório (ex: ecografia transvaginal recente, hemograma com data, ECG, creatinina recente, teste ergométrico, etc.), tempo mínimo de tratamento clínico na APS antes de referenciar (ex: falha de 3 meses de tratamento clínico na APS), ou dado de exame físico obrigatório:
+     LISTE CADA PENDÊNCIA DE FORMA CLARA E DIRETA NO BLOCO FINAL DE PENDÊNCIAS.
+   - Isso orienta o médico sobre o que o regulador vai cobrar para não devolver o encaminhamento. Se todos os critérios e exames exigidos já constarem na consulta, escreva: "✅ Todos os critérios e exames exigidos pelo protocolo do TelessaúdeRS para esta condição estão preenchidos na justificativa."
+
+5. PRIORIDADE:
+   - A prioridade NÃO deve ser fixada pelo médico solicitante no texto, pois a classificação de risco (P0, P1, P2) compete exclusivamente à Regulação Estadual baseada na gravidade descrita.
+
+=== ESTRUTURA EXATA DA RESPOSTA (UTILIZE EXATAMENTE ESTES 3 BLOCOS) ===
+
+ENQUADRAMENTO NO PROTOCOLO TELESSAÚDERS:
+• Condição Clínica: [Nome do protocolo e condição no TelessaúdeRS]
+• Critério do Protocolo: [Critério de indicação atendido]
+
+JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO:
+[Texto médico contínuo, técnico e direto, em 2 a 3 parágrafos objetivos, pronto para colar na caixa de justificativa do sistema de regulação estadual, contendo apenas os dados pertinentes à especialidade]
+
+⚠️ PENDÊNCIAS SEGUNDO O PROTOCOLO TELESSAÚDERS:
+[Lista em tópicos dos exames, tempos de tratamento ou dados de exame físico exigidos pelo protocolo do TelessaúdeRS para esta condição que NÃO constam na evolução atual, ou declare: "✅ Todos os critérios e exames exigidos pelo protocolo do TelessaúdeRS para esta condição estão preenchidos na justificativa."]`;
 };

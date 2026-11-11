@@ -683,13 +683,16 @@
 
           <!-- FORMULÁRIO PARA GERAR NOVO ENCAMINHAMENTO -->
           <div style="background: #ffffff; border: 1px solid #d8b4fe; border-radius: 10px; padding: 12px;">
-            <div style="font-size: 12px; font-weight: 800; color: #5b21b6; margin-bottom: 8px;">
+            <div style="font-size: 12px; font-weight: 800; color: #5b21b6; margin-bottom: 4px;">
               ➕ Adicionar Novo Encaminhamento para Especialidade:
+            </div>
+            <div style="font-size: 11.5px; color: #6b21a8; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 5px;">
+              📖 Integrado aos Protocolos do TelessaúdeRS (RegulaSUS): enquadramento de condição clínica e identificação automática de pendências
             </div>
             <div class="referral-grid">
               <div>
                 <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-                  Especialidade Solicitada (SUS):
+                  Especialidade Solicitada (SUS / Regulação):
                 </label>
                 <select id="referralSpecialtySelect" class="select-box">
                   <option value="Cardiologia">Cardiologia</option>
@@ -718,20 +721,9 @@
 
               <div>
                 <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-                  Ou digite outra especialidade/exame:
+                  Ou digite outra especialidade/exame (opcional):
                 </label>
                 <input type="text" id="referralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." autocomplete="off" />
-              </div>
-
-              <div>
-                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
-                  Classificação de Prioridade:
-                </label>
-                <select id="referralPrioritySelect" class="select-box">
-                  <option value="Prioritário / P1 (Amarelo)">Prioritário / P1 (Amarelo)</option>
-                  <option value="Urgência Eletiva / P0 (Vermelho)">Urgência Eletiva / P0 (Vermelho)</option>
-                  <option value="Rotina / Eletivo / P2 (Verde/Azul)">Rotina / Eletivo / P2 (Verde/Azul)</option>
-                </select>
               </div>
             </div>
 
@@ -743,7 +735,7 @@
             </div>
 
             <button type="button" class="btn btn-primary" id="btnGenerateReferral" style="width: 100%; background: #7c3aed;">
-              🏛️ Gerar e Salvar Encaminhamento para esta Especialidade
+              🏛️ Gerar Encaminhamento conforme Protocolo TelessaúdeRS (Regulação Estadual)
             </button>
           </div>
 
@@ -751,12 +743,15 @@
           <div id="referralOutputContainer" style="display: none; margin-top: 12px; background: #fff; border: 1.5px solid #a855f7; border-radius: 10px; padding: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
               <strong style="font-size: 13px; color: #4c1d95;" id="activeReferralTitleLabel">Encaminhamento Selecionado:</strong>
-              <div style="display: flex; gap: 6px;">
-                <button type="button" class="btn btn-primary" id="btnCopyReferral" style="padding: 6px 12px; font-size: 12px;">
-                  📋 Copiar Texto p/ Regulação
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-primary" id="btnCopyJustificationOnly" style="padding: 6px 12px; font-size: 12px; background: #059669; border-color: #059669;">
+                  📋 Copiar Justificativa p/ GERCON
+                </button>
+                <button type="button" class="btn btn-secondary" id="btnCopyReferral" style="padding: 6px 12px; font-size: 12px;">
+                  📋 Copiar Tudo
                 </button>
                 <button type="button" class="btn btn-secondary" id="btnCloseActiveReferralView" style="padding: 6px 10px; font-size: 12px;">
-                  ✕ Fechar Texto
+                  ✕ Fechar
                 </button>
               </div>
             </div>

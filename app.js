@@ -4180,6 +4180,92 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     return fileInfo?.file?.uri;
   }
 
+  const TELESSAUDE_SLUG_MAP = {
+    'cardiologia': 'protocolo-de-cardiologia',
+    'pneumologia': 'protocolo-de-pneumologia-adulto',
+    'pna': 'protocolo-de-obstetricia',
+    'pré-natal': 'protocolo-de-obstetricia',
+    'prenatal': 'protocolo-de-obstetricia',
+    'obstetrícia': 'protocolo-de-obstetricia',
+    'endocrinologia': 'protocolo-de-endocrinologia-adulto-ses',
+    'ortopedia': 'protocolo-de-ortopedia-adulto-ses',
+    'neuropediatria': 'protocolo-de-neurologia-pediatrica',
+    'pediatria': 'protocolo-de-neurologia-pediatrica',
+    'neurologia': 'protocolo-de-neurologia-adulto-ses',
+    'ginecologia': 'protocolo-de-ginecologia-adulto',
+    'mastologia': 'protocolo-de-mastologia',
+    'oftalmologia': 'protocolo-de-oftalmologia-adulto',
+    'otorrinolaringologia': 'protocolo-de-otorrinolaringologia-adulto',
+    'otorrino': 'protocolo-de-otorrinolaringologia-adulto',
+    'cirurgia geral': 'protocolo-de-cirurgia-geral',
+    'urologia': 'protocolo-de-urologia-adulto',
+    'gastroenterologia': 'protocolo-de-gastroenterologia',
+    'gastro': 'protocolo-de-gastroenterologia',
+    'reumatologia': 'protocolo-de-reumatologia-ses',
+    'nefrologia': 'protocolo-de-nefrologia-adulto',
+    'vascular': 'protocolo-de-cirurgia-vascular',
+    'angiologia': 'protocolo-de-cirurgia-vascular',
+    'psiquiatria': 'protocolo-de-psiquiatria-adulto',
+    'saúde mental': 'protocolo-de-psiquiatria-adulto',
+    'dermatologia': 'protocolo-de-dermatologia',
+    'dermato': 'protocolo-de-dermatologia',
+    'fonoaudiologia': 'protocolo-de-reabilitacao-auditiva-adulto',
+    'reabilitação': 'protocolo-de-reabilitacao-fisica',
+    'proctologia': 'protocolo-de-proctologia-adulto',
+    'hematologia': 'protocolo-de-hematologia-adulto',
+    'infectologia': 'protocolo-de-infectologia',
+    'dor': 'protocolo-de-tratamento-da-dor',
+    'plástica': 'protocolo-de-cirurgia-plastica'
+  };
+
+  function getTelessaudeSlug(especialidade) {
+    const norm = String(especialidade || '').toLowerCase();
+    for (const [key, slug] of Object.entries(TELESSAUDE_SLUG_MAP)) {
+      if (norm.includes(key)) return slug;
+    }
+    return null;
+  }
+
+  const telessaudeMemoryCache = window.__telessaudeCache = window.__telessaudeCache || {};
+
+  async function fetchTelessaudeProtocol(slug) {
+    if (!slug) return null;
+    if (telessaudeMemoryCache[slug]) return telessaudeMemoryCache[slug];
+
+    try {
+      const cached = sessionStorage.getItem('telessaude_' + slug);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        telessaudeMemoryCache[slug] = parsed;
+        return parsed;
+      }
+    } catch (e) {}
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(`https://api-site.telessauders.ufrgs.br/protocolo/${slug}/`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const result = {
+        nome: data.nome,
+        especialidade: data.especialidade,
+        conteudo_extraido: data.conteudo_extraido || ''
+      };
+      telessaudeMemoryCache[slug] = result;
+      try {
+        sessionStorage.setItem('telessaude_' + slug, JSON.stringify(result));
+      } catch (e) {}
+      return result;
+    } catch (err) {
+      console.warn('Não foi possível conectar ao TelessaúdeRS em tempo real, usando base interna:', err);
+      return null;
+    }
+  }
+
   async function generateStateReferral() {
     if (!state.activeConsultationId) {
       alert('Selecione um atendimento primeiro para gerar o encaminhamento.');
@@ -4203,7 +4289,6 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     const specialtySelect = document.getElementById('referralSpecialtySelect');
     const customSpecialty = document.getElementById('referralCustomSpecialty');
-    const prioritySelect = document.getElementById('referralPrioritySelect');
     const extraDataInput = document.getElementById('referralExtraDataInput');
     const btnGenerate = document.getElementById('btnGenerateReferral');
 
@@ -4212,23 +4297,36 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const customVal = (customSpecialty && customSpecialty.value.trim()) || '';
     const selectVal = (specialtySelect && specialtySelect.value.trim()) || '';
     const especialidade = customVal || selectVal || 'Especialidade Médica';
-    const prioridade = prioritySelect ? prioritySelect.value : 'Prioritário (Amarelo)';
     const dadosExtrasRegulacao = extraDataInput ? extraDataInput.value.trim() : '';
 
     if (btnGenerate) {
       btnGenerate.disabled = true;
-      btnGenerate.textContent = '⏳ Formatando protocolo de Regulação Estadual...';
+      btnGenerate.textContent = `⏳ Consultando Protocolo TelessaúdeRS (${especialidade})...`;
     }
 
     try {
+      const slug = getTelessaudeSlug(especialidade);
+      let telessaudeProtocol = null;
+      if (slug) {
+        try {
+          telessaudeProtocol = await fetchTelessaudeProtocol(slug);
+        } catch (e) {
+          console.warn('Erro ao consultar TelessaúdeRS:', e);
+        }
+      }
+
+      if (btnGenerate) {
+        btnGenerate.textContent = '⏳ Enquadrando caso no protocolo e checando pendências...';
+      }
+
       const prompt = window.buildReferralPrompt({
         templateId: consult.templateId,
         templateName: consult.templateName,
         evolucaoTexto: currentEvolutionText,
         especialidade,
-        prioridade,
         dadosExtrasRegulacao,
-        quickNotes: consult.quickNotes
+        quickNotes: consult.quickNotes,
+        telessaudeProtocolText: telessaudeProtocol?.conteudo_extraido || ''
       });
 
       const requestBody = {
@@ -4239,8 +4337,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
       const rawRefText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
       const refText = rawRefText
-        .replace(/^\d+\.\s*[A-ZÀ-Ú\s/()-]+:\s*\n?/gm, '')
-        .replace(/^ENCAMINHAMENTO MÉDICO[^\n]*\n?/gim, '')
+        .replace(/^```[a-z]*\n?/gim, '')
+        .replace(/```$/gim, '')
         .trim();
       const tokens = responseJson?.usageMetadata?.totalTokenCount || 800;
 
@@ -4250,17 +4348,20 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           consult.referrals.push({
             id: 'ref_legacy',
             specialty: consult.referralSpecialty || 'Especialidade',
-            priority: 'Prioritário',
             text: consult.referralText,
             createdAt: consult.updatedAt || Date.now()
           });
         }
       }
 
+      // Extrai o enquadramento de condição do protocolo se existir no texto gerado
+      const condMatch = refText.match(/•\s*Condição(?:\s*Clínica)?:\s*([^\n\r]+)/i);
+      const protocolCondition = condMatch ? condMatch[1].trim() : '';
+
       const newRefItem = {
         id: 'ref_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
         specialty: especialidade,
-        priority: prioridade,
+        protocolCondition,
         text: refText,
         createdAt: Date.now()
       };
@@ -4278,13 +4379,13 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       renderSavedReferralsForConsultation(consult);
       openSpecificReferralInEditor(consult, newRefItem.id);
       await refreshQueueSidebar();
-      showToast(`🏛️ Encaminhamento #${consult.referrals.length} (${especialidade}) salvo!`);
+      showToast(`🏛️ Encaminhamento #${consult.referrals.length} (${especialidade}) salvo com protocolo TelessaúdeRS!`);
     } catch (err) {
       alert('Erro ao gerar encaminhamento: ' + err.message);
     } finally {
       if (btnGenerate) {
         btnGenerate.disabled = false;
-        btnGenerate.textContent = '🏛️ Gerar e Salvar Encaminhamento para esta Especialidade';
+        btnGenerate.textContent = '🏛️ Gerar Encaminhamento conforme Protocolo TelessaúdeRS (Regulação Estadual)';
       }
     }
   }
@@ -4340,7 +4441,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       row.innerHTML = `
         <div style="font-weight: 700; font-size: 13px; color: #3b0764;">
           ${idx + 1}. ${escapeHtml(refItem.specialty)}
-          <span style="font-size: 11px; font-weight: 500; color: #6b21a8; margin-left: 6px;">(${escapeHtml(refItem.priority || '')})</span>
+          ${refItem.protocolCondition ? `<span style="font-size: 11px; font-weight: 600; color: #7c3aed; margin-left: 6px;">[${escapeHtml(refItem.protocolCondition)}]</span>` : ''}
         </div>
         <div style="display: flex; gap: 6px; align-items: center;">
           <button type="button" class="btn btn-secondary btn-ref-open" style="padding: 4px 10px; font-size: 12px;">
@@ -6570,9 +6671,17 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     });
 
     document.getElementById('btnGenerateReferral')?.addEventListener('click', generateStateReferral);
+    document.getElementById('btnCopyJustificationOnly')?.addEventListener('click', () => {
+      const fullText = document.getElementById('referralResultEditor')?.value || '';
+      // Extrai apenas o bloco da justificativa clínica pronta para o GERCON/SISREG
+      const justMatch = fullText.match(/JUSTIFICATIVA CLÍNICA PARA A? REGULAÇÃO:\s*\n+([\s\S]+?)(?=\n+⚠️\s*PENDÊNCIAS|$)/i);
+      const textToCopy = (justMatch && justMatch[1].trim()) ? justMatch[1].trim() : fullText;
+      copyToClipboard(textToCopy, '📋 Justificativa clínica copiada para o GERCON/SISREG!');
+    });
+
     document.getElementById('btnCopyReferral')?.addEventListener('click', () => {
       const text = document.getElementById('referralResultEditor')?.value || '';
-      copyToClipboard(text, '🏛️ Encaminhamento copiado para a Regulação Estadual!');
+      copyToClipboard(text, '🏛️ Encaminhamento completo com Enquadramento e Pendências copiado!');
     });
     document.getElementById('btnToggleReferralDrawer')?.addEventListener('click', () => {
       toggleReferralDrawer();
