@@ -134,14 +134,14 @@ Familiar ciente, concordante e sem dúvidas`
     badge: 'VD / Acamados',
     icon: '🏠',
     description: 'Visita domiciliar com equipe (Enfermagem/ACS), familiar presente e checklist de pendências para fazer no posto.',
-    templateText: `## VISITA DOMICILIAR EM DD/MM/AAAA - REGISTRO POSTERIOR ##
+    templateText: `## VISITA DOMICILIAR - REGISTRO POSTERIOR ##
 
 #
 # MUC:
 # Tabagista:
 # Alergias:
 # Equipe presente na VD: Enfermeiro(a):  | ACS: 
-# Familiar / Cuidador(a) presente na visita:  (Vínculo: )
+# Familiar / Cuidador(a) presente na visita: 
 
 SUBJETIVO
 Visita domiciliar realizada
@@ -425,6 +425,7 @@ window.parsePreviousConsultationData = function(prevRawText) {
   const headerLines = [];
   const headerGroups = []; // Cada grupo: { hashLine: '# ...', subLines: ['- ...', '> ...'] }
   const unstructuredHeaderLines = [];
+  const extractedMucFromDashLines = [];
   const labExamLines = [];
   const usgExamLines = [];
   const avaliacaoLines = [];
@@ -441,6 +442,21 @@ window.parsePreviousConsultationData = function(prevRawText) {
     }
   };
 
+  // Detecta se uma sub-linha "- ..." no cabeçalho antigo na verdade é uma medicação solta (ex.: "- Omeprazol 20mg (1-0-0)", "- NPH (12-0-8)")
+  const isDashMedicationLine = (str) => {
+    const clean = String(str || '').replace(/^[-*•>]+\s*/, '').trim();
+    if (!clean) return false;
+    // Não confundir vacinas ou sorologias com medicações
+    if (/^(?:DT|DTPA|VSR|VVSR|COVID|INFLUENZA|HEPATITE|ANTITET[ÂA]NICA|TR\s+HIV|\d{2}\/\d{2}\/\d{2,4})/i.test(clean)) return false;
+    return /\b(?:\d+\s*(?:mg|mcg|g|ui|ml|cp|comp|c[áa]ps|gt|gotas|jatos)\b|\(\s*\d+\s*-\s*\d+\s*-\s*\d+\s*\)|\b(?:nph|regular|glargina|detemir|degludeca|losartana|enalapril|captopril|ramipril|anlodipino|nifedipino|hidroclorotiazida|hctz|furosemida|espironolactona|indapamida|atenolol|metoprolol|propranolol|carvedilol|sinvastatina|atorvastatina|rosuvastatina|ciprofibrato|metformina|gliclazida|glibenclamida|dapagliflozina|empagliflozina|omeprazol|pantoprazol|esomeprazol|aas|clopidogrel|varfarina|rivaroxabana|apixabana|levotiroxina|puran|sertralina|fluoxetina|escitalopram|citalopram|paroxetina|venlafaxina|duloxetina|amitriptilina|nortriptilina|bupropiona|trazodona|mirtazapina|clonazepam|diazepam|alprazolam|zolpidem|quetiapina|risperidona|haloperidol|olanzapina|carbonato\s+de\s+l[íi]tio|[áa]cido\s+valproico|valproato|carbamazepina|lamotrigina|topiramato|fenito[íi]na|fenobarbital|gabapentina|pregabalina|levodopa|pramipexol|donepezila|memantina|[áa]cido\s+f[óo]lico|sulfato\s+ferroso|carbonato\s+de\s+c[áa]lcio|colecalciferol|vitamina\s+d|alendronato|salbutamol|beclometasona|budesonida|formoterol|tiotr[óo]pio|prednisona|tansulosina|doxazosina|finasterida|dutasterida)\b)/i.test(clean);
+  };
+
+  // Detecta subtítulos vazios / espúrios dentro da área de exames para nunca replicá-los
+  const isSpuriousExamSubheader = (str) => {
+    const clean = String(str || '').replace(/^[-*#•>\s]+/, '').replace(/[:\s]+$/, '').trim();
+    return /^(?:ULTRASSONOGRAFIAS?\s*(?:\/\s*IMAGEM)?|EXAMES?\s+DE\s+IMAGEM|IMAGEM|LABORATORIAIS|EXAMES?\s+LABORATORIAIS|EXAMES?\s+COMPLEMENTARES|LABS|LABORAT[ÓO]RIO|ECOGRAFIAS?|ULTRASSOM|USG)$/i.test(clean);
+  };
+
   const now = new Date();
   const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
 
@@ -452,19 +468,21 @@ window.parsePreviousConsultationData = function(prevRawText) {
 
     // Reconhece cabeçalhos padrão e variações de evolução antiga/externa
     if (/^(?:\d+[\.\-\)]\s*)?(?:SUBJETIVO|ANAMNESE|HIST[ÓO]RIA(?:\s+CL[ÍI]NICA)?|HDA|QUEIXA\s+PRINCIPAL|QP|S\s*[:\-])\b/i.test(trimmed)) {
+      flushUsgEntry();
       currentSection = 'subjetivo';
       continue;
     }
     if (/^(?:\d+[\.\-\)]\s*)?(?:OBJETIVO|EXAME\s+F[ÍI]SICO|EXAME\s+CL[ÍI]NICO|EF|O\s*[:\-])\b/i.test(trimmed)) {
+      flushUsgEntry();
       currentSection = 'objetivo';
       continue;
     }
-    if (/^(?:\d+[\.\-\)]\s*)?(?:EXAMES\s+COMPLEMENTARES|EXAMES\s+LABORATORIAIS|EXAMES|LABS|LABORAT[ÓO]RIO)\b/i.test(trimmed)) {
+    if (/^(?:#\s*|\d+[\.\-\)]\s*)?(?:EXAMES\s+COMPLEMENTARES|EXAMES\s+LABORATORIAIS|EXAMES|LABS|LABORAT[ÓO]RIO)\s*:?\s*$/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'exames_labs';
       continue;
     }
-    if (/^(?:\d+[\.\-\)]\s*)?(?:ULTRASSONOGRAFIA|ECOGRAFIA|EXAMES\s+DE\s+IMAGEM|USG|US|RAIO-X|TC|RM)\b/i.test(trimmed)) {
+    if (/^(?:#\s*|\d+[\.\-\)]\s*)?(?:ULTRASSONOGRAFIAS?(?:\s*\/\s*IMAGEM)?|ECOGRAFIAS?|EXAMES\s+DE\s+IMAGEM|IMAGEM|USG|US|RAIO-X|TC|RM)\s*:?\s*$/i.test(trimmed)) {
       flushUsgEntry();
       currentSection = 'exames_usg';
       continue;
@@ -485,6 +503,14 @@ window.parsePreviousConsultationData = function(prevRawText) {
       continue;
     }
 
+    // Se dentro do OBJETIVO ou HEADER aparecer uma linha explícita "- LABS DD/MM/AAAA:" ou "- US / - USG / - ECO", captura automaticamente como exame!
+    const isExplicitLabLineAnywhere = /^(?:-\s*)?LABS\b(?:\s+\d{2}\/\d{2}\/\d{2,4})?\s*:/i.test(trimmed);
+    const isExplicitUsgLineAnywhere = /^(?:-\s*)?(?:US\s+(?:OBST[ÉE]TRIC|MORFOL[ÓO]GIC|TRANSVAGINAL|TV|ABD|MAM[ÁA]RI|TIREOIDE|PELVIC|P[ÉE]LVIC|VAGINAL)|USG\b|ECOGRAFIA\b|ULTRASSONOGRAFIA\s+(?:OBST[ÉE]TRIC|MORFOL[ÓO]GIC|TRANSVAGINAL))/i.test(trimmed);
+    if ((currentSection === 'objetivo' || currentSection === 'header') && (isExplicitLabLineAnywhere || isExplicitUsgLineAnywhere)) {
+      flushUsgEntry();
+      currentSection = isExplicitUsgLineAnywhere ? 'exames_usg' : 'exames_labs';
+    }
+
     if (currentSection === 'header') {
       if (!trimmed) continue;
       let processedLine = trimmed;
@@ -495,8 +521,42 @@ window.parsePreviousConsultationData = function(prevRawText) {
         continue;
       }
       if ((processedLine.startsWith('-') || processedLine.startsWith('>') || processedLine.startsWith('>>')) && !currentGroup) {
-        unstructuredHeaderLines.push(processedLine);
+        if (isDashMedicationLine(processedLine)) {
+          extractedMucFromDashLines.push(processedLine.replace(/^[-*•>]+\s*/, '').trim());
+        } else {
+          unstructuredHeaderLines.push(processedLine);
+        }
         continue;
+      }
+
+      // Se for uma linha com traço "- Medicamento 20mg (1-0-0)" solta abaixo de uma condição "#" (como no Exemplo 6),
+      // NÃO anexa como sub-linha da condição "#" — guarda para a # MUC!
+      if ((processedLine.startsWith('-') || processedLine.startsWith('>')) && !processedLine.startsWith('>>')) {
+        const parentHash = currentGroup ? currentGroup.hashLine.toUpperCase() : '';
+        const isUnderVaccinesOrSorologias = /^#\s*(?:VACINAS|SOROLOGIAS)\b/i.test(parentHash);
+        if (!isUnderVaccinesOrSorologias && isDashMedicationLine(processedLine)) {
+          extractedMucFromDashLines.push(processedLine.replace(/^[-*•>]+\s*/, '').trim());
+          continue;
+        }
+      }
+
+      // Normaliza linhas antigas de tabagismo e alergias para os campos padrão "# Tabagista:" e "# Alergias:"
+      if (/^#\s*Nega\s+tabagismo\s*\/\s*etilismo\b/i.test(processedLine)) {
+        headerLines.push('# Nega etilismo');
+        headerGroups.push({ hashLine: '# Nega etilismo', subLines: [] });
+        processedLine = '# Tabagista: Nega';
+      } else if (/^#\s*(?:Nega\s+tabagismo|N[ãa]o\s+tabagista|Sem\s+tabagismo)\s*$/i.test(processedLine)) {
+        processedLine = '# Tabagista: Nega';
+      } else if (/^#\s*Ex-?tabagista\b(.*)$/i.test(processedLine)) {
+        const restEx = processedLine.replace(/^#\s*Ex-?tabagista\s*:?\s*/i, '').trim();
+        processedLine = restEx ? `# Tabagista: Ex-tabagista (${restEx.replace(/^\(|\)$/g, '')})` : '# Tabagista: Ex-tabagista';
+      } else if (/^#\s*Tabagista\s+passiv([oa])\b(.*)$/i.test(processedLine)) {
+        const mPass = processedLine.match(/^#\s*Tabagista\s+passiv([oa])\s*:?\s*(.*)$/i);
+        const genderChar = mPass ? mPass[1].toLowerCase() : 'o';
+        const extraPass = mPass && mPass[2] ? mPass[2].trim() : '';
+        processedLine = extraPass ? `# Tabagista: Tabagista passiv${genderChar} (${extraPass})` : `# Tabagista: Tabagista passiv${genderChar}`;
+      } else if (/^#\s*(?:Nega\s+alergias?(?:\s+medicamentosas?)?|Sem\s+alergias?)\s*$/i.test(processedLine)) {
+        processedLine = '# Alergias: Nega';
       }
 
       // Atualiza automaticamente a IG se houver linha "# IG ... POR ECO COM X SEM EM DD/MM/AAAA" mantendo os dados da Eco intactos!
@@ -528,8 +588,9 @@ window.parsePreviousConsultationData = function(prevRawText) {
         currentGroup.subLines.push(processedLine);
       }
     } else if (currentSection === 'exames_labs' || currentSection === 'exames_usg') {
-      if (!trimmed || trimmed === '-') continue;
-      const isImagingLine = /^(?:-\s*)?(?:US\b|USG\b|ECO\b|ECOGRAFIA|ULTRASSOM|ULTRASSONOGRAFIA|ECOCARDIO|RX\b|RAIO|TC\b|TOMOGRAFIA|RM\b|RESSON|MAMOGRAFIA)/i.test(trimmed);
+      if (!trimmed || trimmed === '-' || isSpuriousExamSubheader(trimmed)) continue;
+      const isImagingLine = /^(?:-\s*)?(?:US\b|USG\b|ECO\b|ECOGRAFIA|ULTRASSOM|ULTRASSONOGRAFIA|ECOCARDIO|RX\b|RAIO|TC\b|TOMOGRAFIA|RM\b|RESSON|MAMOGRAFIA)/i.test(trimmed)
+        || /\b(?:feto\s+[úu]nico|placenta|l[íi]quido\s+amni[óo]tico|biometria\s+fetal|saco\s+gestacional|morfologia\s+fetal)\b/i.test(trimmed);
       const isLabStartLine = /^(?:-\s*)?(?:LABS\b|LABORAT[ÓO]RIO|\d{2}\/\d{2}\/\d{2,4}\s*:)/i.test(trimmed);
 
       if (isImagingLine) {
@@ -539,7 +600,8 @@ window.parsePreviousConsultationData = function(prevRawText) {
       } else if (isLabStartLine) {
         flushUsgEntry();
         currentSection = 'exames_labs';
-        labExamLines.push(trimmed.startsWith('-') ? trimmed : `- ${trimmed}`);
+        const formattedLab = trimmed.startsWith('-') ? trimmed : `- ${trimmed}`;
+        labExamLines.push(formattedLab.replace(/^-\s*(?=\d{2}\/\d{2}\/\d{2,4}\s*:)/, '- LABS '));
       } else if (currentSection === 'exames_usg') {
         if (trimmed.startsWith('-')) {
           flushUsgEntry();
@@ -565,6 +627,19 @@ window.parsePreviousConsultationData = function(prevRawText) {
     }
   }
   flushUsgEntry();
+
+  // Se havia medicações com traço "- Omeprazol..." no cabeçalho antigo e não havia "# MUC:" preenchida, monta "# MUC:" automaticamente
+  if (extractedMucFromDashLines.length > 0) {
+    const existingMucIdx = headerLines.findIndex(l => /^#\s*MUC\s*:/i.test(l));
+    if (existingMucIdx >= 0) {
+      const currentMucVal = headerLines[existingMucIdx].replace(/^#\s*MUC\s*:\s*/i, '').trim();
+      if (!currentMucVal) {
+        headerLines[existingMucIdx] = `# MUC: ${extractedMucFromDashLines.join(', ')}`;
+      }
+    } else {
+      headerLines.push(`# MUC: ${extractedMucFromDashLines.join(', ')}`);
+    }
+  }
 
   const updatedIgGroup = headerGroups.find(g => /^#\s*IG\b/i.test(g.hashLine));
 
@@ -667,15 +742,17 @@ window.buildVerbatimAudioTranscriptionPrompt = function(durationSeconds) {
   return `Você é um transcritor médico forense especialista em consultas da Atenção Primária à Saúde (UBS / SUS).
 Sua ÚNICA tarefa nesta etapa é ouvir o áudio anexado do segundo 00:00 até o último segundo${approxMin ? ` (duração aproximada: ${approxMin} min)` : ''} e transcrever LITERALMENTE, PALAVRA POR PALAVRA, 100% de tudo o que foi dito na consulta.
 
-LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR OU CORTAR TRECHOS (TRANSCRIÇÃO 100% INTEGRAL):
+LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES OU CORTAR TRECHOS (TRANSCRIÇÃO 100% INTEGRAL):
 1. PROIBIÇÃO TOTAL DE ABREVIAR OU SINTETIZAR:
    - O médico precisa desta transcrição completa para compor o prontuário legal do paciente.
    - É TERMINANTEMENTE PROIBIDO resumir falas, omitir perguntas ou respostas, abreviar frases, pular assuntos ou parar a transcrição antes do último segundo da gravação!
    - Transcreva CADA PALAVRA dita pelo médico, paciente e acompanhante, do primeiro segundo até o encerramento do áudio.
-2. IDENTIFICAÇÃO DOS INTERLOCUTORES:
-   - Inicie cada mudança de fala com "[MÉDICO]: ", "[PACIENTE]: " ou "[ACOMPANHANTE]: " (uma fala por linha para facilitar a leitura completa).
-3. CAPTAÇÃO TOTAL DE DETALHES CLÍNICOS (NÃO DEIXE ESCAPAR NADA!):
+2. IDENTIFICAÇÃO DOS INTERLOCUTORES (PROIBIDO INVENTAR NOMES PRÓPRIOS OU GRAU DE PARENTESCO!):
+   - Inicie cada mudança de fala APENAS com "[MÉDICO]: ", "[PACIENTE]: " ou "[ACOMPANHANTE]: " (uma fala por linha).
+   - É TERMINANTEMENTE PROIBIDO adivinhar, deduzir ou inventar nomes próprios de pessoas (como "Joel", "Maria", nome de enfermeira ou ACS) ou grau de parentesco ("filho", "filha", "esposo") se o nome/parentesco não tiver sido pronunciado com 100% de nitidez!
+3. CAPTAÇÃO TOTAL DE DETALHES CLÍNICOS, TABAGISMO E ALERGIAS (NÃO DEIXE ESCAPAR NADA!):
    - Transcreva todas as queixas, dores, sintomas, história da doença atual e tempo de evolução relatados pelo(a) paciente (mesmo que a voz do paciente esteja mais baixa ou distante do microfone!).
+   - Transcreva obrigatoriamente todas as perguntas e respostas sobre TABAGISMO (se fuma, se é ex-tabagista / já fumou e parou, ou se é tabagista passivo / alguém fuma em casa) e ALERGIAS medicamentosas ou alimentares!
    - Transcreva todas as perguntas feitas pelo médico e todas as confirmações ou negativas do paciente (ex.: se o médico perguntar sobre febre, sangramento, perda de líquido, disúria, cefaleia, escotomas, movimentos fetais, etc., transcreva a pergunta e a resposta!).
    - Transcreva integralmente qualquer relato de passagem por Emergência / Pronto Atendimento / Hospital / Maternidade / UPA, incluindo o que sentiu, quando foi, quais exames ou medicações fez lá.
    - Transcreva todos os nomes de medicamentos citados, dosagens (mg, mcg, UI, gotas), posologias, adesão ou efeitos colaterais.
@@ -694,12 +771,13 @@ Responda APENAS com a transcrição literal completa, linha por linha, do iníci
 // ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader, hasPreTranscribedAudio = false, patientAge = '', patientSex = '') {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader, hasPreTranscribedAudio = false, patientAge = '', patientSex = '', vdVisitDate = '') {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   const notesExamDetection = window.detectExamsInText(quickNotes);
   const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
   const isPrenatalTemplate = templateObj.id === 'prenatal';
   const isTelessaudeTemplate = templateObj.id === 'telessaude';
+  const isVdTemplate = templateObj.id === 'visita_domiciliar';
   const hasAnyExamsToFormat = Boolean(
     hasExamFiles ||
     preTranscribedExamsText ||
@@ -717,6 +795,12 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
       // Opção para não ter nenhum cabeçalho ## no topo
       effectiveTemplateText = effectiveTemplateText.replace(/^##.*##\s*\n+/m, '').trim();
     }
+  } else if (isVdTemplate) {
+    if (vdVisitDate) {
+      effectiveTemplateText = effectiveTemplateText.replace(/^##\s*VISITA DOMICILIAR[^\n#]*##/im, `## VISITA DOMICILIAR EM ${vdVisitDate} - REGISTRO POSTERIOR ##`);
+    } else {
+      effectiveTemplateText = effectiveTemplateText.replace(/^##\s*VISITA DOMICILIAR[^\n#]*##/im, `## VISITA DOMICILIAR - REGISTRO POSTERIOR ##`);
+    }
   }
 
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
@@ -727,14 +811,21 @@ ${hasPreTranscribedAudio
 ETAPA 1 (TRANSCRIÇÃO INTEGRAL DE 100% DO ÁUDIO): Ouvir o áudio anexado do primeiro ao último segundo (00:00 até o fim) e transcrever literalmente TUDO o que foi dito na chave "transcricao_literal_do_audio" do JSON (identificando "[MÉDICO]:" e "[PACIENTE]:"). É TERMINANTEMENTE PROIBIDO pular, resumir ou ignorar falas da paciente (especialmente relatos de ida à emergência/hospital e todas as queixas relatadas!).
 ETAPA 2 (EVOLUÇÃO CLÍNICA ESTRUTURADA): Preencher "evolucao_completa" usando 100% dos fatos reais presentes na sua "transcricao_literal_do_audio", nas notas rápidas, nos exames anexados e nos dados permanentes da evolução anterior.`}
 
-Data de referência de hoje: ${todayStr}.
+${isVdTemplate
+  ? (vdVisitDate
+      ? `Data informada em que ocorreu a Visita Domiciliar: ${vdVisitDate} (Data da transcrição hoje: ${todayStr}).`
+      : `ATENÇÃO VISITA DOMICILIAR (REGISTRO POSTERIOR): A transcrição está sendo gerada em ${todayStr}, porém a Visita Domiciliar pode ter ocorrido em outro dia! NUNCA coloque a data de hoje (${todayStr}) no título "## VISITA DOMICILIAR ... ##" a menos que o médico tenha dito explicitamente que a visita ocorreu em ${todayStr}. Se a data da visita não foi falada, mantenha o título como "## VISITA DOMICILIAR - REGISTRO POSTERIOR ##".`)
+  : `Data de referência de hoje: ${todayStr}.`}
 
-=== LEI SUPREMA: PROIBIÇÃO TOTAL E ABSOLUTA DE ABREVIAR, RESUMIR OU OMITIR QUALQUER INFORMAÇÃO! ===
+=== LEI SUPREMA: PROIBIÇÃO TOTAL E ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES/PARENTESCOS OU OMITIR INFORMAÇÕES! ===
 O médico depende desta evolução para o registro clínico e resguardo ético-jurídico no prontuário.
 - É TERMINANTEMENTE PROIBIDO abreviar histórias, sintetizar em poucas linhas, omitir queixas secundárias, usar reticências "..." ou generalizar com termos vagos como "sintomas habituais", "orientadas medidas", "conforme rotina" ou "prescritos sintomáticos"!
 - Você DEVE ouvir e integrar 100% da consulta gravada, das anotações rápidas e dos exames anexados.
 - Cada queixa do paciente, cada resposta ao interrogatório sintomatológico, cada achado de exame físico, cada valor de sinal vital, cada diagnóstico avaliado e CADA medicamento prescrito (com nome completo oficial, miligramas, posologia completa e duração) DEVE estar minuciosamente registrado e organizado nas seções corretas do prontuário (SOAP)!
-- É TERMINANTEMENTE PROIBIDO inventar nomes de pacientes, nomes de enfermeiros/ACS, nomes de familiares, queixas, história clínica, medicações (MUC), doses, sinais vitais ou exames que NÃO tenham sido efetivamente falados na consulta ou escritos nas notas/evolução prévia!
+- PROIBIÇÃO ABSOLUTA DE INVENTAR NOMES DE PESSOAS OU ESTABELECER GRAU DE PARENTESCO NÃO INFORMADO:
+  * É TERMINANTEMENTE PROIBIDO criar, deduzir ou adivinhar nomes de acompanhantes, familiares, cuidadores (ex.: NUNCA invente "Joel", "Maria", etc.), nomes de enfermeiros(as) ou ACS!
+  * É TERMINANTEMENTE PROIBIDO estabelecer grau de parentesco ("filho", "filha", "esposo", "esposa", "nora", "irmã") se esse parentesco NÃO tiver sido declarado de forma 100% inequívoca e literal na consulta ou nas Anotações Rápidas!
+  * Se houver outra voz ou acompanhante na consulta/visita domiciliar mas o nome ou grau de parentesco não tiver sido explicitamente informado, escreva apenas "acompanhante" ou "familiar" (sem nome próprio e sem inventar parentesco) e deixe os campos "# Equipe presente na VD:" e "# Familiar / Cuidador(a) presente na visita:" em branco!
 - ATENÇÃO MÁXIMA A ATENDIMENTO EM EMERGÊNCIA / PRONTO ATENDIMENTO / HOSPITAL:
   * Se a paciente relatar no áudio (ou nas notas) que esteve na Emergência / Pronto Atendimento / Maternidade / Hospital entre as consultas, você DEVE relatar detalhadamente no SUBJETIVO: motivo/queixas que a levaram à emergência, data/local se citados, avaliação realizada, medicações administradas e exames feitos na urgência!
   * E se ela realizou exames laboratoriais ou de imagem na Emergência/Urgência, ao colocá-los em EXAMES COMPLEMENTARES / ULTRASSONOGRAFIA, identifique explicitamente "(REALIZADO NA EMERGÊNCIA / URGÊNCIA)" ao lado da data do exame — JAMAIS jogue exames ou avaliações feitas na emergência como se tivessem sido realizados de forma eletiva na UBS!
@@ -770,57 +861,65 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
     "⚠️ Áudio sem conteúdo de consulta médica identificado.\nTranscrição captada no microfone: \"[coloque aqui apenas o que foi falado literalmente no áudio]\""
   * E deixe "codigos_cid_ciap": [].
 
-=== LEI SUPREMA 3: OBRIGATORIEDADE DO FORMATO PADRÃO DO MODELO SELECIONADO ===
-- Se a evolução anterior fornecida estiver em qualquer outro formato (texto corrido narrativo, evolução hospitalar, resumo de alta, tópicos não-SOAP, letras S/O/A/P, prontuário antigo ou sem cabeçalho "#"):
+=== LEI SUPREMA 3: OBRIGATORIEDADE DO FORMATO PADRÃO DO MODELO SELECIONADO (INDEPENDENTE DO MODELO DE IA ATIVO) ===
+- Qualquer que seja o modelo de IA em execução, é PROIBIDO inventar novos títulos de seção, alterar a ordem dos blocos ou copiar o layout de evoluções antigas!
+- Se a evolução anterior fornecida estiver em qualquer outro formato (texto corrido narrativo, evolução hospitalar, resumo de alta, tópicos não-SOAP, letras S/O/A/P, prontuário antigo ou com medicações soltas em linhas "- Omeprazol..."):
   * É TERMINANTEMENTE PROIBIDO copiar, imitar ou adotar a estrutura ou layout da evolução antiga!
+  * É TERMINANTEMENTE PROIBIDO copiar lista de medicações soltas com traço ("- Omeprazol 20mg...", "- Sinvastatina...") para cima da linha "# MUC:"! Todas as medicações em uso contínuo devem ficar UNIFICADAS exclusivamente dentro da linha "# MUC: ...".
   * A evolução de HOJE DEVE SER GERADA RIGOROSAMENTE NO MODELO DE REFERÊNCIA SELECIONADO (${templateObj.name}), contendo todas as seções obrigatórias:
     1) Cabeçalho "#" com comorbidades (# Comorbidade), # MUC:, # Tabagista:, # Alergias:
     2) SUBJETIVO (Anamnese completa e queixas em linguagem médica formal)
     3) OBJETIVO (Ectoscopia base, sinais vitais e exame físico estruturado)
-    4) EXAMES COMPLEMENTARES (apenas se houver exames novos trazidos na consulta de hoje)
+    4) EXAMES COMPLEMENTARES (e ULTRASSONOGRAFIA apenas no Pré-Natal)
     5) AVALIAÇÃO (Hipóteses diagnósticas sem traços e sem códigos CID-10 no texto)
     6) CONDUTA (Em 1ª pessoa verbal do médico: Prescrevo, Oriento, Explico, Renovo medicações de uso contínuo, sem tópicos)
 
-=== REGRAS CRÍTICAS E OBRIGATÓRIAS (VALEM PARA O PRÉ-NATAL E TODOS OS 7 MODELOS!) ===
+=== REGRAS CRÍTICAS E OBRIGATÓRIAS (VALEM PARA O PRÉ-NATAL E TODOS OS 8 MODELOS!) ===
 
-1. PADRÃO ESTRITO DO CABEÇALHO "#" (CONDIÇÕES DE SAÚDE, SUB-LINHAS COM TRAÇO "-", GPVPCA, IG POR ECO, VACINAS, SOROLOGIAS, TOXO E MUC):
+1. PADRÃO ESTRITO DO CABEÇALHO "#" (CONDIÇÕES DE SAÚDE, TABAGISMO/EX-TABAGISTA/PASSIVO, ALERGIAS, GPVPCA, IG POR ECO, VACINAS, SOROLOGIAS, TOXO E MUC):
+   - CAPTAÇÃO OBRIGATÓRIA DE TABAGISMO (ATIVO, EX-TABAGISTA, TABAGISTA PASSIVO OU NEGA) E ALERGIAS A PARTIR DA TRANSCRIÇÃO E DA EVOLUÇÃO ANTERIOR:
+     * Verifique atentamente tanto a evolução anterior quanto a transcrição da consulta de hoje para preencher "# Tabagista:" e "# Alergias:".
+     * Se o paciente negar tabagismo na consulta ou na evolução anterior (ex.: "# Nega tabagismo"), preencha: "# Tabagista: Nega" (e NUNCA deixe "# Nega tabagismo" duplicado com "# Tabagista:" em branco!).
+     * Se o paciente for EX-TABAGISTA (relatar que já fumou e parou), NUNCA o classifique como tabagista ativo! Preencha claramente: "# Tabagista: Ex-tabagista" (acrescentando há quanto tempo parou se informado, ex.: "# Tabagista: Ex-tabagista (cessou há 10 anos)").
+     * Se o paciente for TABAGISTA PASSIVO (relatar que não fuma, mas esposo/familiar fuma em casa), preencha claramente: "# Tabagista: Tabagista passivo(a)" (ex.: "# Tabagista: Tabagista passiva (esposo tabagista)").
+     * Se o paciente negar alergias na consulta ou na evolução anterior (ex.: "# Nega alergias"), preencha: "# Alergias: Nega" (e se tiver alergia, especifique qual medicação/substância: "# Alergias: Dipirona").
    - PRESERVAÇÃO FIEL DAS "#" ANTERIORES + PROMOÇÃO DE PATOLOGIAS CRÔNICAS/IMPORTANTES DA AVALIAÇÃO ANTERIOR (BLOQUEANDO QUEIXAS AGUDAS!):
-     * Quando houver evolução prévia, você DEVE MANTER EXATAMENTE as linhas "#" (ex.: "# HAS", "# Dislipidemia", "# Colelitiase", "# TAG", "# ovolactovegetariana") E TODAS AS SUB-LINHAS COM TRAÇO ("- ...") que já estavam no cabeçalho "#" da evolução anterior (ex.: "- Aguardando com CX geral via gercon", "- Gestação atual não planejada", "- Encaminhada para pneumologia via gercon").
-     * PROMOÇÃO OBRIGATÓRIA DE PATOLOGIAS CRÔNICAS DA AVALIAÇÃO ANTERIOR PARA AS "#": Se na seção "AVALIAÇÃO" da consulta anterior constar alguma PATOLOGIA CRÔNICA ou CONDIÇÃO CLÍNICA IMPORTANTE que ainda não estava listada nas "#" do topo (ex.: Hipertensão arterial, Diabetes Mellitus, Dislipidemia, Hipotireoidismo, Depressão, Ansiedade/TAG, Asma, DPOC, Doença renal crônica, Colelitíase, Esteatose hepática, Obesidade, Fibromialgia, Osteoporose, Cardiopatia, etc.), você DEVE PUXÁ-LA para o cabeçalho "#" como uma nova linha limpa (ex.: "# Diabetes Mellitus tipo 2", "# Hipotireoidismo"), removendo adjetivos transitórios como "controle irregular" ou "em tratamento" e evitando duplicar caso já exista sinônimo nas "#" (ex.: não adicione "# Hipertensão" se já houver "# HAS").
+     * Quando houver evolução prévia, você DEVE MANTER EXATAMENTE as linhas "#" de patologias crônicas (ex.: "# HAS", "# Dislipidemia", "# Colelitiase", "# TAG") E as sub-linhas clínicas com traço ("- ...") vinculadas a cada condição (ex.: "- Aguardando com CX geral via gercon", "- Gestação atual planejada", "- Acompanhamento com PNAR").
+     * PROMOÇÃO OBRIGATÓRIA DE PATOLOGIAS CRÔNICAS DA AVALIAÇÃO ANTERIOR PARA AS "#": Se na seção "AVALIAÇÃO" da consulta anterior constar alguma PATOLOGIA CRÔNICA ou CONDIÇÃO CLÍNICA IMPORTANTE que ainda não estava listada nas "#" do topo (ex.: Hipertensão arterial, Diabetes Mellitus, Dislipidemia, Hipotireoidismo, Depressão, Ansiedade/TAG, Asma, DPOC, Doença renal crônica, Colelitíase, Esteatose hepática, Obesidade, Fibromialgia, Osteoporose, Cardiopatia, Miomatose uterina, etc.), você DEVE PUXÁ-LA para o cabeçalho "#" como uma nova linha limpa (ex.: "# Diabetes Mellitus tipo 2", "# Hipotireoidismo"), removendo adjetivos transitórios como "controle irregular" ou "em tratamento" e evitando duplicar caso já exista sinônimo nas "#" (ex.: não adicione "# Hipertensão" se já houver "# HAS").
      * PROIBIÇÃO ABSOLUTA DE PUXAR QUEIXAS AGUDAS PARA AS "#": JAMAIS puxe queixas agudas, infecções transitórias ou motivos pontuais da Avaliação anterior (como IVAS, resfriado, amigdalite, sinusite, gastroenterite/diarreia aguda, cistite/ITU, lombalgia aguda, dengue, puericultura/rotina) para dentro do cabeçalho "#"! As queixas agudas de hoje ficam exclusivamente na seção "AVALIAÇÃO" de hoje.
    - PADRÃO OBRIGATÓRIO DO HISTÓRICO OBSTÉTRICO (PARIDADE) NO PRÉ-NATAL:
      * NUNCA assuma "G01" como padrão se a paridade não foi informada!
-     * Quando a paridade constar na evolução anterior, nas notas ou for falada no áudio, escreva SEMPRE no formato compacto sem espaços com 2 dígitos após o G: exemplo "# G01PV0PC0A0", "# G02PV1PC0A0", "# G03PV1PC1A0", mantendo na linha de baixo qualquer observação com traço "- " que já existia (ex.: "- Gestação atual não planejada"). Se a paridade não foi informada em lugar nenhum, mantenha "# G PV PC A" em branco para o médico preencher.
+     * Quando a paridade constar na evolução anterior, nas notas ou for falada no áudio, escreva SEMPRE no formato compacto sem espaços com 2 dígitos após o G: exemplo "# G01PV0PC0A0", "# G02PV1PC0A0", "# G03PV1PC1A0", mantendo na linha de baixo qualquer observação com traço "- " que já existia (ex.: "- Gestação atual planejada"). Se a paridade não foi informada em lugar nenhum, mantenha "# G PV PC A" em branco para o médico preencher.
    - PADRÃO OBRIGATÓRIO DA IDADE GESTACIONAL ("# IG") E PRESERVAÇÃO DOS DADOS DA ECOGRAFIA:
      * Escreva SEMPRE a IG atual logo após "# IG" no formato "[SEMANAS]+[DIAS]", mantendo obrigatoriamente a informação da ecografia (quantas semanas tinha na eco e a data em que foi realizada):
-       Padrão exato: "# IG 16+2 POR ECO COM 08 SEM EM 26/08/2026" (ou "# IG 17+6 POR DUM EM DD/MM/AAAA").
+       Padrão exato: "# IG 25+0 POR ECO COM 09 SEM E 6 DIAS EM 27/07/2026" (ou "# IG 17+6 POR DUM EM DD/MM/AAAA").
      * É TERMINANTEMENTE PROIBIDO excluir a informação da ecografia anterior ("POR ECO COM X SEM EM DD/MM/AAAA")!
-   - PADRÃO OBRIGATÓRIO DE "# SOROLOGIAS:" (DIVIDIDAS POR DATA COM "- DD/MM/AAAA:" E SEPARANDO REAGENTE / NÃO REAGENTE):
+   - PADRÃO OBRIGATÓRIO DE "# SOROLOGIAS:" (DIVIDIDAS POR DATA COM "- DD/MM/AAAA:" EM ORDEM CRONOLÓGICA):
      * NUNCA junte datas diferentes de sorologias na mesma linha do título "# SOROLOGIAS:"!
-     * O título "# SOROLOGIAS:" fica sozinho na linha, e abaixo dele coloque UMA LINHA POR DATA iniciando com "- DD/MM/AAAA: ", mantendo as datas anteriores e adicionando as novas datas abaixo, indicando claramente cada exame como "NR" (Não reagente) ou "R" / "Reagente":
+     * O título "# SOROLOGIAS:" fica sozinho na linha, e abaixo dele coloque UMA LINHA POR DATA iniciando com "- DD/MM/AAAA: " em ordem cronológica (da mais antiga para a mais recente), mantendo as datas anteriores e adicionando as novas datas abaixo:
        Exemplo:
        # SOROLOGIAS:
-       - 29/08/2026: TR HIV NR | Hepatite C: NR | Hepatite B: NR | Sífilis: NR
-       - 27/10/2026: HTLV I/II Não reagente | Toxo IgG NR IgM NR
-   - PADRÃO OBRIGATÓRIO DE "# VACINAS:" NO PRÉ-NATAL (UMA VACINA POR LINHA COM "- "):
-     * É TERMINANTEMENTE PROIBIDO agrupar todas as vacinas na mesma linha separadas por "|" !
+       - 10/07/2026: TR HIV, Sífilis, Hepatite B, Hepatite C: NR
+       - 05/10/2026: TR HIV, Sífilis, Hepatite B, Hepatite C: NR
+   - PADRÃO OBRIGATÓRIO DE "# VACINAS:" NO PRÉ-NATAL (UMA VACINA POR LINHA COM "- " E PROIBIDO DEIXAR "PENDENTE" SE JÁ HOUVER DATA!):
      * Abaixo de "# VACINAS:", escreva OBRIGATORIAMENTE UMA VACINA POR LINHA iniciando com "- ":
        # VACINAS:
-       - DT: [data ou Pendente]
+       - DT / Antitetânica: [datas ou Pendente]
        - DTPA: [data ou Pendente]
        - VSR: [data ou Pendente]
-       - Hepatite B: [data ou Pendente]
+       - Hepatite B: [datas ou Pendente]
        - Influenza: [data ou Pendente]
        - COVID: [data ou Pendente]
+     * REGRA CRÍTICA ANTI-DUPLICAÇÃO DE VACINAS: Se uma vacina (como DTPA, DT/Antitetânica, VSR/VVSR, COVID/COVID19, Influenza ou Hepatite B) JÁ POSSUI DATA DE APLICAÇÃO na evolução anterior ou na consulta atual (ex.: "- DTPA: 26/10/2026"), é TERMINANTEMENTE PROIBIDO escrever outra linha "- DTPA: Pendente"! Substitua "Pendente" pela data real aplicada e mantenha apenas UMA linha para cada vacina!
    - ATUALIZAÇÃO OBRIGATÓRIA DE "# TOXO:" NO CABEÇALHO:
-     * Se houver exame de Toxoplasmose (IgM e IgG), atualize obrigatoriamente a linha "# TOXO:" no cabeçalho informando se é Suscetível (IgG NR e IgM NR) ou Imune (IgG R e IgM NR) e registrando explicitamente que o IgM e o IgG foram Não Reagentes (NR) com a respectiva data (mantendo a data anterior e acrescentando a nova data, ex.: "# TOXO: Suscetível em labs 29/08/2026 (IgM NR e IgG NR em 27/10/2026)").
-   - REGRA ESTRITA DA "# MUC:" (MEDICAÇÕES EM USO NO MOMENTO DA CONSULTA — SEM MISTURAR DOSES E SEM INCLUIR PRESCRIÇÃO NOVA DE HOJE!):
-     * Liste na "# MUC:" as medicações que o paciente já estava em uso ao chegar na consulta de hoje (incluindo as medicações contínuas prescritas na CONDUTA da última consulta, separadas claramente por vírgula com nome + concentração + posologia exata de cada uma, JAMAIS misturando doses de remédios diferentes!).
-     * NÃO coloque na "# MUC:" medicações que estão sendo prescritas pela primeira vez na consulta de HOJE!
+     * Se houver exame de Toxoplasmose (IgM e IgG), atualize obrigatoriamente a linha "# TOXO:" no cabeçalho informando se é Suscetível (IgG NR e IgM NR) ou Imune (IgG R e IgM NR) com a respectiva data.
+   - REGRA ESTRITA DA "# MUC:" (MEDICAÇÕES EM USO NO MOMENTO DA CONSULTA — SEM MISTURAR DOSES, SEM LINHAS SOLTAS "- MEDICAMENTO" E SEM INCLUIR PRESCRIÇÃO NOVA DE HOJE!):
+     * Liste na "# MUC:" todas as medicações que o paciente já estava em uso ao chegar na consulta de hoje (incluindo medicações contínuas da última consulta, separadas por vírgula com nome + concentração + posologia exata de cada uma).
+     * NÃO deixe linhas soltas com traço "- Omeprazol..." fora da "# MUC:", e NÃO coloque na "# MUC:" medicações prescritas pela primeira vez na consulta de HOJE!
    - PUERICULTURA (ALIMENTAÇÃO APENAS NO SUBJETIVO):
      * Na Puericultura, NUNCA coloque "# Alimentação:" no cabeçalho "#" inicial! O tópico "Alimentação:" fica dentro do "SUBJETIVO".
    - REGISTRO DO FAMILIAR / ACOMPANHANTE E PROIBIÇÃO DE CONTRADIÇÕES:
-     * Se um acompanhante for citado no áudio DE HOJE, registre no início do SUBJETIVO (ex.: "Paciente vem acompanhada do esposo [nome]"). Se não foi citado hoje, não copie acompanhante de consulta antiga!
+     * Se um acompanhante for citado no áudio DE HOJE com nome/parentesco explícitos, registre no início do SUBJETIVO. Se o nome ou parentesco não foi explicitamente falado, NUNCA invente nomes próprios (como "Joel") nem parentesco ("filho")!
      * Se a gestante/paciente relatar QUALQUER queixa, dor, sintoma, ida à emergência ou sinal de alarme no áudio, REMOVA IMEDIATAMENTE as frases padrão "Paciente refere estar bem, sem queixas", "Familiar relata que paciente está bem", "Nega intercorrências" e "Sem demais queixas", e apague "Nega [sintoma]" para qualquer sintoma que ela tenha apresentado!
 
 2. REDAÇÃO MÉDICA FORMAL NO SUBJETIVO & PROIBIÇÃO ABSOLUTA DE CONDUTAS OU LINGUAGEM DE IA:
@@ -829,7 +928,7 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * NUNCA escreva frases como "Médico orientou", "Médico reforçou", "Médico explicou", "Realizado encaminhamento" dentro do SUBJETIVO! Toda e qualquer orientação ou encaminhamento falado pelo médico durante a consulta pertence OBRIGATORIAMENTE à seção CONDUTA.
    - LINGUAGEM SEMIOLÓGICA TÉCNICA E ORGANIZAÇÃO EM PARÁGRAFOS CLÍNICOS (QUALIDADE DE MÉDICO DE FAMÍLIA SÊNIOR):
      * Escreva o "SUBJETIVO" SEMPRE em linguagem médica técnica, formal, clara e bem estruturada em parágrafos por tema clínico (1º Motivo da consulta e história da doença atual detalhada; 2º Saúde mental / comorbidades / revisão de sistemas; 3º Adesão e tolerabilidade medicamentosa; 4º Contexto familiar, regulatório ou trabalhista).
-     * É TERMINANTEMENTE PROIBIDO escrever gírias, onomatopeias ou coloquialismos chulos no SUBJETIVO (como "desandou", "tipo pruft", "dor de barriga", "fedorenta", "foi na quinta, na sexta, no sábado")! Converta SEMPRE para semiologia médica formal: "dor de barriga" -> "dor abdominal"; "ardor no meio do estômago" -> "epigastralgia e pirose"; "desandou / diarreia tipo pruft fedorenta" -> "diarreia pós-prandial explosiva, de consistência pastosa/líquida e odor fétido"; "fezes brancas" -> "episódio prévio de acolia/hipocolia fecal".
+     * É TERMINANTEMENTE PROIBIDO escrever gírias, onomatopeias ou coloquialismos chulos no SUBJETIVO!
    - CONTROLE DE HGT E CONTROLE DE PA DOMICILIAR SEMPRE NO SUBJETIVO (NUNCA NO OBJETIVO!):
      * Sempre que forem relatados ou lidos valores de Glicemia Capilar (HGT) ou de Pressão Arterial aferidos em domicílio, registre dentro do "SUBJETIVO" ("Controle de HGT: ..." / "Controle de PA: ..."). NUNCA coloque médias domiciliares de PA dentro do "OBJETIVO"!
 
@@ -837,21 +936,25 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - É TERMINANTEMENTE PROIBIDO escrever frases metalinguísticas como "Exame físico não detalhado na transcrição", "além da avaliação dos exames laboratoriais", "Exame físico não realizado" ou "Não mencionado no áudio"!
    - Mantenha SEMPRE a ectoscopia base do modelo ("BEG, LOC, MUC") no "OBJETIVO"!
    - No Pré-Natal, mantenha a linha "ABD: Globoso, indolor a palpação superficial e profunda" (ou atualize-a caso o médico descreva dor à palpação, contrações/dinâmica uterina, Giordano, etc.).
-   - Em TODOS os 7 modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER sinal vital ou achado de exame físico (PA aferida hoje, FC, Peso, AU, BCF, AP, AC, ABD, MMII, Pele/couro cabeludo, estado afetivo/psíquico observado em consultório, oroscopia, otoscopia, toque vaginal, especular, etc.), inclua-os no bloco "OBJETIVO"!
+   - Em TODOS os modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER sinal vital ou achado de exame físico (PA aferida hoje, FC, Peso, AU, BCF, AP, AC, ABD, MMII, Pele/couro cabeludo, estado afetivo/psíquico observado em consultório, oroscopia, otoscopia, toque vaginal, especular, etc.), inclua-os no bloco "OBJETIVO"!
    - NUNCA copie o exame físico antigo (PA, Peso, AU, BCF da consulta passada) como se fosse o de hoje!
 
-4. REGRA ESTRITA DE EXAMES COMPLEMENTARES (ORGANIZAÇÃO LIMPA E COMPLETA PADRÃO PRONTUÁRIO UBS):
+4. REGRA ESTRITA DE EXAMES COMPLEMENTARES (ORDEM CRONOLÓGICA ESTRITA, ZERO DUPLICAÇÃO E ZERO TÍTULOS REPLICADOS!):
    - ${hasAnyExamsToFormat ? 'Há exames complementares a registrar! Inclua-os logo após o OBJETIVO e antes da AVALIAÇÃO.' : 'Se NÃO houver exames trazidos/anexados/falados na consulta de HOJE, NÃO crie o bloco EXAMES COMPLEMENTARES e NÃO copie exames da evolução antiga.'}
    - ${isPrenatalTemplate
-     ? 'NO PRÉ-NATAL (MANUTENÇÃO OBRIGATÓRIA DOS EXAMES DA EVOLUÇÃO ANTIGA + ADIÇÃO DOS NOVOS): Quando houver evolução prévia de Pré-Natal com exames registrados, mantenha todos os exames anteriores ("- LABS [data antiga]: ..." e "- US ... [data antiga]: ...") e inclua os exames novos logo abaixo deles em ordem cronológica.'
+     ? 'NO PRÉ-NATAL (MANUTENÇÃO OBRIGATÓRIA DE 100% DOS EXAMES DA EVOLUÇÃO ANTIGA + ADIÇÃO DOS NOVOS EM ORDEM CRONOLÓGICA ESTRITA): Quando houver evolução prévia de Pré-Natal com exames registrados, mantenha TODOS os exames anteriores ("- LABS DD/MM/AAAA: ..." e "- US ... (DD/MM/AAAA): ...") e inclua os exames novos, ordenando SEMPRE da data mais antiga para a data mais recente (ordem cronológica crescente) e NUNCA duplicando a mesma data de exame!'
      : 'PROIBIÇÃO ABSOLUTA DE COPIAR EXAMES DA EVOLUÇÃO ANTIGA NO SOAP E DEMAIS CONSULTAS: Nesta modalidade de consulta, É TERMINANTEMENTE PROIBIDO copiar os exames ("- LABS ..." ou "- US ...") que estavam na evolução antiga! Registre em EXAMES COMPLEMENTARES SOMENTE os exames novos avaliados/trazidos na consulta de HOJE. Se não houver exames novos hoje, omita a seção EXAMES COMPLEMENTARES.'}
+   - PROIBIÇÃO ABSOLUTA DE REPLICAR PALAVRAS COMO "ULTRASSONOGRAFIAS / IMAGEM", "EXAMES DE IMAGEM" OU "- LABORATORIAIS:":
+     * No Pré-Natal, use EXCLUSIVAMENTE o título "EXAMES COMPLEMENTARES" (seguido diretamente pelas linhas "- LABS DD/MM/AAAA: ...") e o título "ULTRASSONOGRAFIA" (seguido diretamente pelas linhas "- US ... (DD/MM/AAAA): ...").
+     * JAMAIS escreva subtítulos extras como "ULTRASSONOGRAFIAS / IMAGEM", "EXAMES DE IMAGEM", "- LABORATORIAIS:" ou "LABORATORIAIS:"!
    - FORMATO COMPACTO OBRIGATÓRIO PARA EXAMES LABORATORIAIS (PROIBIDO UNIDADES DE MEDIDA E PROIBIDO SUB-ÍNDICES REDUNDANTES!):
      * Escreva TODOS os exames laboratoriais da mesma data em UMA ÚNICA LINHA iniciando com "- LABS DD/MM/AAAA: " separados por " | ", usando APENAS SIGLAS MÉDICAS CURTAS + VALOR NUMÉRICO (SEM escrever dois-pontos ":" após cada sigla e SEM escrever unidades como mg/dL, g/dL, U/L, milh./mm³, fL, pg, mEq/L, ng/mL, µUI/mL!).
+     * Se já existir uma linha "- LABS DD/MM/AAAA:" para aquela mesma data, unifique tudo em UMA ÚNICA linha para aquela data (JAMAIS repita duas linhas "- LABS 29/08/2026:" na mesma evolução!).
      * É TERMINANTEMENTE PROIBIDO escrever "Hemograma (Eritrócitos: ... | HCM: ... | CHCM: ... | RDW: ... | VPM: ...)", "Glicemia estimada média", "Colesterol Não-HDL" ou "Relação Colesterol Total/HDL"!
      * CÁLCULO AUTOMÁTICO DE TFG (CKD-EPI 2021) E CLASSIFICAÇÃO KDIGO (G1 A G5):
        - Dados de idade/sexo informados manualmente pelo médico: Idade = "${patientAge || 'não informada manualmente'}", Sexo = "${patientSex || 'não informado manualmente'}".
        - Sempre que houver Creatinina ("Creat"), verifique a idade (no campo manual acima ou impressa no cabeçalho do PDF/laudo) e o sexo (no campo manual acima ou impresso no PDF/laudo).
-       - Se e SOMENTE SE você tiver CERTEZA ABSOLUTA tanto da idade (>= 18 anos) quanto do sexo (M ou F), calcule a TFG pela fórmula CKD-EPI 2021 e sua classificação (G1 >=90, G2 60-89, G3a 45-59, G3b 30-44, G4 15-29, G5 <15) e escreva logo após a Creatinina exatamente neste formato: "Creat X,XX | TFG XX (CKD-EPI GX, [idade]a, [M ou F])".
+       - Se e SOMENTE SE você tiver CERTEZA ABSOLUTA tanto da idade (>= 18 anos) quanto do sexo (M ou F), calcule a TFG pela fórmula CKD-EPI 2021 e sua classificação (G1 >=90, G2 60-89, G3a 45-59, G3b 30-44, G4 15-29, G5 <15) e escreva logo após a Creatinina exatamente neste formato: "Creat X,XX | TFG XX (CKD-EPI GX, [idade]a, [M ou F])" (sem repetir "- tfg XX" depois!).
        - Se faltar idade ou sexo ou se não tiver certeza absoluta, NÃO CALCULE A TFG e NÃO INVENTE DADOS (escreva apenas "Creat X,XX")!
      * CÁLCULO AUTOMÁTICO DO ÍNDICE DE SATURAÇÃO DE TRANSFERRINA (IST %):
        - Sempre que houver perfil do ferro com Ferro sérico ("Ferro") e TIBC / CTLF / CLLF / Transferrina, calcule automaticamente o Índice de Saturação de Transferrina em % (IST = Ferro / TIBC * 100; ou se houver apenas Transferrina sem TIBC: TIBC = Transferrina * 1,25) e coloque ao lado a indicação "(calculado)": exemplo "Ferro 114 | Ferritina 267,6 | Transferrina 223,1 | TIBC 274 | IST 41,6% (calculado)".
@@ -871,16 +974,13 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - A CONDUTA DEVE SER REDIGIDA OBRIGATORIAMENTE EM PRIMEIRA PESSOA DO SINGULAR DO MÉDICO:
      * Inicie sempre as frases com verbos de ação na 1ª pessoa: "Prescrevo...", "Oriento...", "Explico...", "Parabenizo...", "Reitero...", "Agendo...", "Renovo receita de...", "Mantenho...", "Encaminho...", "Solicito...".
      * É TERMINANTEMENTE PROIBIDO usar voz passiva em terceira pessoa / particípio (NUNCA escreva: "Parabenizada a mãe...", "Explicado à mãe...", "Orientada manutenção...", "Orientadas medidas...", "Orientado sobre...", "Reiterada a importância...", "Prescrito...", "Agendado retorno...").
-     * Compare a diferença obrigatória:
-       ERRADO (passivo/impessoal de auditor): "Parabenizada a mãe pelo aleitamento... Explicado à mãe sobre exames... Orientada manutenção do sono... Renovada receita... Retorno agendado..."
-       CORRETO (1ª pessoa do médico): "Parabenizo a mãe pelo aleitamento... Explico à mãe sobre os resultados dos exames... Oriento manutenção do sono... Prescrevo / Renovo receita de... Agendo retorno para consulta..."
    - NÃO COLOQUE A CONDUTA EM TÓPICOS NUMERADOS OU COM TRAÇOS (NÃO USE 1., 2., 3., OU "-"):
      * Escreva em parágrafos e linhas de texto corrido bem descritas, elegantes e fluidas, sem listas numeradas nem tópicos.
    - PRESERVE 100% DOS DETALHES CLÍNICOS E EXPLICAÇÕES DIDÁTICAS DE LIVRO:
      * O médico quer a conduta ricamente descrita: mantenha todas as explicações didáticas, fisiologia, justificativas pediátricas/clínicas (ex.: prazos de resolução espontânea, por que evitar dipirona em menores de 6 meses, mecanismo de ação, cuidados de decúbito dorsal, massagens e compressas, dosagens por kg, vacinas do calendário e orientações de acolhimento).
      * Toda essa riqueza teórica deve estar presente, mas formulada sempre como a voz ativa do MÉDICO orientando e explicando à mãe/paciente ("Explico à mãe...", "Oriento que...").
    - PRESCRIÇÕES MÉDICAS COMPLETAS:
-     * Toda e qualquer medicação prescrita, ajustada ou renovada deve estar detalhada na CONDUTA com nome oficial brasileiro, dosagem, frequência, posologia e duração ("Prescrevo Ad-Til...", "Oriento manutenção de Endorus gotas...", "Oriento Paracetamol 100 mg/ml...").
+     * Toda e qualquer medicação prescrita, ajustada ou renovada deve estar detalhada na CONDUTA com nome oficial brasileiro, dosagem, frequência, posologia e duração.
      * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer de registrar as medicações que o médico prescreveu no consultório!
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
@@ -891,7 +991,10 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * A evolução do Telessaúde deve conter estritamente o título "## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##" e a seção "CONDUTA". NADA MAIS!
      * Na CONDUTA: transcreva e estruture toda a discussão da Teleconsultoria, contextualização do caso, considerações do teleconsultor, parecer especializado, orientações diagnósticas e plano terapêutico alinhado em TEXTO CORRIDO DETALHADO (em 1ª pessoa do médico: "Discuto caso com a teleconsultoria do Telessaúde...", "Alinho conduta...", "Oriento...", "Prescrevo..."), sem tópicos e sem listas numeradas, preservando todas as orientações especializadas, justificativas clínicas, doses e condutas pactuadas!
    - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
-   - Na VISITA DOMICILIAR: preencha a data no título, nomes da equipe (Enfermeiro/a e ACS), nome do familiar presente e o checklist final ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
+   - Na VISITA DOMICILIAR:
+     * Só coloque data no título ("## VISITA DOMICILIAR EM DD/MM/AAAA - REGISTRO POSTERIOR ##") se a data da visita tiver sido informada explicitamente (${vdVisitDate ? `use ${vdVisitDate}` : 'caso contrário mantenha "## VISITA DOMICILIAR - REGISTRO POSTERIOR ##" sem assumir a data de hoje'}).
+     * NUNCA invente nomes de Enfermeiro(a), ACS ou Familiar/Cuidador e NUNCA invente grau de parentesco! Só preencha se tiver sido dito de forma inequívoca.
+     * Preencha ao final o checklist ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
 8. BLINDAGEM CONTRA INTERRUPÇÕES DE ENFERMAGEM E DIFERENCIAÇÃO VOZ DO MÉDICO VS. PACIENTE:
    - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'Filtre e descarte qualquer interrupção paralela de terceiros/enfermagem falando de outro paciente.'}
@@ -901,24 +1004,24 @@ ${parsedPrev && !isTelessaudeTemplate ? `
    - Abaixo estão extraídos da evolução anterior do paciente: (A) o Cabeçalho "#" anterior completo + Patologias Crônicas da Avaliação anterior, ${isPrenatalTemplate ? '(B) os Exames Laboratoriais e Ultrassonografias anteriores do Pré-Natal, e (C)' : 'e (B)'} a Avaliação e Conduta da última consulta.
    - ATENÇÃO: O SUBJETIVO e o OBJETIVO antigos foram removidos propositalmente para que você construa o SUBJETIVO e o OBJETIVO de hoje 100% a partir da consulta de HOJE!
    - Siga obrigatoriamente:
-     1) Copie FIELMENTE as linhas "#" e as sub-linhas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo. Além disso, inclua no cabeçalho "#" as PATOLOGIAS CRÔNICAS ou CONDIÇÕES IMPORTANTES diagnosticadas na AVALIAÇÃO anterior (sem adjetivos de status como "controle irregular" e sem duplicar sinônimos). JAMAIS puxe queixas agudas (IVAS, amigdalite, gastroenterite, ITU, etc.) para as "#"!
-     2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas. Se o paciente não tomou ou suspendeu medicação por conta própria, relate no SUBJETIVO e ajuste a # MUC conforme a conduta atual.
-     ${isPrenatalTemplate ? '3) No Pré-Natal, mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje logo abaixo deles!' : '3) NÃO copie os exames da evolução anterior! Inclua em EXAMES COMPLEMENTARES apenas os exames novos avaliados hoje.'}
+     1) Copie FIELMENTE as linhas "#" e as sub-linhas clínicas com "-" do "CABEÇALHO # DA EVOLUÇÃO ANTERIOR" abaixo (sem copiar medicações soltas em linhas "-", pois medicações vão todas em "# MUC:"). Além disso, inclua no cabeçalho "#" as PATOLOGIAS CRÔNICAS ou CONDIÇÕES IMPORTANTES diagnosticadas na AVALIAÇÃO anterior (sem adjetivos de status como "controle irregular" e sem duplicar sinônimos). JAMAIS puxe queixas agudas (IVAS, amigdalite, gastroenterite, ITU, etc.) para as "#"!
+     2) Atualize a linha "# MUC:" com as medicações de uso contínuo que estavam em uso + as medicações contínuas prescritas na "CONDUTA DA ÚLTIMA CONSULTA" (separando cada medicamento claramente com sua própria dose e posologia, sem misturar doses!), excluindo medicações suspensas.
+     ${isPrenatalTemplate ? '3) No Pré-Natal, mantenha TODOS os "EXAMES LABORATORIAIS ANTERIORES" em EXAMES COMPLEMENTARES e TODAS as "ULTRASSONOGRAFIAS ANTERIORES" em ULTRASSONOGRAFIA, adicionando os exames novos de hoje e ordenando tudo em ordem cronológica (da data mais antiga para a mais recente), sem repetir títulos e sem duplicar a mesma data!' : '3) NÃO copie os exames da evolução anterior! Inclua em EXAMES COMPLEMENTARES apenas os exames novos avaliados hoje.'}
 
 === (A) CABEÇALHO "#" DA EVOLUÇÃO ANTERIOR ===
 ${parsedPrev.headerLines && parsedPrev.headerLines.length > 0 ? `(MANTER EXATAMENTE ESTAS LINHAS "#" E SUB-LINHAS "-"!):\n${parsedPrev.headerText}` : (previousConsultationText ? `(EVOLUÇÃO ANTERIOR EM OUTRO FORMATO — EXTRAIR COMORBIDADES CRÔNICAS PARA "#", "# MUC:", "# Tabagista:" E "# Alergias:", MAS GERAR ESTRITAMENTE NO MODELO PADRÃO!):\n${previousConsultationText}` : 'Nenhum cabeçalho anterior.')}${parsedPrev.promotedFromAvaliacao && parsedPrev.promotedFromAvaliacao.length > 0 ? `\n\nPATOLOGIAS CRÔNICAS/IMPORTANTES DA AVALIAÇÃO ANTERIOR A INCLUIR NO CABEÇALHO "#":\n${parsedPrev.promotedFromAvaliacao.join('\n')}` : ''}
 ${parsedPrev.unstructuredText ? `\nANOTAÇÕES DA EVOLUÇÃO ANTERIOR:\n${parsedPrev.unstructuredText}\n` : ''}
 ${isPrenatalTemplate ? `
-=== (B) EXAMES ANTERIORES DO PRÉ-NATAL (MANTER TODOS E ADICIONAR OS NOVOS ABAIXO!) ===
-${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES:\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
-${parsedPrev.usgExamLines.length > 0 ? '\nULTRASSONOGRAFIAS / IMAGEM ANTERIORES:\n' + parsedPrev.usgExamLines.join('\n\n') : ''}
+=== (B) EXAMES ANTERIORES DO PRÉ-NATAL (MANTER TODOS EM ORDEM CRONOLÓGICA E ADICIONAR OS NOVOS!) ===
+${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES (- LABS):\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
+${parsedPrev.usgExamLines.length > 0 ? '\nULTRASSONOGRAFIAS ANTERIORES (- US):\n' + parsedPrev.usgExamLines.join('\n\n') : ''}
 ` : ''}
 === (${isPrenatalTemplate ? 'C' : 'B'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (PARA ATUALIZAR # MUC, CHECAR ADESÃO E PROMOVER APENAS PATOLOGIAS CRÔNICAS PARA AS "#") ===
 AVALIAÇÃO ANTERIOR:
 ${parsedPrev.avaliacaoText || 'Não informada.'}
 CONDUTA ANTERIOR:
 ${parsedPrev.condutaText || 'Não informada.'}
-` : ''}${previousEvolutionContext ? `\n10. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - Integre as novas informações faladas neste áudio com a 1ª parte já transcrita deste mesmo paciente:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES NOVOS JÁ TRANSCRITOS HOJE (INCLUA ABAIXO DOS ANTERIORES SEPARANDO LABS E ULTRASSONOGRAFIA) ===\n${preTranscribedExamsText}\n` : ''}
+` : ''}${previousEvolutionContext ? `\n10. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - Integre as novas informações faladas neste áudio com a 1ª parte já transcrita deste mesmo paciente:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES NOVOS JÁ TRANSCRITOS HOJE (INCLUA EM ORDEM CRONOLÓGICA SEPARANDO LABS E ULTRASSONOGRAFIA) ===\n${preTranscribedExamsText}\n` : ''}
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO HOJE ${notesExamDetection.hasAny ? `(ATENÇÃO: FORAM DETECTADOS EXAMES ${notesExamDetection.hasLab && notesExamDetection.hasImaging ? 'LABORATORIAIS E DE IMAGEM' : (notesExamDetection.hasLab ? 'LABORATORIAIS' : 'DE IMAGEM')} ABAIXO -> FORMATE-OS OBRIGATORIAMENTE EM "EXAMES COMPLEMENTARES" PARA LABS E "ULTRASSONOGRAFIA" PARA ECO/IMAGEM)` : ''} ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / CÁLCULO OBSTÉTRICO DE HOJE ===\n' + zScoreSummary : ''}
@@ -970,7 +1073,7 @@ Responda em JSON válido contendo exatamente estas chaves:
   ${hasPreTranscribedAudio ? '' : '"transcricao_literal_do_audio": "Transcrição fiel e INTEGRAL de 100% do que foi falado no áudio do início ao fim separando [MÉDICO]: e [PACIENTE]: (incluindo todas as queixas, relatos de emergência e explicações!)",\n  '}"evolucao_completa": "Texto completo e detalhado da evolução estruturada seguindo fielmente o MODELO DE REFERÊNCIA, incluindo 100% de tudo o que foi dito na consulta e mantendo todas as #, sub-linhas '-' e regras de exames com quebras de linha \\n",
   "codigos_cid_ciap": ["Lista com os códigos CIAP-2 e CID-10 sugeridos para digitar fora da evolução no PEC (ou [] se não houver diagnóstico)"],
   "especialidade_sugerida_encaminhamento": "Se durante a consulta foi citado encaminhamento, informe a especialidade, caso contrário deixe string vazia",
-  "alertas_auditoria": ["Lista curta se faltou algum dado crítico obrigatório. Se o campo '# Alergias:' ou '# Tabagista:' estiver ausente ou não informado na consulta, adicione obrigatoriamente nesta lista: '⚠️ Campo ALERGIAS ausente/não informado' e/ou '⚠️ Campo TABAGISMO ausente/não informado'"]
+  "alertas_auditoria": ["Lista curta apenas se houve interferência externa grave no áudio"]
 }`;
 };
 
