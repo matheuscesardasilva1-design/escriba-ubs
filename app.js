@@ -4207,9 +4207,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const extraDataInput = document.getElementById('referralExtraDataInput');
     const btnGenerate = document.getElementById('btnGenerateReferral');
 
-    const especialidade = (customSpecialty && customSpecialty.value.trim())
-      ? customSpecialty.value.trim()
-      : (specialtySelect ? specialtySelect.value : 'Especialidade Médica');
+    // Se o médico preencheu manualmente o campo livre "Ou digite outra especialidade", usa ele;
+    // caso contrário, usa estritamente a especialidade selecionada no dropdown!
+    const customVal = (customSpecialty && customSpecialty.value.trim()) || '';
+    const selectVal = (specialtySelect && specialtySelect.value.trim()) || '';
+    const especialidade = customVal || selectVal || 'Especialidade Médica';
     const prioridade = prioritySelect ? prioritySelect.value : 'Prioritário (Amarelo)';
     const dadosExtrasRegulacao = extraDataInput ? extraDataInput.value.trim() : '';
 
@@ -4275,6 +4277,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       state.activeReferralId = newRefItem.id;
       renderSavedReferralsForConsultation(consult);
       openSpecificReferralInEditor(consult, newRefItem.id);
+      await refreshQueueSidebar();
       showToast(`🏛️ Encaminhamento #${consult.referrals.length} (${especialidade}) salvo!`);
     } catch (err) {
       alert('Erro ao gerar encaminhamento: ' + err.message);
@@ -4379,6 +4382,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         }
         await window.ScribeDB.saveConsultation(consult);
         renderSavedReferralsForConsultation(consult);
+        await refreshQueueSidebar();
       });
 
       listEl.appendChild(row);
@@ -4721,6 +4725,14 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         ? `<span class="q-status" style="background:#fee2e2;color:#991b1b;border:1px solid #ef4444;font-weight:700;" title="${escapeHtml(item.auditAlerts.join(' • '))}">⚠️ ${item.auditAlerts.length} aviso(s)</span>`
         : '';
 
+      const refCount = (Array.isArray(item.referrals) && item.referrals.length) || (item.referralText ? 1 : 0);
+      const refSummary = Array.isArray(item.referrals) && item.referrals.length > 0
+        ? item.referrals.map(r => r.specialty).filter(Boolean).join(', ')
+        : (item.referralSpecialty || '');
+      const refBadge = refCount > 0
+        ? `<span class="q-status" style="background:#f3e8ff;color:#6b21a8;border:1px solid #d8b4fe;font-weight:700;" title="Encaminhamento(s): ${escapeHtml(refSummary)}">🏛️ ${refCount === 1 ? escapeHtml(refSummary || 'Encaminhamento') : `${refCount} Encaminhamentos`}</span>`
+        : '';
+
       const showProgressBar = (item.status === 'uploading' || item.status === 'queued');
       const card = document.createElement('div');
       card.className = 'history-card';
@@ -4734,6 +4746,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
               ${statusHTML}
               ${pecBadge}
               ${auditBadge}
+              ${refBadge}
             </div>
             <div class="h-snippet" id="qsnippet_${item.id}">${escapeHtml(snippet)}</div>
             <div id="qbar_wrap_${item.id}" style="display:${showProgressBar ? 'block' : 'none'};width:100%;max-width:440px;height:6px;background:#e0e7ff;border-radius:99px;overflow:hidden;margin-top:6px;">
@@ -4981,10 +4994,25 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    if (consult.suggestedSpecialty) {
-      const customSpec = document.getElementById('referralCustomSpecialty');
-      if (customSpec && !customSpec.value) {
-        customSpec.value = consult.suggestedSpecialty;
+    // Limpa campo customizado ao abrir o atendimento para nunca herdar especialidade residual
+    const customSpec = document.getElementById('referralCustomSpecialty');
+    if (customSpec) customSpec.value = '';
+
+    const specialtySelect = document.getElementById('referralSpecialtySelect');
+    if (consult.suggestedSpecialty && specialtySelect) {
+      const cleanSug = String(consult.suggestedSpecialty).trim().toLowerCase();
+      let matched = false;
+      for (const opt of specialtySelect.options) {
+        const optVal = opt.value.toLowerCase();
+        const mainTerm = optVal.split('/')[0].trim();
+        if (optVal === cleanSug || optVal.includes(cleanSug) || (mainTerm.length >= 4 && cleanSug.includes(mainTerm))) {
+          specialtySelect.value = opt.value;
+          matched = true;
+          break;
+        }
+      }
+      if (!matched && customSpec) {
+        customSpec.value = consult.suggestedSpecialty.trim();
       }
     }
 
@@ -6534,6 +6562,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       await refreshQueueSidebar();
       await renderActiveConsultationView(null);
       updateStorageStatsUI();
+    });
+
+    document.getElementById('referralSpecialtySelect')?.addEventListener('change', () => {
+      const customSpec = document.getElementById('referralCustomSpecialty');
+      if (customSpec) customSpec.value = '';
     });
 
     document.getElementById('btnGenerateReferral')?.addEventListener('click', generateStateReferral);
