@@ -6689,7 +6689,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     document.getElementById('btnCopyJustificationOnly')?.addEventListener('click', () => {
       const fullText = document.getElementById('referralResultEditor')?.value || '';
       // Extrai apenas o bloco da justificativa clínica pronta para o GERCON/SISREG
-      const justMatch = fullText.match(/JUSTIFICATIVA CLÍNICA PARA A? REGULAÇÃO:\s*\n+([\s\S]+?)(?=\n+⚠️\s*PENDÊNCIAS|$)/i);
+      const justMatch = fullText.match(/JUSTIFICATIVA CLÍNICA PARA A? REGULAÇÃO:\s*\n+([\s\S]+?)(?=\n+(?:ENQUADRAMENTO|⚠️\s*PENDÊNCIAS)|$)/i);
       const textToCopy = (justMatch && justMatch[1].trim()) ? justMatch[1].trim() : fullText;
       copyToClipboard(textToCopy, '📋 Justificativa clínica copiada para o GERCON/SISREG!');
     });

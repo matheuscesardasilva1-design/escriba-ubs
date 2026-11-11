@@ -1168,12 +1168,12 @@ ${evolucaoTexto}
 
 === ESTRUTURA EXATA DA RESPOSTA (UTILIZE EXATAMENTE ESTES 3 BLOCOS) ===
 
+JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO:
+[Texto médico contínuo, técnico e direto, em 2 a 3 parágrafos objetivos, pronto para colar na caixa de justificativa do sistema de regulação estadual, contendo apenas os dados pertinentes à especialidade]
+
 ENQUADRAMENTO NO PROTOCOLO TELESSAÚDERS:
 • Condição Clínica: [Nome do protocolo e condição no TelessaúdeRS]
 • Critério do Protocolo: [Critério de indicação atendido]
-
-JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO:
-[Texto médico contínuo, técnico e direto, em 2 a 3 parágrafos objetivos, pronto para colar na caixa de justificativa do sistema de regulação estadual, contendo apenas os dados pertinentes à especialidade]
 
 ⚠️ PENDÊNCIAS SEGUNDO O PROTOCOLO TELESSAÚDERS:
 [Lista em tópicos dos exames, tempos de tratamento ou dados de exame físico exigidos pelo protocolo do TelessaúdeRS para esta condição que NÃO constam na evolução atual, ou declare: "✅ Todos os critérios e exames exigidos pelo protocolo do TelessaúdeRS para esta condição estão preenchidos na justificativa."]`;
