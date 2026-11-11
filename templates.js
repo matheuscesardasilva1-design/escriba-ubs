@@ -1147,11 +1147,15 @@ ${evolucaoTexto}
    - REGRA DE OURO: É TERMINANTEMENTE PROIBIDO incluir informações irrelevantes de outros aparelhos ou especialidades sem relação com o quadro (por exemplo: em encaminhamento para Ginecologia, JAMAIS cite avaliação oftalmológica, catarata, queixas ortopédicas isoladas, dermatite facial leve ou queixas respiratórias compensadas; em encaminhamento para Ortopedia, não cite exames ginecológicos de rotina normais, etc.).
    - Comorbidades crônicas de impacto sistêmico relevante (HAS, DM, tabagismo, alergias graves) devem ser resumidas em 1 única linha somente se interferirem diretamente na condução do caso.
 
-3. PREENCHIMENTO COMPLETO DAS INFORMAÇÕES PRESENTES:
-   - Redija o texto em 2 a 3 parágrafos técnicos, fluidos e objetivos, prontos para colar na caixa de justificativa do sistema de regulação estadual (GERCON/SISREG):
-     * Parágrafo 1: História clínica detalhada do problema específico (tempo de evolução, sintomas cardinais, impacto funcional, tratamentos já realizados na APS com doses, posologias e tempo de uso).
-     * Parágrafo 2: Exame físico direcionado e objetivo focado na queixa (dados vitais/antropometria pertinentes).
-     * Parágrafo 3: Exames laboratoriais e exames de imagem pertinentes com datas e laudos objetivos.
+3. PREENCHIMENTO COMPLETO E ESTRUTURADO DAS INFORMAÇÕES PRESENTES:
+   - Redija a JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO de forma técnica, fluida e completa, contendo obrigatoriamente:
+     * História Clínica da Queixa: Tempo de evolução, sintomas cardinais, gravidade, impacto funcional e tratamentos já tentados na APS com posologia e tempo de uso.
+     * Exame Físico Direcionado: Sinais vitais pertinentes e achados do exame físico voltados à patologia.
+     * Condições de Saúde / Comorbidades: Principais patologias prévias do paciente.
+     * Medicações de Uso Contínuo (MUC): Relação das medicações em uso com doses.
+     * Alergias e Tabagismo: Informar o status de alergias e tabagismo.
+     * Exames Complementares: Todos os exames laboratoriais e de imagem pertinentes com respectivas datas e laudos.
+     * Hipótese Diagnóstica e Solicitação: Conclusão solicitando avaliação/conduta em ${especialidade}.
 
 4. IDENTIFICAÇÃO DE INFORMAÇÕES E EXAMES PENDENTES SEGUNDO O TELESSAÚDERS:
    - Compare os dados presentes na evolução com o "Conteúdo descritivo mínimo que o encaminhamento deve ter" e os critérios de encaminhamento do protocolo do TelessaúdeRS para a condição identificada.
