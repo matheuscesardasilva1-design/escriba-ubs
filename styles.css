@@ -1065,16 +1065,35 @@ body.dark-mode,
 }
 
 .dark-mode .nav-tab {
-  color: #94a3b8;
+  color: #94a3b8 !important;
+  background: transparent !important;
 }
 
 .dark-mode .nav-tab:hover {
-  color: #f8fafc;
+  background: #1e293b !important;
+  color: #f8fafc !important;
 }
 
 .dark-mode .nav-tab.active {
-  background: rgba(99, 102, 241, 0.2);
-  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.25) !important;
+  color: #a5b4fc !important;
+}
+
+.dark-mode .tab-badge {
+  background: #1e293b !important;
+  color: #94a3b8 !important;
+  border: 1px solid #334155;
+}
+
+.dark-mode .nav-tab.active .tab-badge {
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #6366f1;
+}
+
+.dark-mode .nav-tab:hover .tab-badge {
+  background: #334155 !important;
+  color: #f8fafc !important;
 }
 
 /* Tela 1: Novo Atendimento */
@@ -1102,11 +1121,18 @@ body.dark-mode,
 }
 
 .dark-mode .tpl-icon-box {
-  background: #1e293b;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1.5px solid #cbd5e1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  font-size: 20px;
 }
 
 .dark-mode .template-card.active .tpl-icon-box {
-  background: #312e81;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 2px solid #818cf8;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.4);
 }
 
 .dark-mode .tpl-name {
@@ -1160,22 +1186,29 @@ body.dark-mode,
 
 /* Tela 2: Histórico */
 .dark-mode .history-filters-grid {
-  background: #131b2c;
-  border-color: #27354a;
+  background: #131b2c !important;
+  border-color: #27354a !important;
 }
 
 .dark-mode .history-header-bar h2 {
   color: #f8fafc;
 }
 
+.dark-mode #btnHistoryCloudSync {
+  background: #1e293b !important;
+  color: #93c5fd !important;
+  border-color: #334155 !important;
+}
+
 .dark-mode .history-card {
-  background: #131b2c;
-  border-color: #27354a;
+  background: #131b2c !important;
+  border-color: #27354a !important;
+  color: #f8fafc !important;
 }
 
 .dark-mode .history-card:hover {
-  background: #182236;
-  border-color: #6366f1;
+  background: #182236 !important;
+  border-color: #6366f1 !important;
 }
 
 .dark-mode .h-patient-name {
@@ -1183,8 +1216,9 @@ body.dark-mode,
 }
 
 .dark-mode .h-tpl-tag {
-  background: #1e293b;
-  color: #cbd5e1;
+  background: #1e293b !important;
+  color: #cbd5e1 !important;
+  border: 1px solid #334155;
 }
 
 .dark-mode .h-snippet {
@@ -1192,8 +1226,49 @@ body.dark-mode,
 }
 
 .dark-mode .h-doc-icon {
-  background: rgba(99, 102, 241, 0.2);
-  color: #818cf8;
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  font-size: 20px;
+}
+
+.dark-mode .history-card span[style*="background:#f1f5f9"] {
+  background: #1e293b !important;
+  color: #cbd5e1 !important;
+  border: 1px solid #334155 !important;
+}
+
+.dark-mode .history-card span[style*="background:#dcfce7"] {
+  background: rgba(16, 185, 129, 0.2) !important;
+  color: #6ee7b7 !important;
+  border: 1px solid rgba(16, 185, 129, 0.35) !important;
+}
+
+.dark-mode .history-card span[style*="background:#f3e8ff"] {
+  background: rgba(168, 85, 247, 0.2) !important;
+  color: #d8b4fe !important;
+  border: 1px solid rgba(168, 85, 247, 0.35) !important;
+}
+
+.dark-mode .history-card span[style*="background:#fee2e2"] {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #fca5a5 !important;
+  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+}
+
+.dark-mode .card {
+  background: #131b2c !important;
+  border-color: #27354a !important;
+  color: #f8fafc !important;
+}
+
+.dark-mode .card p {
+  color: #f8fafc !important;
+}
+
+.dark-mode .card small {
+  color: #94a3b8 !important;
 }
 
 .dark-mode .date-group-header {
@@ -1216,6 +1291,27 @@ body.dark-mode,
 .dark-mode .modal-header {
   background: #111827 !important;
   border-bottom-color: #27354a !important;
+}
+
+.dark-mode #modalTemplateControlBar {
+  background: #131b2c !important;
+  border-color: #27354a !important;
+  color: #f8fafc !important;
+}
+
+.dark-mode #modalTemplateControlBar * {
+  color: #f1f5f9 !important;
+}
+
+.dark-mode #modalTemplateControlBar .select-box {
+  background: #090e17 !important;
+  border-color: #334155 !important;
+  color: #f8fafc !important;
+}
+
+.dark-mode #modalSoapSubtypeWrapper label,
+.dark-mode #modalInterconsultaSubtypeWrapper label {
+  color: #94a3b8 !important;
 }
 
 .dark-mode .btn-close-x {
