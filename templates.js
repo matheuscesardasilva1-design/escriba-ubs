@@ -1120,7 +1120,7 @@ window.buildReferralPrompt = function({
 }) {
   const hasProtocolText = Boolean(telessaudeProtocolText && telessaudeProtocolText.trim().length > 100);
   const protocolBlock = hasProtocolText
-    ? `\n=== DIRETRIZES OFICIAIS DO PROTOCOLO TELESSAÚDERS (${especialidade.toUpperCase()}) ===\n${telessaudeProtocolText.slice(0, 95000)}\n=== FIM DO PROTOCOLO TELESSAÚDERS ===\n`
+    ? `\n=== DIRETRIZES OFICIAIS DO PROTOCOLO TELESSAÚDERS (${especialidade.toUpperCase()}) ===\n${telessaudeProtocolText.slice(0, 50000)}\n=== FIM DO PROTOCOLO TELESSAÚDERS ===\n`
     : '';
 
   return `Você é um Médico Regulador experiente e Médico de Família da APS especialista nos Protocolos de Regulação Ambulatorial do TelessaúdeRS / RegulaSUS (SES-RS / GERCON / SISREG).
@@ -1139,37 +1139,55 @@ ${evolucaoTexto}
 === REGRAS MANDATÓRIAS (SIGA COM MÁXIMA RIGIDEZ MÉDICA) ===
 
 1. ENQUADRAMENTO CLÍNICO NO PROTOCOLO TELESSAÚDERS:
-   - Identifique no protocolo do TelessaúdeRS para ${especialidade} (ou em seu conhecimento médico aprofundado dos protocolos RegulaSUS/TelessaúdeRS) qual é a patologia ou condição clínica específica do paciente (exemplo: "Protocolo 4 – Miomatose", "Protocolo 1 – Sangramento Uterino Anormal", "Protocolo 1 – Hipertensão Arterial Sistêmica Resistente", "Protocolo de Gonartrose", etc.).
+   - Identifique no protocolo do TelessaúdeRS para ${especialidade} (ou em seu conhecimento médico aprofundado dos protocolos RegulaSUS/TelessaúdeRS) qual é a patologia ou condição clínica específica do paciente (exemplo: "Protocolo 5 – Patologias de mão e punho: Síndrome do túnel do carpo", "Protocolo 4 – Miomatose uterina", "Protocolo 1 – Hipertensão Arterial Sistêmica Resistente", "Protocolo 7 – Dor no joelho: Gonartrose", etc.).
    - Indique em 1 linha o critério clínico específico do protocolo no qual o paciente se enquadra.
 
-2. FILTRO ESTRITO DE RELEVÂNCIA CLÍNICA (PROIBIDO POLUIR COM DADOS NÃO PERTINENTES):
-   - O texto de justificativa para o regulador deve conter EXCLUSIVAMENTE dados clínicos, queixas, exame físico, exames complementares e tratamentos diretamente pertinentes à especialidade "${especialidade}" e ao quadro que motivou o encaminhamento!
-   - REGRA DE OURO: É TERMINANTEMENTE PROIBIDO incluir informações irrelevantes de outros aparelhos ou especialidades sem relação com o quadro (por exemplo: em encaminhamento para Ginecologia, JAMAIS cite avaliação oftalmológica, catarata, queixas ortopédicas isoladas, dermatite facial leve ou queixas respiratórias compensadas; em encaminhamento para Ortopedia, não cite exames ginecológicos de rotina normais, etc.).
-   - Comorbidades crônicas de impacto sistêmico relevante (HAS, DM, tabagismo, alergias graves) devem ser resumidas em 1 única linha somente se interferirem diretamente na condução do caso.
+2. FILTRO ESTRITO DE RELEVÂNCIA CLÍNICA COM PRESERVAÇÃO INTEGRAL DE DADOS FARMACOLÓGICOS E LABORATORIAIS:
+   - A justificativa clínica deve conter os dados clínicos, queixas, exame físico, exames complementares e tratamentos diretamente pertinentes à especialidade "${especialidade}".
+   - Não inclua queixas ou detalhes irrelevantes de outros aparelhos sem relação (ex.: em Ginecologia, não cite exame oftalmológico ou dor no ombro; em Ortopedia, não cite preventivo ginecológico).
+   - CONTUDO, É ESTRITAMENTE OBRIGATÓRIO manter completas as seções de Condições de Saúde, Medicações em Uso Contínuo (MUC com doses e posologia na íntegra), Alergias, Tabagismo e Exames Complementares descritos, pois o médico regulador necessita dessas informações para a regulação do paciente!
 
-3. PREENCHIMENTO COMPLETO E ESTRUTURADO DAS INFORMAÇÕES PRESENTES:
-   - Redija a JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO de forma técnica, fluida e completa, contendo obrigatoriamente:
-     * História Clínica da Queixa: Tempo de evolução, sintomas cardinais, gravidade, impacto funcional e tratamentos já tentados na APS com posologia e tempo de uso.
-     * Exame Físico Direcionado: Sinais vitais pertinentes e achados do exame físico voltados à patologia.
-     * Condições de Saúde / Comorbidades: Principais patologias prévias do paciente.
-     * Medicações de Uso Contínuo (MUC): Relação das medicações em uso com doses.
-     * Alergias e Tabagismo: Informar o status de alergias e tabagismo.
-     * Exames Complementares: Todos os exames laboratoriais e de imagem pertinentes com respectivas datas e laudos.
-     * Hipótese Diagnóstica e Solicitação: Conclusão solicitando avaliação/conduta em ${especialidade}.
+3. PREENCHIMENTO COMPLETO E ESTRUTURADO — PROIBIDO RESUMIR OU SUPRIMIR:
+   - Redija a JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO de forma técnica e estruturada nos seguintes blocos obrigatórios:
+     * MOTIVO DO ENCAMINHAMENTO E HISTÓRIA CLÍNICA: Tempo de evolução, queixa principal, sintomas, gravidade, impacto funcional e tratamentos já realizados na APS com doses, tempo de uso e resposta terapêutica.
+     * EXAME FÍSICO DIRECIONADO: Sinais vitais pertinentes e achados semiológicos objetivos (manobras de Tinel/Phalen se punho/mão, amplitude articular, ectoscopia, etc.).
+     * CONDIÇÕES DE SAÚDE / COMORBIDADES: Todas as patologias prévias do paciente (ex: HAS, DM, obesidade, asma, etc.).
+     * MEDICAÇÕES EM USO CONTÍNUO (MUC): Descreva TODAS as medicações que o paciente usa, COM NOME COMPLETO, DOSES E POSOLOGIA/FORMA DE USO (ex.: "Losartana 50mg 1cp 12/12h; Anlodipino 5mg 1cp 1x/dia pela manhã; Metformina 850mg 1cp 2x/dia após refeições"). É TERMINANTEMENTE PROIBIDO suprimir medicamentos ou omitir dosagens e posologias! Se não houver, escreva: "Nega uso contínuo de medicamentos".
+     * ALERGIAS E TABAGISMO: Declarar expressamente alergias conhecidas e status de tabagismo (ex.: "Alergias: Nega alergias conhecidas | Tabagismo: Não tabagista / Ex-tabagista há X anos / Tabagista passivo").
+     * EXAMES COMPLEMENTARES: Transcrever os exames laboratoriais e de imagem COM RESPECTIVAS DATAS, VALORES NUMÉRICOS EXATOS E LAUDOS NA ÍNTEGRA. É TERMINANTEMENTE PROIBIDO resumir com frases genéricas como "exames laboratoriais normais"; cada exame realizado deve ser explicitamente descrito com seus valores e datas para avaliação do médico regulador!
+     * HIPÓTESE DIAGNÓSTICA E SOLICITAÇÃO: Solicitação clara e justificada de avaliação e conduta na especialidade.
 
 4. IDENTIFICAÇÃO DE INFORMAÇÕES E EXAMES PENDENTES SEGUNDO O TELESSAÚDERS:
    - Compare os dados presentes na evolução com o "Conteúdo descritivo mínimo que o encaminhamento deve ter" e os critérios de encaminhamento do protocolo do TelessaúdeRS para a condição identificada.
-   - Se faltar algum exame complementar obrigatório (ex: ecografia transvaginal recente, hemograma com data, ECG, creatinina recente, teste ergométrico, etc.), tempo mínimo de tratamento clínico na APS antes de referenciar (ex: falha de 3 meses de tratamento clínico na APS), ou dado de exame físico obrigatório:
-     LISTE CADA PENDÊNCIA DE FORMA CLARA E DIRETA NO BLOCO FINAL DE PENDÊNCIAS.
-   - Isso orienta o médico sobre o que o regulador vai cobrar para não devolver o encaminhamento. Se todos os critérios e exames exigidos já constarem na consulta, escreva: "✅ Todos os critérios e exames exigidos pelo protocolo do TelessaúdeRS para esta condição estão preenchidos na justificativa."
+   - Se faltar algum exame complementar obrigatório (ex: eletroneuromiografia recente, radiografia da articulação com data, tempo mínimo de tratamento clínico na APS antes de referenciar como órtese por 3 meses, etc.), liste cada pendência em tópicos claros no bloco final de pendências.
+   - Se todos os critérios e exames exigidos já constarem na consulta, escreva: "✅ Todos os critérios e exames exigidos pelo protocolo do TelessaúdeRS para esta condição estão preenchidos na justificativa."
 
 5. PRIORIDADE:
-   - A prioridade NÃO deve ser fixada pelo médico solicitante no texto, pois a classificação de risco (P0, P1, P2) compete exclusivamente à Regulação Estadual baseada na gravidade descrita.
+   - A prioridade NÃO deve ser fixada pelo médico solicitante no texto, pois a classificação de risco compete exclusivamente à Regulação Estadual baseada na gravidade descrita.
 
 === ESTRUTURA EXATA DA RESPOSTA (UTILIZE EXATAMENTE ESTES 3 BLOCOS) ===
 
 JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO:
-[Texto médico contínuo, técnico e direto, em 2 a 3 parágrafos objetivos, pronto para colar na caixa de justificativa do sistema de regulação estadual, contendo apenas os dados pertinentes à especialidade]
+MOTIVO DO ENCAMINHAMENTO E HISTÓRIA CLÍNICA:
+[Descrição detalhada do quadro clínico, tempo de evolução, gravidade e tratamentos já realizados na APS com doses e tempo]
+
+EXAME FÍSICO DIRECIONADO:
+[Sinais vitais e achados semiológicos pertinentes à patologia]
+
+CONDIÇÕES DE SAÚDE / COMORBIDADES:
+[Patologias prévias do paciente]
+
+MEDICAÇÕES EM USO CONTÍNUO (MUC):
+[Relação completa de todos os medicamentos com doses e posologia na íntegra, sem omissões]
+
+ALERGIAS E TABAGISMO:
+[Status de alergias e histórico de tabagismo]
+
+EXAMES COMPLEMENTARES:
+[Exames com datas, valores numéricos e laudos completos na íntegra]
+
+HIPÓTESE DIAGNÓSTICA E SOLICITAÇÃO:
+[Hipótese diagnóstica principal e solicitação para a especialidade]
 
 ENQUADRAMENTO NO PROTOCOLO TELESSAÚDERS:
 • Condição Clínica: [Nome do protocolo e condição no TelessaúdeRS]

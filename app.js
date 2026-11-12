@@ -137,9 +137,11 @@
 
     const filterAndOrder = (rawList) => {
       const valid = rawList.filter(m => !disabled.includes(m) && !exhaustedToday.includes(m) && !m.includes('3.7') && !m.includes('live') && !m.includes('gemma') && !m.includes('pro'));
-      // 1. Se o usuário escolheu um modelo preferido fixo na interface, coloca-o no topo absoluto!
-      if (preferredModel && preferredModel !== 'auto' && valid.includes(preferredModel)) {
-        return [preferredModel, ...valid.filter(m => m !== preferredModel)];
+      // 1. Se o usuário escolheu um modelo preferido fixo na interface, coloca-o no topo absoluto (sem precisar de F5)!
+      if (preferredModel && preferredModel !== 'auto') {
+        const cleanPref = preferredModel.replace(/^models\//, '');
+        const otherValid = valid.filter(m => m !== cleanPref);
+        return [cleanPref, ...otherValid];
       }
       // 2. Prioriza modelo que já funcionou com sucesso na chave se não for Lite (ou se só restarem Lites)
       const hasFullOrLive = valid.some(m => !m.includes('lite'));
@@ -425,6 +427,34 @@
       }
     }
 
+    // Se o modelo atual atingiu o limite (ex: 20/20) mas ainda há cotas abundantes no Gemini 3.5 Flash Lite (500/dia):
+    if (totalAvail === 0 && targetModel !== 'gemini-3.5-flash-lite') {
+      const fallbackModel = 'gemini-3.5-flash-lite';
+      const fallbackLimit = getModelDailyLimit(fallbackModel);
+      let fbAvail = 0;
+      let fbUsed = 0;
+      for (const k of keys) {
+        const kHash = getKeyShortHash(k);
+        const exhausted = getExhaustedModelsForToday(k).map(normalizeModelForQuota);
+        const used = quotaMap[kHash]?.byModel?.[fallbackModel]?.requests || 0;
+        if (!exhausted.includes(fallbackModel)) {
+          const cap = Math.min(fallbackLimit, used);
+          fbUsed += cap;
+          fbAvail += Math.max(0, fallbackLimit - cap);
+        }
+      }
+      if (fbAvail > 0) {
+        return {
+          keysCount: keys.length,
+          targetModel: fallbackModel,
+          totalLimit: fallbackLimit * keys.length,
+          totalUsed: fbUsed,
+          totalAvail: fbAvail,
+          isFallbackActive: true
+        };
+      }
+    }
+
     return {
       keysCount: keys.length,
       targetModel,
@@ -450,6 +480,9 @@
       } else if (rpmLastMinute >= 12) {
         elDaily.textContent = `🟡 Fila rápida • Usado: ${summary.totalUsed}/${summary.totalLimit} (${summary.totalAvail} disp.)`;
         elDaily.style.color = '#d97706';
+      } else if (summary.isFallbackActive) {
+        elDaily.textContent = `🟢 ${keyLabel}: ${summary.totalAvail}/${summary.totalLimit} disp. (${modelShort} livre)`;
+        elDaily.style.color = '#059669';
       } else if (summary.totalAvail === 0 && summary.totalLimit > 0) {
         elDaily.textContent = `🟠 ${modelShort}: ${summary.totalUsed}/${summary.totalLimit} (0 disp. — alterna auto)`;
         elDaily.style.color = '#d97706';
@@ -4033,6 +4066,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
               recordKeyModelUsage(currentKey, model, responseJson?.usageMetadata?.totalTokenCount || 0);
               updateTokenMonitorUI(model);
               renderApiKeysQuotaDashboard();
+              allFailedByDailyQuota = false;
               return { responseJson, modelUsed: model };
             }
 
@@ -4048,12 +4082,14 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                   recordKeyModelUsage(currentKey, model, liveResult.responseJson?.usageMetadata?.totalTokenCount || 0);
                   updateTokenMonitorUI(model);
                   renderApiKeysQuotaDashboard();
+                  allFailedByDailyQuota = false;
                   return liveResult;
                 }
               } catch (_) {}
             }
 
             if (res.status === 400 && errMsg.toLowerCase().includes('api key')) {
+              console.warn(`Chave API #${kIdx + 1} (${getKeyShortHash(currentKey)}) retornou erro de credencial no Google: ${errMsg}`);
               if (kIdx === keysToTry.length - 1) {
                 const elDaily = document.getElementById('dailyTokenCounter');
                 if (elDaily) {
@@ -4062,6 +4098,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                 }
                 throw new Error('Credencial de API inválida. Clique em "Credencial API" no topo para verificar.');
               }
+              showToast(`⚠️ Chave #${kIdx + 1} inválida no Google. Alternando para a Chave reserva #${kIdx + 2}...`);
+              mIdx = modelsToTry.length;
               break;
             }
 
@@ -4321,6 +4359,46 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
   }
 
+  function extractRelevantProtocolSection(fullProtocolText, caseEvidenceText) {
+    if (!fullProtocolText || fullProtocolText.length < 5000) return fullProtocolText;
+    const normCase = String(caseEvidenceText || '').toLowerCase();
+
+    // Divide pelos blocos "Protocolo X –"
+    const chunks = fullProtocolText.split(/(?=\bProtocolo\s+\d+\s*[-–])/i);
+    if (chunks.length <= 1) {
+      return fullProtocolText.slice(0, 50000);
+    }
+
+    const matchingChunks = [];
+    for (const chunk of chunks) {
+      if (!chunk.trim()) continue;
+      const firstLines = chunk.slice(0, 300).toLowerCase();
+      const titleWords = firstLines.match(/[a-záàâãéèêíïóôõöúçñ]{4,}/gi) || [];
+      const relevantWords = titleWords.filter(w => !['protocolo', 'adulto', 'pediatrico', 'condicoes', 'clinicas', 'necessidade', 'encaminhamento', 'servico', 'urgencia'].includes(w));
+
+      let score = 0;
+      for (const w of relevantWords) {
+        if (normCase.includes(w)) {
+          score += 2;
+        }
+      }
+      if (score > 0 && /conte[úu]do\s+descritivo\s+m[íi]nimo/i.test(chunk)) {
+        score += 5;
+      }
+      if (score > 0) {
+        matchingChunks.push({ chunk, score });
+      }
+    }
+
+    if (matchingChunks.length > 0) {
+      matchingChunks.sort((a, b) => b.score - a.score);
+      const topTexts = matchingChunks.slice(0, 2).map(m => m.chunk.trim());
+      return topTexts.join('\n\n---\n\n');
+    }
+
+    return fullProtocolText.slice(0, 50000);
+  }
+
   async function generateStateReferral() {
     if (!state.activeConsultationId) {
       alert('Selecione um atendimento primeiro para gerar o encaminhamento.');
@@ -4337,8 +4415,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     const evolutionTextarea = document.getElementById('mainEvolutionEditor');
     const currentEvolutionText = (evolutionTextarea && evolutionTextarea.value.trim()) || consult.evolutionText;
-    if (!currentEvolutionText) {
-      alert('A evolução clínica ainda está vazia.');
+    if (!currentEvolutionText || currentEvolutionText.length < 60 || currentEvolutionText.includes('A evolução estruturada aparecerá aqui...')) {
+      alert('⚠️ A evolução clínica deste paciente ainda não foi finalizada pela IA. Aguarde a conclusão da transcrição (100%) antes de gerar o encaminhamento.');
       return;
     }
 
@@ -4374,6 +4452,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         btnGenerate.textContent = '⏳ Enquadrando caso no protocolo e checando pendências...';
       }
 
+      const caseEvidence = `${especialidade}\n${dadosExtrasRegulacao}\n${currentEvolutionText}\n${consult.quickNotes || ''}`;
+      const targetedProtocol = extractRelevantProtocolSection(telessaudeProtocol?.conteudo_extraido || '', caseEvidence);
+
       const prompt = window.buildReferralPrompt({
         templateId: consult.templateId,
         templateName: consult.templateName,
@@ -4381,7 +4462,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         especialidade,
         dadosExtrasRegulacao,
         quickNotes: consult.quickNotes,
-        telessaudeProtocolText: telessaudeProtocol?.conteudo_extraido || ''
+        telessaudeProtocolText: targetedProtocol
       });
 
       const requestBody = {
@@ -5156,25 +5237,38 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    // Limpa campo customizado ao abrir o atendimento para nunca herdar especialidade residual
+    // Limpa completamente os campos de encaminhamento ao abrir qualquer atendimento (evita contaminação entre pacientes)
     const customSpec = document.getElementById('referralCustomSpecialty');
     if (customSpec) customSpec.value = '';
 
+    const extraDataInput = document.getElementById('referralExtraDataInput');
+    if (extraDataInput) extraDataInput.value = '';
+
+    const refEditor = document.getElementById('referralResultEditor');
+    if (refEditor) refEditor.value = '';
+
+    const refOutBox = document.getElementById('referralOutputContainer');
+    if (refOutBox) refOutBox.style.display = 'none';
+
     const specialtySelect = document.getElementById('referralSpecialtySelect');
-    if (consult.suggestedSpecialty && specialtySelect) {
-      const cleanSug = String(consult.suggestedSpecialty).trim().toLowerCase();
-      let matched = false;
-      for (const opt of specialtySelect.options) {
-        const optVal = opt.value.toLowerCase();
-        const mainTerm = optVal.split('/')[0].trim();
-        if (optVal === cleanSug || optVal.includes(cleanSug) || (mainTerm.length >= 4 && cleanSug.includes(mainTerm))) {
-          specialtySelect.value = opt.value;
-          matched = true;
-          break;
+    if (specialtySelect) {
+      if (consult.suggestedSpecialty) {
+        const cleanSug = String(consult.suggestedSpecialty).trim().toLowerCase();
+        let matched = false;
+        for (const opt of specialtySelect.options) {
+          const optVal = opt.value.toLowerCase();
+          const mainTerm = optVal.split('/')[0].trim();
+          if (optVal === cleanSug || optVal.includes(cleanSug) || (mainTerm.length >= 4 && cleanSug.includes(mainTerm))) {
+            specialtySelect.value = opt.value;
+            matched = true;
+            break;
+          }
         }
-      }
-      if (!matched && customSpec) {
-        customSpec.value = consult.suggestedSpecialty.trim();
+        if (!matched && customSpec) {
+          customSpec.value = consult.suggestedSpecialty.trim();
+        }
+      } else {
+        specialtySelect.selectedIndex = 0;
       }
     }
 
@@ -5510,14 +5604,20 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     updateQuickNotesExamBadge();
   }
 
-  function getSavedApiKeysList(overrideRaw) {
-    const raw = String(overrideRaw || localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
-    if (!raw) return [];
-    const matches = raw.match(/AIza[0-9A-Za-z_-]{20,}/g);
-    if (matches && matches.length > 0) {
-      return [...new Set(matches)];
+  function getSavedApiKeysList(preferredKey) {
+    const rawSaved = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
+    const savedMatches = rawSaved.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
+    let allKeys = [...new Set(savedMatches)];
+    if (preferredKey && typeof preferredKey === 'string') {
+      const prefMatches = preferredKey.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
+      for (const pk of prefMatches.reverse()) {
+        allKeys = [pk, ...allKeys.filter(k => k !== pk)];
+      }
     }
-    return [raw];
+    if (allKeys.length === 0 && rawSaved) {
+      allKeys = [rawSaved];
+    }
+    return allKeys;
   }
 
   function getSavedApiKey() {
