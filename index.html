@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261112_39" />
+  <link rel="stylesheet" href="styles.css?v=20261112_40" />
   <script>
     (function() {
       try {
@@ -112,12 +112,12 @@
     <div class="template-grid" id="templateGrid"></div>
 
     <!-- BARRA COMPACTA DO MODELO SELECIONADO (APARECE QUANDO OS OUTROS MODELOS SOMEM) -->
-    <div id="selectedTemplateCompactBar" style="display: none; align-items: center; justify-content: space-between; background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;">
+    <div id="selectedTemplateCompactBar" class="compact-tpl-bar" style="display: none; align-items: center; justify-content: space-between; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;">
       <div style="display: flex; align-items: center; gap: 10px;">
         <span id="compactTplIcon" style="font-size: 20px;">🩺</span>
         <div>
-          <div id="compactTplName" style="font-size: 14px; font-weight: 800; color: #0f172a;">Consulta Geral (SOAP)</div>
-          <div id="compactTplSub" style="font-size: 11.5px; color: #64748b;">Modalidade selecionada</div>
+          <div id="compactTplName" class="compact-tpl-name">Consulta Geral (SOAP)</div>
+          <div id="compactTplSub" class="compact-tpl-sub">Modalidade selecionada</div>
         </div>
       </div>
       <button type="button" class="btn btn-secondary" id="btnChangeTemplateModel" style="padding: 5px 10px; font-size: 12px;">
@@ -1033,9 +1033,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261112_39"></script>
-  <script src="zscore.js?v=20261112_39"></script>
-  <script src="db.js?v=20261112_39"></script>
-  <script src="app.js?v=20261112_39"></script>
+  <script src="templates.js?v=20261112_40"></script>
+  <script src="zscore.js?v=20261112_40"></script>
+  <script src="db.js?v=20261112_40"></script>
+  <script src="app.js?v=20261112_40"></script>
 </body>
 </html>

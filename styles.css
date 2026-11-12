@@ -299,6 +299,22 @@ body {
   color: var(--primary);
 }
 
+.compact-tpl-bar {
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+}
+
+.compact-tpl-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.compact-tpl-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
 /* --- CARTÃO DE SESSÃO DE ATENDIMENTO --- */
 .card {
   background: var(--bg-card);
@@ -1143,14 +1159,37 @@ body.dark-mode,
   color: #94a3b8;
 }
 
+.dark-mode .compact-tpl-bar,
 .dark-mode #selectedTemplateCompactBar {
   background: #131b2c !important;
   border-color: #27354a !important;
 }
 
+.dark-mode .compact-tpl-name,
+.dark-mode #compactTplName {
+  color: #f8fafc !important;
+  font-weight: 800 !important;
+}
+
+.dark-mode .compact-tpl-sub,
+.dark-mode #compactTplSub {
+  color: #94a3b8 !important;
+}
+
+.dark-mode #compactTplIcon {
+  background: #ffffff !important;
+  padding: 4px 8px !important;
+  border-radius: 8px !important;
+  border: 1.5px solid #cbd5e1 !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
 .dark-mode .recorder-box {
-  background: #131b2c;
-  border-color: #27354a;
+  background: #131b2c !important;
+  border-color: #27354a !important;
 }
 
 /* Campos de Texto, Seleção e Textareas */
@@ -1418,9 +1457,30 @@ body.dark-mode,
 }
 
 .dark-mode #vdSpecificBox {
-  background: #2a1f0a !important;
+  background: #1c1917 !important;
   border-color: #b45309 !important;
   color: #fde68a !important;
+}
+
+.dark-mode #vdSpecificBox * {
+  color: #fde68a !important;
+}
+
+.dark-mode #vdSpecificBox div {
+  color: #fde68a !important;
+}
+
+.dark-mode #vdSpecificBox strong {
+  color: #ffffff !important;
+}
+
+.dark-mode #btnClearAllSheetTop,
+.dark-mode #btnClearAllSheetBottom,
+.dark-mode #btnCancelRec,
+.dark-mode #btnClearExternalAudio {
+  background: #1e1b2e !important;
+  color: #fca5a5 !important;
+  border-color: #7f1d1d !important;
 }
 
 /* Transcrição de Exames e Banners de Processamento */
