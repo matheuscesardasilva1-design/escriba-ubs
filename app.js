@@ -5628,17 +5628,19 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
   }
 
   function getSavedApiKeysList(preferredKey) {
-    const rawSaved = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
-    const savedMatches = rawSaved.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
-    let allKeys = [...new Set(savedMatches)];
+    const mainRaw = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
+    const extraRaw = String(localStorage.getItem('ubs_extra_api_keys') || sessionStorage.getItem('ubs_extra_api_keys') || '').trim();
+    const combined = `${mainRaw}\n${extraRaw}`;
+    const matches = combined.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
+    let allKeys = [...new Set(matches)];
+    if (allKeys.length === 0 && mainRaw) {
+      allKeys = [mainRaw];
+    }
     if (preferredKey && typeof preferredKey === 'string') {
-      const prefMatches = preferredKey.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
+      const prefMatches = preferredKey.match(/AIza[0-9A-Za-z_-]{20,}/g) || [preferredKey];
       for (const pk of prefMatches.reverse()) {
         allKeys = [pk, ...allKeys.filter(k => k !== pk)];
       }
-    }
-    if (allKeys.length === 0 && rawSaved) {
-      allKeys = [rawSaved];
     }
     return allKeys;
   }
@@ -5650,7 +5652,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
   // Integração oficial com o Gerenciador de Senhas do Google Chrome (Credential Management API)
   async function tryRestoreApiKeyFromChromeCredentialManager() {
-    if (getSavedApiKey()) return;
+    if (localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key')) return;
     try {
       if (navigator.credentials && navigator.credentials.get && window.PasswordCredential) {
         const cred = await navigator.credentials.get({ password: true, mediation: 'optional' });
@@ -6467,11 +6469,19 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
   function openApiKeyModal() {
     const modal = document.getElementById('apiKeyModal');
-    const keys = getSavedApiKeysList();
+    const mainKey = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
+    const extraKeys = String(localStorage.getItem('ubs_extra_api_keys') || sessionStorage.getItem('ubs_extra_api_keys') || '').trim();
     const input = document.getElementById('apiKeyInput');
     const extraInput = document.getElementById('extraApiKeysInput');
-    if (input) input.value = keys[0] || getSavedApiKey() || '';
-    if (extraInput) extraInput.value = keys.slice(1).join('\n');
+    if (input) input.value = mainKey || getSavedApiKey() || '';
+    if (extraInput) {
+      if (extraKeys) {
+        extraInput.value = extraKeys;
+      } else {
+        const all = getSavedApiKeysList();
+        extraInput.value = all.slice(1).join('\n');
+      }
+    }
     const sel = document.getElementById('preferredModelSelect');
     if (sel) sel.value = localStorage.getItem('ubs_preferred_model') || 'auto';
     renderApiKeysQuotaDashboard();
@@ -7020,17 +7030,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       if (e && e.preventDefault) e.preventDefault();
       const mainKey = document.getElementById('apiKeyInput')?.value.trim() || '';
       const extraKeys = document.getElementById('extraApiKeysInput')?.value.trim() || '';
-      const combinedKeysRaw = [mainKey, extraKeys].filter(Boolean).join('\n').trim();
       const mode = document.querySelector('input[name="keyStorageMode"]:checked')?.value || 'permanent';
-      if (!combinedKeysRaw) {
+
+      if (mode === 'session') {
+        if (mainKey) sessionStorage.setItem('ubs_gemini_api_key', mainKey);
+        else sessionStorage.removeItem('ubs_gemini_api_key');
+        if (extraKeys) sessionStorage.setItem('ubs_extra_api_keys', extraKeys);
+        else sessionStorage.removeItem('ubs_extra_api_keys');
         localStorage.removeItem('ubs_gemini_api_key');
-        sessionStorage.removeItem('ubs_gemini_api_key');
-      } else if (mode === 'session') {
-        sessionStorage.setItem('ubs_gemini_api_key', combinedKeysRaw);
-        localStorage.removeItem('ubs_gemini_api_key');
+        localStorage.removeItem('ubs_extra_api_keys');
       } else {
-        localStorage.setItem('ubs_gemini_api_key', combinedKeysRaw);
+        if (mainKey) localStorage.setItem('ubs_gemini_api_key', mainKey);
+        else localStorage.removeItem('ubs_gemini_api_key');
+        if (extraKeys) localStorage.setItem('ubs_extra_api_keys', extraKeys);
+        else localStorage.removeItem('ubs_extra_api_keys');
         sessionStorage.removeItem('ubs_gemini_api_key');
+        sessionStorage.removeItem('ubs_extra_api_keys');
       }
 
       // Salva no Gerenciador de Senhas do Google Chrome vinculado à conta fixa "Chave API Gemini - Prontuário APS"
