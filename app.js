@@ -221,6 +221,10 @@
     const fallback = filterAndOrder(GEMINI_MODELS);
     // Se todos foram marcados como esgotados hoje, limpa a lista de esgotados para tentar novamente caso a cota tenha virado
     if (fallback.length === 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      try {
+        localStorage.removeItem(`ubs_exhausted_${today}_${keyHash}`);
+      } catch (_) {}
       return GEMINI_MODELS.filter(m => !disabled.includes(m));
     }
     return fallback;
@@ -4047,7 +4051,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             }
 
             const abortCtrl = new AbortController();
-            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), 45000);
+            // Timeout de 120s (2 min) para acomodar áudios longos e raciocínio clínico completo do Gemini sem abortar prematuramente
+            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), 120000);
             let res;
             try {
               res = await fetch(url, {
@@ -4192,9 +4197,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             break;
           } catch (networkErr) {
             if (networkErr && networkErr.name === 'AbortError') {
-              lastError = new Error(`Tempo limite excedido no modelo ${model}, alternando automaticamente...`);
+              lastError = new Error(`Tempo limite excedido no modelo ${formatModelName(model)}, alternando automaticamente...`);
               if (onStatusUpdate) onStatusUpdate(`⚡ Alternando modelo (${formatModelName(model)} demorou)...`);
-              markModelExhaustedForToday(model, currentKey);
+              // Não marca como esgotado hoje por timeout! Timeout é apenas lentidão temporária ou áudio longo.
               break; // Pula imediatamente para o próximo modelo sem travar!
             }
             lastError = networkErr;
@@ -4223,7 +4228,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
   async function uploadLargeFileToGeminiFileAPI(blob, mimeType, apiKey) {
     const abortCtrl = new AbortController();
-    const timeoutId = setTimeout(() => abortCtrl.abort(), 60000);
+    const timeoutId = setTimeout(() => abortCtrl.abort(), 120000);
     try {
       const startUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(apiKey)}`;
       const startRes = await fetch(startUrl, {
