@@ -2117,13 +2117,24 @@
           });
 
           nextItem.status = 'done';
+          // REDE DE SEGURANÇA: guarda a versão anterior da evolução (últimas 3) antes de sobrescrever,
+          // para o médico poder restaurar com 1 clique caso algo saia errado.
+          try {
+            const oldEvo = String(nextItem.evolutionText || '').trim();
+            if (oldEvo.length >= 100 && oldEvo !== String(result.evolutionText || '').trim()) {
+              nextItem.evolutionBackups = [{ at: Date.now(), text: oldEvo }, ...(nextItem.evolutionBackups || [])].slice(0, 3);
+            }
+          } catch (_) {}
           nextItem.evolutionText = result.evolutionText;
           nextItem.cidCiapCodes = result.cidCiapCodes || [];
-          nextItem.rawTranscript = nextItem.previousRawTranscript
-            ? `${nextItem.previousRawTranscript}\n\n--- [CONTINUAÇÃO DO ATENDIMENTO] ---\n${result.rawTranscript || ''}`
-            : (result.rawTranscript || '');
-          nextItem.previousEvolutionText = '';
-          nextItem.previousRawTranscript = '';
+          // A transcrição retornada já é CUMULATIVA (partes anteriores + continuação). Não duplica.
+          const prevRawKept = String(nextItem.previousRawTranscript || '');
+          const newRaw = String(result.rawTranscript || '');
+          nextItem.rawTranscript = (prevRawKept && !newRaw.includes(prevRawKept.slice(0, 60)))
+            ? `${prevRawKept}\n\n--- [CONTINUAÇÃO DO ATENDIMENTO] ---\n${newRaw}`
+            : newRaw;
+          // NÃO apaga mais previousEvolutionText / previousRawTranscript: ficam guardados como base durável
+          // para que "Atualizar"/"Reprocessar" nunca percam as partes anteriores do atendimento.
           nextItem.soapParts = result.soapParts;
           nextItem.auditAlerts = result.auditAlerts || [];
           nextItem.suggestedSpecialty = result.suggestedSpecialty || '';
@@ -2297,6 +2308,11 @@
         }
       } catch (stage1Err) {
         console.warn('Etapa 1 (transcrição dedicada) falhou, seguindo com envio multimodal direto na Etapa 2:', stage1Err);
+        // Atendimento continuado: sem a transcrição da continuação NÃO seguimos (evita gerar evolução só com o áudio final
+        // e perder as partes anteriores). A evolução atual permanece intacta e o médico pode tentar de novo.
+        if (consultation.previousRawTranscript || consultation.previousEvolutionText) {
+          throw new Error('Não foi possível transcrever a continuação agora. A evolução anterior foi preservada — clique em "Atualizar" para tentar novamente.');
+        }
       }
     }
 
@@ -2541,12 +2557,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const raw = String(text || '').trim();
     if (!raw) return sections;
 
-    const reSubj = /\n\s*(?:4\.\s*)?SUBJETIVO\b/i;
-    const reObj = /\n\s*(?:5\.|6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\b/i;
-    const reExams = /\n\s*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\b/i;
-    const reEval = /\n\s*(?:7\.|8\.|9\.\s*)?AVALIAÇÃO\b/i;
-    const reCond = /\n\s*(?:10\.\s*)?CONDUTA\b/i;
-    const rePlan = /\n\s*(?:11\.\s*)?PLANO\b/i;
+    const reSubj = /\n\s*(?:4\.\s*)?SUBJETIVO(?=[ \t]*(?:\n|$))/;
+    const reObj = /\n\s*(?:5\.|6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?(?=[ \t]*(?:\n|$))/;
+    const reExams = /\n\s*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)(?=[ \t]*(?:\n|$))/;
+    const reEval = /\n\s*(?:7\.|8\.|9\.\s*)?AVALIAÇÃO(?=[ \t]*(?:\n|$))/;
+    const reCond = /\n\s*(?:10\.\s*)?CONDUTA(?=[ \t]*(?:\n|$))/;
+    const rePlan = /\n\s*(?:11\.\s*)?PLANO(?=[ \t]*(?:\n|$))/;
 
     const mSubj = raw.match(reSubj);
     if (mSubj) {
@@ -2771,6 +2787,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const tabagistaFilled = (tabagistaMatch && tabagistaMatch[1].trim().length > 0) || tabagistaUnstructured;
     if (!tabagistaFilled) {
       alerts.push('⚠️ Campo TABAGISMO ausente/não informado');
+    }
+
+    // Auditoria específica da Puericultura: Z-score (nunca percentil) e coerência das vacinas
+    if (templateId === 'puericultura') {
+      if (/percentil|\bP\s?(?:3|5|10|15|25|50|75|85|90|95|97)\b(?!\s*[:=]?\s*\d)/i.test(text)) {
+        alerts.push('⚠️ Puericultura cita PERCENTIL — o padrão é Z-score (OMS). Revisar antropometria');
+      }
+      const vacBlock = (text.match(/^#\s*Vacinas?\s*:[^\n]*(?:\n(?!#|\s*$|SUBJETIVO)[^\n]*)*/im) || [''])[0];
+      const vacSaysOk = /atualizad|em\s+dia|completas?\b/i.test(vacBlock);
+      const textSaysLate = /vacinas?[^.\n]{0,80}(?:atraso|pendente|atrasad)|(?:atraso|pendente|atrasad)[^.\n]{0,80}vacinas?/i.test(text.replace(vacBlock, ''));
+      if (vacSaysOk && textSaysLate) {
+        alerts.push('⚠️ Vacinas: consta "atualizadas/em dia" mas há menção de atraso/pendência — conferir');
+      }
+      if (/^\s*-?\s*atualizadas?\s*:\s*pendente/im.test(vacBlock)) {
+        alerts.push('⚠️ Vacinas: campo inconsistente ("atualizadas: Pendente") — corrigir manualmente');
+      }
     }
 
     return alerts;
@@ -4059,7 +4091,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     let currentSectionName = '';
     for (let rawLine of allLines) {
       const trimmed = rawLine.trim();
-      if (/^(?:\d+\.\s*)?(?:AVALIAÇÃO|CONDUTA|PLANO|>>\s*PENDÊNCIAS)/i.test(trimmed)) {
+      if (/^(?:\d+\.\s*)?(?:AVALIAÇÃO|CONDUTA|PLANO)\s*:?\s*$|^>>\s*PENDÊNCIAS/.test(trimmed)) {
         inAvaliacaoOrConduta = true;
         currentSectionName = trimmed.toUpperCase();
         cleanedLines.push(rawLine);
@@ -4123,20 +4155,23 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     let spacedText = cleanedLines.join('\n').trim();
 
-    // Remove boilerplate genérico ou clichê da seção PLANO (ex: Seguimento ambulatorial na APS conforme necessidade clínica)
+    // Remove boilerplate genérico ou clichê da seção PLANO (somente quando "PLANO" está sozinho em sua própria linha)
     spacedText = spacedText
-      .replace(/\n+PLANO\s*\n+(?:Seguimento ambulatorial na APS(?: conforme necessidade cl[íi]nica)?\.?|Sem pend[êe]ncias(?: futuras)?\.?|Nenhuma a[çc][ãa]o futura espec[íi]fica\.?)\s*(?=\n\n|\n*$)/gi, '')
-      .replace(/\n+PLANO\s*(?=\n\n|$)/gi, '');
+      .replace(/\n+^[ \t]*PLANO[ \t]*\n+[ \t]*(?:Seguimento ambulatorial na APS(?: conforme necessidade cl[íi]nica)?\.?|Sem pend[êe]ncias(?: futuras)?\.?|Nenhuma a[çc][ãa]o futura espec[íi]fica\.?)[ \t]*$/gm, '')
+      .replace(/\n+^[ \t]*PLANO[ \t]*$(?=\s*$)/gm, '');
 
-    // Garante espaçamento visual nítido (linha em branco visível) entre os grandes blocos para que, ao colar no PEC / e-SUS, as seções não fiquem coladas umas nas outras
+    // Garante espaçamento visual nítido entre os grandes blocos para colar no PEC / e-SUS.
+    // IMPORTANTE: só reconhece o TÍTULO da seção quando ele está SOZINHO e em MAIÚSCULAS no início da linha.
+    // (Nunca pode casar palavras comuns dentro de frases, como "avaliação dos marcos" ou "conduta".)
     spacedText = spacedText
-      .replace(/\n*(SUBJETIVO\b)/gi, '\n\n\n$1')
-      .replace(/\n*(OBJETIVO(?:\s*\(EXAME FÍSICO\))?\b)/gi, '\n\n\n$1')
-      .replace(/\n*(EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA\b)/gi, '\n\n\n$1')
-      .replace(/\n*(AVALIAÇÃO\b)/gi, '\n\n\n$1')
-      .replace(/\n*(CONDUTA\b)/gi, '\n\n\n$1')
-      .replace(/\n*(PLANO\b)/gi, '\n\n\n$1')
-      .replace(/\n*(>>\s*PENDÊNCIAS\b)/gi, '\n\n\n$1');
+      .replace(/\n*^[ \t]*(SUBJETIVO)[ \t]*$/gm, '\n\n\n$1')
+      .replace(/\n*^[ \t]*(OBJETIVO(?:[ \t]*\(EXAME FÍSICO\))?)[ \t]*$/gm, '\n\n\n$1')
+      .replace(/\n*^[ \t]*(EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)[ \t]*$/gm, '\n\n\n$1')
+      .replace(/\n*^[ \t]*(AVALIAÇÃO)[ \t]*$/gm, '\n\n\n$1')
+      .replace(/\n*^[ \t]*(CONDUTA)[ \t]*$/gm, '\n\n\n$1')
+      .replace(/\n*^[ \t]*(PLANO)[ \t]*$/gm, '\n\n\n$1')
+      .replace(/\n*^[ \t]*(>>\s*PENDÊNCIAS[^\n]*)$/gm, '\n\n\n$1')
+      .replace(/^\n+/, '');
 
     return { cleanText: spacedText, codes: extractedCodes };
   }
@@ -5099,6 +5134,19 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           }
         }
 
+        // Repara evoluções salvas em que uma palavra comum (avaliação, conduta, plano...) no MEIO de uma frase
+        // foi confundida com título de seção e separada por linhas em branco (bug de espaçamento).
+        if (c.evolutionText) {
+          const healedText = c.evolutionText.replace(
+            /([^\n.!?:;>])[ \t]*\n{2,}[ \t]*(avaliação|conduta|plano|objetivo|subjetivo)\b/g,
+            '$1 $2'
+          );
+          if (healedText !== c.evolutionText) {
+            c.evolutionText = healedText;
+            needsSave = true;
+          }
+        }
+
         // Repara evoluções já salvas que tinham subtítulos espúrios no Pré-Natal, vacinas duplicadas ou falso alerta de Tabagismo (ex: Tabagista passiva / Ex-tabagista)
         if (
           /ULTRASSONOGRAFIAS\s*\/\s*IMAGEM|-\s*LABORATORIAIS\s*:/i.test(c.evolutionText) ||
@@ -5521,6 +5569,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         btnPec.style.background = '#e2e8f0';
         btnPec.style.color = '#1e293b';
       }
+    }
+
+    const btnRestoreVer = document.getElementById('btnRestorePrevVersion');
+    if (btnRestoreVer) {
+      btnRestoreVer.style.display = (Array.isArray(consult.evolutionBackups) && consult.evolutionBackups.length > 0) ? 'inline-flex' : 'none';
     }
 
     const errBanner = document.getElementById('viewErrorBanner');
@@ -7133,6 +7186,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
       if (!c) return;
 
+      // PROTEÇÃO: só permite continuar quando a evolução atual já está pronta; senão o áudio da 1ª parte seria descartado.
+      if (c.status !== 'done' || !c.evolutionText || c.evolutionText.trim().length < 60) {
+        alert('⚠️ A evolução deste atendimento ainda não terminou de ser gerada (ou deu erro). Para não perder nada do que foi gravado, aguarde chegar a 100% ou clique em "Atualizar" antes de continuar o atendimento.');
+        return;
+      }
+
       closePatientDetailModal();
       switchMainPage('pageRecord');
 
@@ -7265,6 +7324,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       showToast(`Formato definido como "${e.target.value === 'resumida' ? 'Versão Resumida' : 'Versão Completa'}". Clique em "Reprocessar no Formato Escolhido".`);
     });
 
+    document.getElementById('btnRestorePrevVersion')?.addEventListener('click', async () => {
+      if (!state.activeConsultationId) return;
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (!c || !Array.isArray(c.evolutionBackups) || c.evolutionBackups.length === 0) return;
+      if (!confirm('Restaurar a versão anterior da evolução? A versão atual será guardada e você poderá voltar a ela.')) return;
+      const [prev, ...rest] = c.evolutionBackups;
+      c.evolutionBackups = [{ at: Date.now(), text: c.evolutionText || '' }, ...rest].filter(b => b.text && b.text.trim()).slice(0, 3);
+      c.evolutionText = prev.text;
+      c.status = 'done';
+      c.errorMessage = '';
+      await window.ScribeDB.saveConsultation(c);
+      await renderActiveConsultationView(c);
+      await refreshQueueSidebar();
+      showToast('↩️ Versão anterior da evolução restaurada!');
+    });
+
     const triggerReprocessCurrent = async () => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
@@ -7288,7 +7363,13 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         c.status = 'queued';
         c.errorMessage = '';
         if (c.chunkCount > 0) {
-          c.rawTranscript = ''; // Limpa para re-transcrever o áudio completo do zero sem omissões
+          // Atendimento CONTINUADO: o áudio salvo contém só a última parte. As partes anteriores vivem em
+          // previousRawTranscript (transcrição cumulativa). Preserva essa base e reestrutura TUDO junto,
+          // sem fusão com a evolução antiga (evita perder exame físico/quadro das partes anteriores).
+          if (c.previousRawTranscript && c.previousRawTranscript.length >= 50) {
+            c.previousEvolutionText = '';
+          }
+          c.rawTranscript = c.previousRawTranscript || '';
         }
         await window.ScribeDB.saveConsultation(c);
         await refreshQueueSidebar();
@@ -7544,18 +7625,39 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
   }
 
   function extractSectionFromText(fullText, sectionKey) {
-    const mapHeaders = {
-      subjetivo: /^([\s\S]*?(?:4\.\s*)?SUBJETIVO\s*\n[\s\S]*?)(?=\n(?:5\.|6\.|\s*OBJETIVO)|\s*$)/i,
-      objetivo: /(?:6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*\n([\s\S]*?)(?=\n(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA|7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
-      exames: /((?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\s*\n[\s\S]*?)(?=\n(?:7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
-      avaliacao: /(?:9\.\s*)?AVALIAÇÃO[^\n]*\n([\s\S]*?)(?=\n(?:10\.|\s*CONDUTA)|\s*$)/i,
-      conduta: /(?:10\.\s*)?CONDUTA\s*\n([\s\S]*?)(?=\n(?:11\.|\s*PLANO)|\s*$)/i,
-      plano: /(?:11\.\s*)?PLANO\s*\n([\s\S]*?)$/i
+    // Leitura por LINHAS: um título de seção só vale quando está sozinho na linha e em MAIÚSCULAS
+    // (jamais casa palavras comuns como "avaliação" ou "conduta" dentro de frases).
+    const lines = String(fullText || '').split('\n');
+    const reTitle = {
+      subjetivo: /^\s*(?:4\.\s*)?SUBJETIVO\s*:?\s*$/,
+      objetivo: /^\s*(?:5\.|6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*:?\s*$/,
+      exames: /^\s*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\s*:?\s*$/,
+      avaliacao: /^\s*(?:7\.|8\.|9\.\s*)?AVALIAÇÃO\s*:?\s*$/,
+      conduta: /^\s*(?:10\.\s*)?CONDUTA\s*:?\s*$/,
+      plano: /^\s*(?:11\.\s*)?PLANO\s*:?\s*$/
     };
-    const regex = mapHeaders[sectionKey];
-    if (!regex) return fullText;
-    const match = fullText.match(regex);
-    return match && match[1] ? match[1].trim() : '';
+    if (!reTitle[sectionKey]) return fullText;
+    const order = ['subjetivo', 'objetivo', 'exames', 'avaliacao', 'conduta', 'plano'];
+    const isAnyTitle = (line) => order.some(k => reTitle[k].test(line));
+    const idx = lines.findIndex(l => reTitle[sectionKey].test(l));
+    if (idx < 0) return '';
+    let end = lines.length;
+    for (let i = idx + 1; i < lines.length; i++) {
+      if (isAnyTitle(lines[i])) { end = i; break; }
+    }
+    if (sectionKey === 'subjetivo') {
+      // Mantém o comportamento anterior: o bloco do Subjetivo inclui o cabeçalho "#" que vem antes dele
+      return lines.slice(0, end).join('\n').trim();
+    }
+    if (sectionKey === 'exames') {
+      // Exames inclui também a Ultrassonografia (Pré-Natal): só termina na Avaliação/Conduta/Plano
+      let examEnd = lines.length;
+      for (let i = idx + 1; i < lines.length; i++) {
+        if (isAnyTitle(lines[i]) && !reTitle.exames.test(lines[i])) { examEnd = i; break; }
+      }
+      return lines.slice(idx, examEnd).join('\n').trim();
+    }
+    return lines.slice(idx + 1, end).join('\n').trim();
   }
 
   function updateRecordingControlsUI() {

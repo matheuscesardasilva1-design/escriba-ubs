@@ -28,9 +28,7 @@ AVALIAÇÃO
 CONDUTA
 Oriento sinais de alarme e na presença emergência. Ciente. 
 Orientações gerais
-Ciente, concordante e sem dúvidas
-
-PLANO`
+Ciente, concordante e sem dúvidas`
   },
 
   prenatal: {
@@ -80,9 +78,7 @@ Oriento sobre pródromos de TP
 Oriento sinais de alarme e, na presença, procurar atendimento médico imediatamente
 Orientações gerais
 Retorno em X dias com enfermagem ou médico
-Ciente, concordante e sem dúvidas
-
-PLANO`
+Ciente, concordante e sem dúvidas`
   },
 
   puericultura: {
@@ -129,9 +125,7 @@ Parabenizo familiar sobre cuidados de saúde com paciente
 Oriento sobre alimentação/aleitamento, prevenção de quedas, cuidados com paciente, prevenção de IVAS
 Orientações gerais
 Oriento retorno em X meses com enfermagem ou antes via acolhimento para demandas agudas
-Familiar ciente, concordante e sem dúvidas
-
-PLANO`
+Familiar ciente, concordante e sem dúvidas`
   },
 
   visita_domiciliar: {
@@ -167,9 +161,7 @@ Ciente, concordante e sem dúvidas
 Receitas / Troca ou ajuste de medicação: 
 Solicitação de exames: 
 Encaminhamento (Regulação Estadual): 
-Outras pendências da equipe: 
-
-PLANO`
+Outras pendências da equipe: `
   },
 
   interconsulta: {
@@ -198,9 +190,7 @@ CONDUTA
 Caso discutido e conduta alinhada com equipe de Enfermagem
 Oriento sinais de alarme e, na presença destes, procurar atendimento médico / emergência imediatamente
 Orientações gerais
-Ciente, concordante e sem dúvidas
-
-PLANO`
+Ciente, concordante e sem dúvidas`
   },
 
   telessaude: {
@@ -307,9 +297,7 @@ Critérios Clínicos Observados:
 Oriento sobre efeitos esperados, tempo de início das transformações e potenciais riscos/efeitos adversos da THAG
 Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
 Orientações gerais e acolhimento
-Ciente, concordante e sem dúvidas
-
-11. PLANO`
+Ciente, concordante e sem dúvidas`
   },
 
   lgbt_seguimento: {
@@ -399,9 +387,7 @@ Critérios Clínicos Observados:
 Oriento sobre manutenção/ajustes de THAG, adesão e monitoramento laboratorial
 Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
 Orientações gerais e acolhimento
-Ciente, concordante e sem dúvidas
-
-11. PLANO`
+Ciente, concordante e sem dúvidas`
   }
 };
 
@@ -1006,13 +992,12 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
 
-7. REGRA DA SEÇÃO PLANO (LOGO APÓS A CONDUTA EM TODOS OS MODELOS):
-   - A seção PLANO deve vir logo após a CONDUTA em todos os atendimentos clínicos estruturados sempre que houver ações, exames ou metas futuras.
-   - O que entra no PLANO:
-     * Ações, pedidos de exames ou encaminhamentos programados para PRÓXIMAS CONSULTAS (ex: "Na próxima consulta, solicitar perfil lipídico e glicemia de jejum", "Avaliar encaminhamento para Oftalmologia no retorno se mantiver queixa visual").
-     * Metas terapêuticas e prazos futuros específicos quando expressos na consulta.
-   - REGRA ESTRITA DE OMISSÃO: É TERMINANTEMENTE PROIBIDO colocar frases genéricas, placeholders ou clichês no PLANO (como "Seguimento ambulatorial na APS conforme necessidade clínica", "Sem pendências", "Acompanhamento ambulatorial", etc.)! Se nenhuma ação futura específica, exame futuro ou encaminhamento futuro foi verbalizado pelo médico para as próximas consultas, NÃO invente texto e NÃO crie a seção PLANO (deixe-a vazia ou omita-a).
-   - Cada item do PLANO que existir deve vir em sua própria linha separada, sem numeração.
+7. REGRA DA SEÇÃO PLANO (OPCIONAL — NEM TODO ATENDIMENTO TEM PLANO!):
+   - A seção PLANO é OPCIONAL e só existe quando o médico DISSE, de forma explícita, ações/exames/encaminhamentos/metas para as PRÓXIMAS CONSULTAS (ex: "na próxima consulta a gente pede perfil lipídico", "se mantiver a queixa, encaminho para Oftalmologia no retorno").
+   - Quando existir, ela vem logo após a CONDUTA, com cada item em sua própria linha, sem numeração.
+   - Se o médico NÃO falou nada assim: NÃO escreva a palavra "PLANO", NÃO crie a seção e NÃO invente texto. O atendimento termina na CONDUTA.
+   - É TERMINANTEMENTE PROIBIDO usar frases genéricas no PLANO (como "Seguimento ambulatorial na APS conforme necessidade clínica", "Sem pendências", "Acompanhamento ambulatorial").
+   - Retorno/agendamento já combinado ("retorno em 30 dias") pertence à CONDUTA, não ao PLANO.
 
 8. REGRAS ESPECÍFICAS DE TELESSAÚDE, INTERCONSULTA, PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
    - No PRÉ-NATAL (OBSTETRÍCIA):
@@ -1021,11 +1006,19 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * ${soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader) ? `O médico selecionou a VERSÃO RESUMIDA:
        NÃO gere cabeçalho '#', NÃO inclua MUC nem patologias prévias, e NÃO divida em blocos de SUBJETIVO, OBJETIVO, AVALIAÇÃO e CONDUTA.
        Gere estritamente o título "## INTERCONSULTA COM A ENFERMAGEM ##" seguido de TEXTO CORRIDO DETALHADO E OBJETIVO para ditado rápido, relatando a interconsulta a pedido da enfermagem, dados clínicos, exame direcionado se houver, diagnóstico e as condutas pactuadas alinhadas com a equipe de enfermagem.` : `O médico selecionou a VERSÃO COMPLETA:
-       Siga rigorosamente a estrutura padrão completa com cabeçalho "#", "# MUC:", "# Alergias:", SUBJETIVO, OBJETIVO, AVALIAÇÃO, CONDUTA e PLANO.`}
+       Siga rigorosamente a estrutura padrão completa com cabeçalho "#", "# MUC:", "# Alergias:", SUBJETIVO, OBJETIVO, AVALIAÇÃO e CONDUTA (e PLANO apenas se o médico citou ações futuras).`}
    - Na DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA):
      * DEIXE EXCLUSIVAMENTE A PARTE DA CONDUTA! É TERMINANTEMENTE PROIBIDO gerar blocos de SUBJETIVO, OBJETIVO ou AVALIAÇÃO e PROIBIDO importar cabeçalho '#' com comorbidades anteriores!
      * A evolução do Telessaúde deve conter estritamente o título "## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##" e a seção "CONDUTA". NADA MAIS!
      * Na CONDUTA: transcreva e estruture toda a discussão da Teleconsultoria, contextualização do caso, considerações do teleconsultor, parecer especializado, orientações diagnósticas e plano terapêutico alinhado em TEXTO CORRIDO DETALHADO (em 1ª pessoa do médico: "Discuto caso com a teleconsultoria do Telessaúde...", "Alinho conduta...", "Oriento...", "Prescrevo..."), sem tópicos e sem listas numeradas, preservando todas as orientações especializadas, justificativas clínicas, doses e condutas pactuadas!
+   - Na PUERICULTURA — ANTROPOMETRIA SEMPRE EM Z-SCORE (OMS), NUNCA EM PERCENTIL:
+     * É TERMINANTEMENTE PROIBIDO escrever "percentil", "P3", "P15", "P50", "P85", "P97" ou qualquer classificação em percentil. O padrão deste serviço é EXCLUSIVAMENTE Z-score (desvios-padrão da OMS), ex.: "Peso/Idade: Z +0,4 | Comprimento/Idade: Z -1,2".
+     * Use somente os Z-scores fornecidos em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===" ou verbalizados pelo médico. Se não houver Z-score, escreva apenas as medidas (peso, altura, PC) SEM classificar em percentil e SEM inventar valores.
+   - Na PUERICULTURA — VACINAS (REGRA CRÍTICA, ERRO GRAVE SE VIOLADA):
+     * Em "# Vacinas:" escreva SOMENTE o que o médico disse. É TERMINANTEMENTE PROIBIDO escrever "atualizadas", "em dia" ou "calendário completo" a menos que o médico tenha afirmado isso claramente.
+     * Se o médico disse que há vacinas pendentes/em atraso, registre assim: "- Em atraso: [quais vacinas/idades, se citadas]" e na CONDUTA registre o plano de atualização (ex.: "Posterg(o) aplicação ..." conforme dito).
+     * Se o médico não falou nada sobre vacinas, deixe "# Vacinas:" SEM conteúdo (nunca preencha por conta própria, nunca escreva "Pendente" ou "Atualizadas" por suposição).
+     * Jamais escreva linhas como "- atualizadas: Pendente".
    - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
    - Na VISITA DOMICILIAR:
      * Só coloque data no título ("## VISITA DOMICILIAR EM DD/MM/AAAA - REGISTRO POSTERIOR ##") se a data da visita tiver sido informada explicitamente (${vdVisitDate ? `use ${vdVisitDate}` : 'caso contrário mantenha "## VISITA DOMICILIAR - REGISTRO POSTERIOR ##" sem assumir a data de hoje'}).
@@ -1117,6 +1110,7 @@ Ciente, concordante e sem dúvidas.
 PLANO
 Na próxima consulta, solicitar perfil lipídico e glicemia de jejum.
 Avaliar desmame do Omeprazol se remissão completa dos sintomas dispépticos.
+(OBSERVAÇÃO: neste exemplo o médico DISSE essas ações futuras no áudio. Se no atendimento real ele NÃO disser nada sobre próximas consultas, OMITA completamente a palavra PLANO e termine na CONDUTA.)
 
 === MODELO DE REFERÊNCIA A SER SEGUIDO NESTA CONSULTA ===
 ${effectiveTemplateText}
