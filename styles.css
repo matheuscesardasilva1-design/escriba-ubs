@@ -1328,6 +1328,58 @@ body.dark-mode,
 }
 
 /* Transcrição de Exames e Banners de Processamento */
+.dark-mode #geralSoapSubtypeBox,
+.dark-mode #interconsultaSubtypeBox {
+  background: #131b2c !important;
+  border-color: #27354a !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode #geralSoapSubtypeBox *,
+.dark-mode #interconsultaSubtypeBox * {
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .exam-attach-box {
+  background: #0d1424 !important;
+  border-color: #27354a !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .exam-attach-box strong {
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .drop-zone {
+  background: #0d1424 !important;
+  border-color: #27354a !important;
+  color: #94a3b8 !important;
+}
+
+.dark-mode .input-text::placeholder,
+.dark-mode .textarea-box::placeholder {
+  color: #94a3b8 !important;
+  opacity: 1 !important;
+}
+
+.dark-mode #rawTranscriptBox {
+  background: #090e17 !important;
+  border-color: #27354a !important;
+  color: #94a3b8 !important;
+}
+
+.dark-mode #pendingExternalAudioBox {
+  background: #0d1424 !important;
+  border-color: #1e3a8a !important;
+  color: #93c5fd !important;
+}
+
+.dark-mode #cidCiapOutsideBox {
+  background: #052e16 !important;
+  border-color: #166534 !important;
+  color: #bbf7d0 !important;
+}
+
 .dark-mode #liveExamTranscriptionBox {
   background: #0f172a !important;
   border-color: #27354a !important;
