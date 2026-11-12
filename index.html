@@ -5,13 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261111_35" />
+  <link rel="stylesheet" href="styles.css?v=20261111_37" />
   <script>
-    try {
-      if (localStorage.getItem('ubs_theme') === 'dark') {
-        document.documentElement.classList.add('dark-mode');
-      }
-    } catch (e) {}
+    (function() {
+      try {
+        var saved = localStorage.getItem('ubs_theme');
+        if (saved === 'dark') {
+          document.documentElement.classList.add('dark-mode');
+        }
+      } catch (e) {}
+
+      window.__toggleDarkMode = function() {
+        var isDark = document.documentElement.classList.toggle('dark-mode');
+        if (document.body) {
+          document.body.classList.toggle('dark-mode', isDark);
+        }
+        try {
+          localStorage.setItem('ubs_theme', isDark ? 'dark' : 'light');
+        } catch(e) {}
+        var btn = document.getElementById('btnToggleDarkMode');
+        if (btn) {
+          btn.innerHTML = isDark ? '☀️ Modo Claro' : '🌙 Modo Escuro';
+          btn.title = isDark ? 'Alternar para Modo Claro' : 'Alternar para Modo Escuro';
+        }
+        if (window.showToast) {
+          window.showToast(isDark ? '🌙 Modo Escuro ativado!' : '☀️ Modo Claro ativado!');
+        }
+      };
+
+      document.addEventListener('DOMContentLoaded', function() {
+        var isDark = document.documentElement.classList.contains('dark-mode');
+        if (isDark && document.body) {
+          document.body.classList.add('dark-mode');
+        }
+        var btn = document.getElementById('btnToggleDarkMode');
+        if (btn && isDark) {
+          btn.innerHTML = '☀️ Modo Claro';
+          btn.title = 'Alternar para Modo Claro';
+        }
+      });
+    })();
   </script>
 </head>
 <body>
@@ -34,7 +67,7 @@
     </nav>
 
     <div class="topbar-right">
-      <button type="button" class="btn-top" id="btnToggleDarkMode" title="Alternar Modo Escuro / Claro">
+      <button type="button" class="btn-top" id="btnToggleDarkMode" onclick="window.__toggleDarkMode && window.__toggleDarkMode()" title="Alternar Modo Escuro / Claro">
         🌙 Modo Escuro
       </button>
       <span class="quota-pill" id="btnOpenQuotaMonitor" style="cursor: pointer;" title="Clique para abrir o Mostrador de Limites, Uso e Saldo Disponível de cada Chave API">
@@ -1000,9 +1033,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261104_34"></script>
-  <script src="zscore.js?v=20261104_34"></script>
-  <script src="db.js?v=20261104_34"></script>
-  <script src="app.js?v=20261104_34"></script>
+  <script src="templates.js?v=20261111_37"></script>
+  <script src="zscore.js?v=20261111_37"></script>
+  <script src="db.js?v=20261111_37"></script>
+  <script src="app.js?v=20261111_37"></script>
 </body>
 </html>

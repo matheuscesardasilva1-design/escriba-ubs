@@ -267,37 +267,30 @@
   function initTheme() {
     const saved = localStorage.getItem('ubs_theme') || 'light';
     applyTheme(saved);
-
-    const btn = document.getElementById('btnToggleDarkMode');
-    if (btn) {
-      btn.addEventListener('click', () => {
-        const isDark = document.documentElement.classList.contains('dark-mode');
-        const next = isDark ? 'light' : 'dark';
-        try {
-          localStorage.setItem('ubs_theme', next);
-        } catch (_) {}
-        applyTheme(next);
-        showToast(next === 'dark' ? '🌙 Modo Escuro ativado!' : '☀️ Modo Claro ativado!');
-      });
-    }
   }
 
   function applyTheme(theme) {
+    const isDark = theme === 'dark';
+    document.documentElement.classList.toggle('dark-mode', isDark);
+    if (document.body) {
+      document.body.classList.toggle('dark-mode', isDark);
+    }
     const btn = document.getElementById('btnToggleDarkMode');
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark-mode');
-      if (btn) {
-        btn.innerHTML = '☀️ Modo Claro';
-        btn.title = 'Alternar para Modo Claro';
-      }
-    } else {
-      document.documentElement.classList.remove('dark-mode');
-      if (btn) {
-        btn.innerHTML = '🌙 Modo Escuro';
-        btn.title = 'Alternar para Modo Escuro';
-      }
+    if (btn) {
+      btn.innerHTML = isDark ? '☀️ Modo Claro' : '🌙 Modo Escuro';
+      btn.title = isDark ? 'Alternar para Modo Claro' : 'Alternar para Modo Escuro';
     }
   }
+
+  window.__toggleDarkMode = function() {
+    const isDark = !document.documentElement.classList.contains('dark-mode');
+    const nextTheme = isDark ? 'dark' : 'light';
+    try {
+      localStorage.setItem('ubs_theme', nextTheme);
+    } catch (_) {}
+    applyTheme(nextTheme);
+    showToast(isDark ? '🌙 Modo Escuro ativado!' : '☀️ Modo Claro ativado!');
+  };
 
   function loadCustomOrDefaultTemplates() {
     const saved = localStorage.getItem('ubs_custom_templates_v10');
@@ -7632,6 +7625,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     clearTimeout(toast._timeout);
     toast._timeout = setTimeout(() => toast.classList.remove('visible'), 4000);
   }
+  window.showToast = showToast;
 
   function blobToBase64(blob) {
     return new Promise((resolve, reject) => {

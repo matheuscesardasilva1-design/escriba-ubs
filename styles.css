@@ -1011,7 +1011,9 @@ body {
 /* ============================================================================
    MODO ESCURO (DARK MODE) SELECIONÁVEL PELO MÉDICO
    ============================================================================ */
-html.dark-mode {
+html.dark-mode,
+body.dark-mode,
+.dark-mode {
   --bg-page: #0b0f19;
   --bg-card: #131b2c;
   --text-main: #f8fafc;
@@ -1030,334 +1032,335 @@ html.dark-mode {
   color-scheme: dark;
 }
 
-html.dark-mode body {
-  background-color: var(--bg-page);
-  color: var(--text-main);
+body.dark-mode,
+.dark-mode body {
+  background-color: var(--bg-page) !important;
+  color: var(--text-main) !important;
 }
 
 /* Topbar & Navegação */
-html.dark-mode .topbar {
+.dark-mode .topbar {
   background: #0f172a;
   border-bottom-color: #1e293b;
 }
 
-html.dark-mode .brand-title {
+.dark-mode .brand-title {
   color: #f8fafc;
 }
 
-html.dark-mode .btn-top {
+.dark-mode .btn-top {
   background: #1e293b;
   color: #e2e8f0;
   border-color: #334155;
 }
 
-html.dark-mode .btn-top:hover {
+.dark-mode .btn-top:hover {
   background: #334155;
   color: #ffffff;
 }
 
-html.dark-mode .quota-pill {
+.dark-mode .quota-pill {
   background: #131d2e;
   border-color: #27354a;
 }
 
-html.dark-mode .nav-tab {
+.dark-mode .nav-tab {
   color: #94a3b8;
 }
 
-html.dark-mode .nav-tab:hover {
+.dark-mode .nav-tab:hover {
   color: #f8fafc;
 }
 
-html.dark-mode .nav-tab.active {
+.dark-mode .nav-tab.active {
   background: rgba(99, 102, 241, 0.2);
   color: #a5b4fc;
 }
 
 /* Tela 1: Novo Atendimento */
-html.dark-mode .center-header h2 {
+.dark-mode .center-header h2 {
   color: #f8fafc;
 }
 
-html.dark-mode .center-header p {
+.dark-mode .center-header p {
   color: #94a3b8;
 }
 
-html.dark-mode .template-card {
+.dark-mode .template-card {
   background: #131b2c;
   border-color: #27354a;
 }
 
-html.dark-mode .template-card:hover {
+.dark-mode .template-card:hover {
   background: #1a243a;
   border-color: #6366f1;
 }
 
-html.dark-mode .template-card.active {
+.dark-mode .template-card.active {
   background: rgba(99, 102, 241, 0.22);
   border-color: #818cf8;
 }
 
-html.dark-mode .tpl-icon-box {
+.dark-mode .tpl-icon-box {
   background: #1e293b;
 }
 
-html.dark-mode .template-card.active .tpl-icon-box {
+.dark-mode .template-card.active .tpl-icon-box {
   background: #312e81;
 }
 
-html.dark-mode .tpl-name {
+.dark-mode .tpl-name {
   color: #f8fafc;
 }
 
-html.dark-mode .tpl-sub {
+.dark-mode .tpl-sub {
   color: #94a3b8;
 }
 
-html.dark-mode #selectedTemplateCompactBar {
+.dark-mode #selectedTemplateCompactBar {
   background: #131b2c !important;
   border-color: #27354a !important;
 }
 
-html.dark-mode .recorder-box {
+.dark-mode .recorder-box {
   background: #131b2c;
   border-color: #27354a;
 }
 
 /* Campos de Texto, Seleção e Textareas */
-html.dark-mode .input-text,
-html.dark-mode .select-box,
-html.dark-mode .textarea-box {
+.dark-mode .input-text,
+.dark-mode .select-box,
+.dark-mode .textarea-box {
   background: #090e17 !important;
   color: #f8fafc !important;
   border-color: #2d3b4f !important;
 }
 
-html.dark-mode .input-text::placeholder,
-html.dark-mode .textarea-box::placeholder {
+.dark-mode .input-text::placeholder,
+.dark-mode .textarea-box::placeholder {
   color: #64748b;
 }
 
-html.dark-mode .input-text:focus,
-html.dark-mode .select-box:focus,
-html.dark-mode .textarea-box:focus {
+.dark-mode .input-text:focus,
+.dark-mode .select-box:focus,
+.dark-mode .textarea-box:focus {
   border-color: #6366f1 !important;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
 }
 
-html.dark-mode .btn-secondary {
+.dark-mode .btn-secondary {
   background: #1e293b;
   color: #e2e8f0;
   border-color: #334155;
 }
 
-html.dark-mode .btn-secondary:hover {
+.dark-mode .btn-secondary:hover {
   background: #334155;
 }
 
 /* Tela 2: Histórico */
-html.dark-mode .history-filters-grid {
+.dark-mode .history-filters-grid {
   background: #131b2c;
   border-color: #27354a;
 }
 
-html.dark-mode .history-header-bar h2 {
+.dark-mode .history-header-bar h2 {
   color: #f8fafc;
 }
 
-html.dark-mode .history-card {
+.dark-mode .history-card {
   background: #131b2c;
   border-color: #27354a;
 }
 
-html.dark-mode .history-card:hover {
+.dark-mode .history-card:hover {
   background: #182236;
   border-color: #6366f1;
 }
 
-html.dark-mode .h-patient-name {
+.dark-mode .h-patient-name {
   color: #f8fafc;
 }
 
-html.dark-mode .h-tpl-tag {
+.dark-mode .h-tpl-tag {
   background: #1e293b;
   color: #cbd5e1;
 }
 
-html.dark-mode .h-snippet {
+.dark-mode .h-snippet {
   color: #94a3b8;
 }
 
-html.dark-mode .h-doc-icon {
+.dark-mode .h-doc-icon {
   background: rgba(99, 102, 241, 0.2);
   color: #818cf8;
 }
 
-html.dark-mode .date-group-header {
+.dark-mode .date-group-header {
   color: #64748b;
 }
 
-html.dark-mode .date-group-header::after {
+.dark-mode .date-group-header::after {
   background: #27354a;
 }
 
 /* Modais e Detalhe do Atendimento (Prontuário Aberto) */
-html.dark-mode .patient-modal-sheet,
-html.dark-mode .modal-card {
+.dark-mode .patient-modal-sheet,
+.dark-mode .modal-card {
   background: #111827 !important;
   border: 1px solid #27354a;
   color: #f8fafc;
 }
 
-html.dark-mode .sheet-top-bar,
-html.dark-mode .modal-header {
+.dark-mode .sheet-top-bar,
+.dark-mode .modal-header {
   background: #111827 !important;
   border-bottom-color: #27354a !important;
 }
 
-html.dark-mode .btn-close-x {
+.dark-mode .btn-close-x {
   background: #1f293d;
   color: #f8fafc;
   border-color: #374151;
 }
 
-html.dark-mode .btn-close-x:hover {
+.dark-mode .btn-close-x:hover {
   background: #374151;
 }
 
-html.dark-mode .evolution-editor {
+.dark-mode .evolution-editor {
   background: #090e17 !important;
   color: #f8fafc !important;
   border-color: #2d3b4f !important;
 }
 
-html.dark-mode .copy-toolbar .btn {
+.dark-mode .copy-toolbar .btn {
   background: #1e293b;
   color: #cbd5e1;
   border-color: #334155;
 }
 
-html.dark-mode .copy-toolbar .btn:hover {
+.dark-mode .copy-toolbar .btn:hover {
   background: #334155;
   color: #ffffff;
 }
 
 /* Seção de Encaminhamentos Telessaúde / Regulação */
-html.dark-mode .referral-section {
+.dark-mode .referral-section {
   background: #151124;
   border-color: #581c87;
 }
 
-html.dark-mode .referral-header-toggle strong {
+.dark-mode .referral-header-toggle strong {
   color: #d8b4fe !important;
 }
 
-html.dark-mode .saved-ref-item {
+.dark-mode .saved-ref-item {
   background: #1c1533;
   border-color: #6b21a8;
   color: #f3e8ff;
 }
 
-html.dark-mode .saved-ref-item.active {
+.dark-mode .saved-ref-item.active {
   background: #3b0764;
   border-color: #c084fc;
 }
 
-html.dark-mode #referralOutputContainer {
+.dark-mode #referralOutputContainer {
   background: #130f24 !important;
   border-color: #7c3aed !important;
 }
 
-html.dark-mode .referral-editor {
+.dark-mode .referral-editor {
   background: #090e17 !important;
   color: #f8fafc !important;
   border-color: #6b21a8 !important;
 }
 
 /* Caixas de Alerta, Passos e Notificações */
-html.dark-mode .step-box {
+.dark-mode .step-box {
   background: #0d1424;
   border-color: #27354a;
   color: #cbd5e1;
 }
 
-html.dark-mode .audit-box {
+.dark-mode .audit-box {
   background: rgba(245, 158, 11, 0.12);
   border-color: rgba(245, 158, 11, 0.3);
   color: #fde68a;
 }
 
-html.dark-mode .audit-tag {
+.dark-mode .audit-tag {
   background: #451a03;
   border-color: #b45309;
   color: #fef3c7;
 }
 
-html.dark-mode .error-banner {
+.dark-mode .error-banner {
   background: rgba(239, 68, 68, 0.15);
   border-color: rgba(239, 68, 68, 0.35);
   color: #fca5a5;
 }
 
 /* Painéis de Puericultura e Pré-natal */
-html.dark-mode #puericulturaZScorePanel,
-html.dark-mode #prenatalCalcPanel {
+.dark-mode #puericulturaZScorePanel,
+.dark-mode #prenatalCalcPanel {
   background: #131b2c !important;
   border-color: #27354a !important;
 }
 
-html.dark-mode #puericulturaZScorePanel div[style*="background: #ffffff"],
-html.dark-mode #prenatalCalcPanel div[style*="background: #ffffff"] {
+.dark-mode #puericulturaZScorePanel div[style*="background: #ffffff"],
+.dark-mode #prenatalCalcPanel div[style*="background: #ffffff"] {
   background: #0f172a !important;
   border-color: #27354a !important;
 }
 
-html.dark-mode #pnCalcPreviewResult {
+.dark-mode #pnCalcPreviewResult {
   background: #2a121d !important;
   border-color: #db2777 !important;
   color: #fbcfe8 !important;
 }
 
-html.dark-mode #vdSpecificBox {
+.dark-mode #vdSpecificBox {
   background: #2a1f0a !important;
   border-color: #b45309 !important;
   color: #fde68a !important;
 }
 
 /* Transcrição de Exames e Banners de Processamento */
-html.dark-mode #liveExamTranscriptionBox {
+.dark-mode #liveExamTranscriptionBox {
   background: #0f172a !important;
   border-color: #27354a !important;
 }
 
-html.dark-mode #liveExamCalculatedSummary {
+.dark-mode #liveExamCalculatedSummary {
   background: #090e17 !important;
   border-color: #27354a !important;
   color: #f8fafc !important;
 }
 
-html.dark-mode #liveProcessingBanner {
+.dark-mode #liveProcessingBanner {
   background: #0f172a !important;
   border-color: #27354a !important;
   color: #f8fafc !important;
 }
 
-html.dark-mode table {
+.dark-mode table {
   color: #f8fafc;
 }
 
-html.dark-mode th {
+.dark-mode th {
   background: #1e293b;
   border-color: #334155;
   color: #e2e8f0;
 }
 
-html.dark-mode td {
+.dark-mode td {
   border-color: #1e293b;
 }
 
-html.dark-mode code,
-html.dark-mode pre {
+.dark-mode code,
+.dark-mode pre {
   background: #090e17;
   color: #38bdf8;
   border: 1px solid #1e293b;
