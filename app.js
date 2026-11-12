@@ -4359,9 +4359,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
   }
 
-  function extractRelevantProtocolSection(fullProtocolText, caseEvidenceText) {
+  function extractRelevantProtocolSection(fullProtocolText, caseEvidenceText, directCondition = '') {
     if (!fullProtocolText || fullProtocolText.length < 5000) return fullProtocolText;
     const normCase = String(caseEvidenceText || '').toLowerCase();
+    const normDirect = String(directCondition || '').toLowerCase().trim();
 
     // Divide pelos blocos "Protocolo X –"
     const chunks = fullProtocolText.split(/(?=\bProtocolo\s+\d+\s*[-–])/i);
@@ -4370,21 +4371,35 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
 
     const matchingChunks = [];
+    const directWords = normDirect.match(/[a-záàâãéèêíïóôõöúçñ]{3,}/gi) || [];
+
     for (const chunk of chunks) {
       if (!chunk.trim()) continue;
-      const firstLines = chunk.slice(0, 300).toLowerCase();
-      const titleWords = firstLines.match(/[a-záàâãéèêíïóôõöúçñ]{4,}/gi) || [];
+      const firstLines = chunk.slice(0, 400).toLowerCase();
+      const titleWords = firstLines.match(/[a-záàâãéèêíïóôõöúçñ]{3,}/gi) || [];
       const relevantWords = titleWords.filter(w => !['protocolo', 'adulto', 'pediatrico', 'condicoes', 'clinicas', 'necessidade', 'encaminhamento', 'servico', 'urgencia'].includes(w));
 
       let score = 0;
+
+      // 1. Super bônus para condição/motivo específico digitado pelo médico
+      for (const dw of directWords) {
+        if (['investigacao', 'suspeita', 'quadro', 'caso', 'para', 'com'].includes(dw)) continue;
+        if (firstLines.includes(dw)) {
+          score += 30; // Prioridade máxima absoluta na busca direta!
+        }
+      }
+
+      // 2. Pontuação adicional com base nos dados clínicos gerais da consulta
       for (const w of relevantWords) {
         if (normCase.includes(w)) {
           score += 2;
         }
       }
+
       if (score > 0 && /conte[úu]do\s+descritivo\s+m[íi]nimo/i.test(chunk)) {
         score += 5;
       }
+
       if (score > 0) {
         matchingChunks.push({ chunk, score });
       }
@@ -4422,6 +4437,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     const specialtySelect = document.getElementById('referralSpecialtySelect');
     const customSpecialty = document.getElementById('referralCustomSpecialty');
+    const conditionInput = document.getElementById('referralConditionInput');
     const extraDataInput = document.getElementById('referralExtraDataInput');
     const btnGenerate = document.getElementById('btnGenerateReferral');
 
@@ -4430,6 +4446,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const customVal = (customSpecialty && customSpecialty.value.trim()) || '';
     const selectVal = (specialtySelect && specialtySelect.value.trim()) || '';
     const especialidade = customVal || selectVal || 'Especialidade Médica';
+    const motivoEncaminhamento = (conditionInput && conditionInput.value.trim()) || '';
     const dadosExtrasRegulacao = extraDataInput ? extraDataInput.value.trim() : '';
 
     if (btnGenerate) {
@@ -4449,17 +4466,20 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
 
       if (btnGenerate) {
-        btnGenerate.textContent = '⏳ Enquadrando caso no protocolo e checando pendências...';
+        btnGenerate.textContent = motivoEncaminhamento
+          ? `⏳ Buscando protocolo direto de "${motivoEncaminhamento}"...`
+          : '⏳ Enquadrando caso no protocolo e checando pendências...';
       }
 
-      const caseEvidence = `${especialidade}\n${dadosExtrasRegulacao}\n${currentEvolutionText}\n${consult.quickNotes || ''}`;
-      const targetedProtocol = extractRelevantProtocolSection(telessaudeProtocol?.conteudo_extraido || '', caseEvidence);
+      const caseEvidence = `${especialidade}\n${motivoEncaminhamento}\n${dadosExtrasRegulacao}\n${currentEvolutionText}\n${consult.quickNotes || ''}`;
+      const targetedProtocol = extractRelevantProtocolSection(telessaudeProtocol?.conteudo_extraido || '', caseEvidence, motivoEncaminhamento);
 
       const prompt = window.buildReferralPrompt({
         templateId: consult.templateId,
         templateName: consult.templateName,
         evolucaoTexto: currentEvolutionText,
         especialidade,
+        motivoEncaminhamento,
         dadosExtrasRegulacao,
         quickNotes: consult.quickNotes,
         telessaudeProtocolText: targetedProtocol
@@ -5240,6 +5260,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     // Limpa completamente os campos de encaminhamento ao abrir qualquer atendimento (evita contaminação entre pacientes)
     const customSpec = document.getElementById('referralCustomSpecialty');
     if (customSpec) customSpec.value = '';
+
+    const conditionInput = document.getElementById('referralConditionInput');
+    if (conditionInput) conditionInput.value = '';
 
     const extraDataInput = document.getElementById('referralExtraDataInput');
     if (extraDataInput) extraDataInput.value = '';

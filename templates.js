@@ -1114,6 +1114,7 @@ window.buildReferralPrompt = function({
   templateName,
   evolucaoTexto,
   especialidade,
+  motivoEncaminhamento,
   dadosExtrasRegulacao,
   quickNotes,
   telessaudeProtocolText
@@ -1123,14 +1124,18 @@ window.buildReferralPrompt = function({
     ? `\n=== DIRETRIZES OFICIAIS DO PROTOCOLO TELESSAÚDERS (${especialidade.toUpperCase()}) ===\n${telessaudeProtocolText.slice(0, 50000)}\n=== FIM DO PROTOCOLO TELESSAÚDERS ===\n`
     : '';
 
+  const motivoHeader = (motivoEncaminhamento && motivoEncaminhamento.trim())
+    ? `\n- MOTIVO ESPECÍFICO / CONDIÇÃO INDICADA PELO MÉDICO: "${motivoEncaminhamento.trim()}" (BUSCA DIRETA NO PROTOCOLO)\n`
+    : '';
+
   return `Você é um Médico Regulador experiente e Médico de Família da APS especialista nos Protocolos de Regulação Ambulatorial do TelessaúdeRS / RegulaSUS (SES-RS / GERCON / SISREG).
 
 Sua missão é gerar uma solicitação médica de encaminhamento com enquadramento oficial no protocolo do TelessaúdeRS para a especialidade solicitada: "${especialidade}".
 
 === CONTEXTO DA CONSULTA NA UBS ===
 - Tipo de Atendimento: ${templateName || 'Consulta APS'} (${templateId || 'geral'})
-- Especialidade Solicitada: ${especialidade}
-- Dados Extras / Tratamentos Prévios Informados: ${dadosExtrasRegulacao || 'Vide evolução clínica'}
+- Especialidade Solicitada: ${especialidade}${motivoHeader}
+- Tratamentos Prévios na APS / Dados Adicionais Informados: ${dadosExtrasRegulacao || 'Vide evolução clínica'}
 - Notas Rápidas: ${quickNotes || 'Nenhuma'}
 ${protocolBlock}
 === EVOLUÇÃO CLÍNICA COMPLETA DO PACIENTE ===
@@ -1139,7 +1144,7 @@ ${evolucaoTexto}
 === REGRAS MANDATÓRIAS (SIGA COM MÁXIMA RIGIDEZ MÉDICA) ===
 
 1. ENQUADRAMENTO CLÍNICO NO PROTOCOLO TELESSAÚDERS:
-   - Identifique no protocolo do TelessaúdeRS para ${especialidade} (ou em seu conhecimento médico aprofundado dos protocolos RegulaSUS/TelessaúdeRS) qual é a patologia ou condição clínica específica do paciente (exemplo: "Protocolo 5 – Patologias de mão e punho: Síndrome do túnel do carpo", "Protocolo 4 – Miomatose uterina", "Protocolo 1 – Hipertensão Arterial Sistêmica Resistente", "Protocolo 7 – Dor no joelho: Gonartrose", etc.).
+   - ${motivoEncaminhamento ? `O médico assistente indicou expressamente o motivo do encaminhamento: "${motivoEncaminhamento}". Busque e enquadre o caso DIRETAMENTE no capítulo/protocolo do TelessaúdeRS correspondente a "${motivoEncaminhamento}" (exemplo: Protocolo 2 – Insuficiência Cardíaca, Protocolo 5 – Patologias de mão e punho, etc.).` : `Identifique no protocolo do TelessaúdeRS para ${especialidade} (ou em seu conhecimento médico aprofundado dos protocolos RegulaSUS/TelessaúdeRS) qual é a patologia ou condição clínica específica do paciente.`}
    - Indique em 1 linha o critério clínico específico do protocolo no qual o paciente se enquadra.
 
 2. FILTRO ESTRITO DE RELEVÂNCIA CLÍNICA COM PRESERVAÇÃO INTEGRAL DE DADOS FARMACOLÓGICOS E LABORATORIAIS:
