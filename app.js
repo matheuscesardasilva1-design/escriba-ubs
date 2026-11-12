@@ -235,6 +235,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
+    initTheme();
     loadCustomOrDefaultTemplates();
     loadDailyTokenStats();
     renderTemplateSelector();
@@ -261,6 +262,42 @@
       } catch (_) {}
     }, 3600 * 1000);
   });
+
+  // --- MODO ESCURO (DARK MODE) SELECIONÁVEL PELO USUÁRIO ---
+  function initTheme() {
+    const saved = localStorage.getItem('ubs_theme') || 'light';
+    applyTheme(saved);
+
+    const btn = document.getElementById('btnToggleDarkMode');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.contains('dark-mode');
+        const next = isDark ? 'light' : 'dark';
+        try {
+          localStorage.setItem('ubs_theme', next);
+        } catch (_) {}
+        applyTheme(next);
+        showToast(next === 'dark' ? '🌙 Modo Escuro ativado!' : '☀️ Modo Claro ativado!');
+      });
+    }
+  }
+
+  function applyTheme(theme) {
+    const btn = document.getElementById('btnToggleDarkMode');
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark-mode');
+      if (btn) {
+        btn.innerHTML = '☀️ Modo Claro';
+        btn.title = 'Alternar para Modo Claro';
+      }
+    } else {
+      document.documentElement.classList.remove('dark-mode');
+      if (btn) {
+        btn.innerHTML = '🌙 Modo Escuro';
+        btn.title = 'Alternar para Modo Escuro';
+      }
+    }
+  }
 
   function loadCustomOrDefaultTemplates() {
     const saved = localStorage.getItem('ubs_custom_templates_v10');
@@ -696,6 +733,14 @@
 
     const activeTpl = state.templates[state.selectedTemplateId] || Object.values(state.templates)[0];
 
+    // Se o modelo selecionado for Pré-Natal, o sexo do paciente é sempre Feminino (F)
+    if (state.selectedTemplateId === 'prenatal') {
+      const sexSelect = document.getElementById('patientSexSelect');
+      if (sexSelect && sexSelect.value !== 'F') {
+        sexSelect.value = 'F';
+      }
+    }
+
     // Se o médico já selecionou o tipo de consulta ou já está gravando, esconde os outros tipos e a pergunta "Qual atendimento você vai realizar?"
     if (state.templateLocked || state.isRecording) {
       if (promptHeader) promptHeader.style.display = 'none';
@@ -739,6 +784,10 @@
       btn.addEventListener('click', () => {
         state.selectedTemplateId = tpl.id;
         state.templateLocked = true;
+        if (tpl.id === 'prenatal') {
+          const sexSelect = document.getElementById('patientSexSelect');
+          if (sexSelect) sexSelect.value = 'F';
+        }
         renderTemplateSelector();
         togglePuericulturaZScorePanel();
         showToast(`📋 Formato selecionado: ${tpl.name}`);
@@ -915,7 +964,14 @@
     const sexSelect = document.getElementById('patientSexSelect');
     const rawAge = ageInput ? parseInt(ageInput.value, 10) : NaN;
     const age = (!isNaN(rawAge) && rawAge >= 1 && rawAge <= 125) ? String(rawAge) : '';
-    const rawSex = sexSelect ? sexSelect.value.trim().toUpperCase() : '';
+    let rawSex = sexSelect ? sexSelect.value.trim().toUpperCase() : '';
+    // No Pré-Natal o sexo é obrigatoriamente Feminino (F)
+    if (state.selectedTemplateId === 'prenatal') {
+      rawSex = 'F';
+      if (sexSelect && sexSelect.value !== 'F') {
+        sexSelect.value = 'F';
+      }
+    }
     const sex = (rawSex === 'M' || rawSex === 'F') ? rawSex : '';
     return { age, sex };
   }
@@ -2263,7 +2319,9 @@
     // =========================================================================
     const hasPreTranscribedDialogue = Boolean(verbatimTranscript && verbatimTranscript.length >= 15);
     const consultPatientAge = consultation.patientAge || getCurrentPatientAgeAndSex().age || '';
-    const consultPatientSex = consultation.patientSex || getCurrentPatientAgeAndSex().sex || '';
+    const consultPatientSex = (consultation.templateId === 'prenatal' || state.selectedTemplateId === 'prenatal')
+      ? 'F'
+      : (consultation.patientSex || getCurrentPatientAgeAndSex().sex || '');
     const promptText = window.buildMedicalEvolutionPrompt(
       tpl,
       consultation.quickNotes,
@@ -2669,17 +2727,20 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    // 7. PLANO: Ações futuras planejadas para próximas consultas, sem numeração
+    // 7. PLANO: Ações futuras planejadas para próximas consultas, sem numeração e sem texto genérico
     let mergedPlano = prevSections.plano || '';
+    const isPlanBoilerplate = (str) => /seguimento ambulatorial na aps|sem pend[êe]ncias|nenhuma a[çc][ãa]o/i.test(str || '');
+    if (isPlanBoilerplate(mergedPlano)) mergedPlano = '';
     if (newSections.plano) {
       const prevNorm = normalizeCompare(mergedPlano);
       const newPlanLines = (newSections.plano.split('\n') || [])
         .map(l => l.trim().replace(/^\s*(?:\d+[\.\)]|-)\s*/, ''))
-        .filter(l => l.length > 5 && !prevNorm.includes(normalizeCompare(l)));
+        .filter(l => l.length > 5 && !prevNorm.includes(normalizeCompare(l)) && !isPlanBoilerplate(l));
       if (newPlanLines.length > 0) {
         mergedPlano += (mergedPlano ? '\n' : '') + newPlanLines.join('\n');
       }
     }
+    if (isPlanBoilerplate(mergedPlano)) mergedPlano = '';
 
     let result = '';
     if (mergedHeader) result += `${mergedHeader}\n\n\n`;
@@ -3949,7 +4010,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       .replace(/^(?:\d+[\.\-\)]\s*)?A\s*[:\-]\s*/gim, 'AVALIAÇÃO\n')
       .replace(/^(?:\d+[\.\-\)]\s*)?HIP[ÓO]TESE(?:S)?(?:\s+DIAGN[ÓO]STICA[S]?)?\s*[:\-]?\s*$/gim, 'AVALIAÇÃO')
       .replace(/^(?:\d+[\.\-\)]\s*)?(?:P|CD)\s*[:\-]\s*/gim, 'CONDUTA\n')
-      .replace(/^(?:\d+[\.\-\)]\s*)?PLANO(?:\s+TERAP[ÊE]UTICO)?\s*[:\-]?\s*$/gim, 'CONDUTA');
+      .replace(/^(?:\d+[\.\-\)]\s*)?PLANO\s+TERAP[ÊE]UTICO\s*[:\-]?\s*$/gim, 'CONDUTA');
 
     // 1.3 Se for Consulta Geral (SOAP) e faltar os campos # Alergias: ou # Tabagista: no cabeçalho, garante sua estrutura
     if (templateId === 'geral' && /SUBJETIVO\b/i.test(text)) {
@@ -4068,6 +4129,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
 
     let spacedText = cleanedLines.join('\n').trim();
+
+    // Remove boilerplate genérico ou clichê da seção PLANO (ex: Seguimento ambulatorial na APS conforme necessidade clínica)
+    spacedText = spacedText
+      .replace(/\n+PLANO\s*\n+(?:Seguimento ambulatorial na APS(?: conforme necessidade cl[íi]nica)?\.?|Sem pend[êe]ncias(?: futuras)?\.?|Nenhuma a[çc][ãa]o futura espec[íi]fica\.?)\s*(?=\n\n|\n*$)/gi, '')
+      .replace(/\n+PLANO\s*(?=\n\n|$)/gi, '');
 
     // Garante espaçamento visual nítido (linha em branco visível) entre os grandes blocos para que, ao colar no PEC / e-SUS, as seções não fiquem coladas umas nas outras
     spacedText = spacedText
@@ -7179,6 +7245,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       if (newTplId === 'interconsulta') {
         const interSelect = document.getElementById('modalChangeInterconsultaSubtype');
         if (interSelect) c.soapSubtypeHeader = interSelect.value;
+      }
+      if (newTplId === 'prenatal') {
+        c.patientSex = 'F';
       }
       await window.ScribeDB.saveConsultation(c);
       await refreshQueueSidebar();

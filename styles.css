@@ -1007,3 +1007,358 @@ body {
   opacity: 1;
   transform: translateY(0);
 }
+
+/* ============================================================================
+   MODO ESCURO (DARK MODE) SELECIONÁVEL PELO MÉDICO
+   ============================================================================ */
+html.dark-mode {
+  --bg-page: #0b0f19;
+  --bg-card: #131b2c;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --border: #27354a;
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-soft: rgba(99, 102, 241, 0.18);
+  --teal: #14b8a6;
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.15);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.15);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.18);
+  color-scheme: dark;
+}
+
+html.dark-mode body {
+  background-color: var(--bg-page);
+  color: var(--text-main);
+}
+
+/* Topbar & Navegação */
+html.dark-mode .topbar {
+  background: #0f172a;
+  border-bottom-color: #1e293b;
+}
+
+html.dark-mode .brand-title {
+  color: #f8fafc;
+}
+
+html.dark-mode .btn-top {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+html.dark-mode .btn-top:hover {
+  background: #334155;
+  color: #ffffff;
+}
+
+html.dark-mode .quota-pill {
+  background: #131d2e;
+  border-color: #27354a;
+}
+
+html.dark-mode .nav-tab {
+  color: #94a3b8;
+}
+
+html.dark-mode .nav-tab:hover {
+  color: #f8fafc;
+}
+
+html.dark-mode .nav-tab.active {
+  background: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+/* Tela 1: Novo Atendimento */
+html.dark-mode .center-header h2 {
+  color: #f8fafc;
+}
+
+html.dark-mode .center-header p {
+  color: #94a3b8;
+}
+
+html.dark-mode .template-card {
+  background: #131b2c;
+  border-color: #27354a;
+}
+
+html.dark-mode .template-card:hover {
+  background: #1a243a;
+  border-color: #6366f1;
+}
+
+html.dark-mode .template-card.active {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: #818cf8;
+}
+
+html.dark-mode .tpl-icon-box {
+  background: #1e293b;
+}
+
+html.dark-mode .template-card.active .tpl-icon-box {
+  background: #312e81;
+}
+
+html.dark-mode .tpl-name {
+  color: #f8fafc;
+}
+
+html.dark-mode .tpl-sub {
+  color: #94a3b8;
+}
+
+html.dark-mode #selectedTemplateCompactBar {
+  background: #131b2c !important;
+  border-color: #27354a !important;
+}
+
+html.dark-mode .recorder-box {
+  background: #131b2c;
+  border-color: #27354a;
+}
+
+/* Campos de Texto, Seleção e Textareas */
+html.dark-mode .input-text,
+html.dark-mode .select-box,
+html.dark-mode .textarea-box {
+  background: #090e17 !important;
+  color: #f8fafc !important;
+  border-color: #2d3b4f !important;
+}
+
+html.dark-mode .input-text::placeholder,
+html.dark-mode .textarea-box::placeholder {
+  color: #64748b;
+}
+
+html.dark-mode .input-text:focus,
+html.dark-mode .select-box:focus,
+html.dark-mode .textarea-box:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
+}
+
+html.dark-mode .btn-secondary {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+html.dark-mode .btn-secondary:hover {
+  background: #334155;
+}
+
+/* Tela 2: Histórico */
+html.dark-mode .history-filters-grid {
+  background: #131b2c;
+  border-color: #27354a;
+}
+
+html.dark-mode .history-header-bar h2 {
+  color: #f8fafc;
+}
+
+html.dark-mode .history-card {
+  background: #131b2c;
+  border-color: #27354a;
+}
+
+html.dark-mode .history-card:hover {
+  background: #182236;
+  border-color: #6366f1;
+}
+
+html.dark-mode .h-patient-name {
+  color: #f8fafc;
+}
+
+html.dark-mode .h-tpl-tag {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+html.dark-mode .h-snippet {
+  color: #94a3b8;
+}
+
+html.dark-mode .h-doc-icon {
+  background: rgba(99, 102, 241, 0.2);
+  color: #818cf8;
+}
+
+html.dark-mode .date-group-header {
+  color: #64748b;
+}
+
+html.dark-mode .date-group-header::after {
+  background: #27354a;
+}
+
+/* Modais e Detalhe do Atendimento (Prontuário Aberto) */
+html.dark-mode .patient-modal-sheet,
+html.dark-mode .modal-card {
+  background: #111827 !important;
+  border: 1px solid #27354a;
+  color: #f8fafc;
+}
+
+html.dark-mode .sheet-top-bar,
+html.dark-mode .modal-header {
+  background: #111827 !important;
+  border-bottom-color: #27354a !important;
+}
+
+html.dark-mode .btn-close-x {
+  background: #1f293d;
+  color: #f8fafc;
+  border-color: #374151;
+}
+
+html.dark-mode .btn-close-x:hover {
+  background: #374151;
+}
+
+html.dark-mode .evolution-editor {
+  background: #090e17 !important;
+  color: #f8fafc !important;
+  border-color: #2d3b4f !important;
+}
+
+html.dark-mode .copy-toolbar .btn {
+  background: #1e293b;
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+html.dark-mode .copy-toolbar .btn:hover {
+  background: #334155;
+  color: #ffffff;
+}
+
+/* Seção de Encaminhamentos Telessaúde / Regulação */
+html.dark-mode .referral-section {
+  background: #151124;
+  border-color: #581c87;
+}
+
+html.dark-mode .referral-header-toggle strong {
+  color: #d8b4fe !important;
+}
+
+html.dark-mode .saved-ref-item {
+  background: #1c1533;
+  border-color: #6b21a8;
+  color: #f3e8ff;
+}
+
+html.dark-mode .saved-ref-item.active {
+  background: #3b0764;
+  border-color: #c084fc;
+}
+
+html.dark-mode #referralOutputContainer {
+  background: #130f24 !important;
+  border-color: #7c3aed !important;
+}
+
+html.dark-mode .referral-editor {
+  background: #090e17 !important;
+  color: #f8fafc !important;
+  border-color: #6b21a8 !important;
+}
+
+/* Caixas de Alerta, Passos e Notificações */
+html.dark-mode .step-box {
+  background: #0d1424;
+  border-color: #27354a;
+  color: #cbd5e1;
+}
+
+html.dark-mode .audit-box {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fde68a;
+}
+
+html.dark-mode .audit-tag {
+  background: #451a03;
+  border-color: #b45309;
+  color: #fef3c7;
+}
+
+html.dark-mode .error-banner {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+/* Painéis de Puericultura e Pré-natal */
+html.dark-mode #puericulturaZScorePanel,
+html.dark-mode #prenatalCalcPanel {
+  background: #131b2c !important;
+  border-color: #27354a !important;
+}
+
+html.dark-mode #puericulturaZScorePanel div[style*="background: #ffffff"],
+html.dark-mode #prenatalCalcPanel div[style*="background: #ffffff"] {
+  background: #0f172a !important;
+  border-color: #27354a !important;
+}
+
+html.dark-mode #pnCalcPreviewResult {
+  background: #2a121d !important;
+  border-color: #db2777 !important;
+  color: #fbcfe8 !important;
+}
+
+html.dark-mode #vdSpecificBox {
+  background: #2a1f0a !important;
+  border-color: #b45309 !important;
+  color: #fde68a !important;
+}
+
+/* Transcrição de Exames e Banners de Processamento */
+html.dark-mode #liveExamTranscriptionBox {
+  background: #0f172a !important;
+  border-color: #27354a !important;
+}
+
+html.dark-mode #liveExamCalculatedSummary {
+  background: #090e17 !important;
+  border-color: #27354a !important;
+  color: #f8fafc !important;
+}
+
+html.dark-mode #liveProcessingBanner {
+  background: #0f172a !important;
+  border-color: #27354a !important;
+  color: #f8fafc !important;
+}
+
+html.dark-mode table {
+  color: #f8fafc;
+}
+
+html.dark-mode th {
+  background: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+html.dark-mode td {
+  border-color: #1e293b;
+}
+
+html.dark-mode code,
+html.dark-mode pre {
+  background: #090e17;
+  color: #38bdf8;
+  border: 1px solid #1e293b;
+}

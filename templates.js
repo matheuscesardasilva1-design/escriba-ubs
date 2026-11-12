@@ -790,6 +790,7 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
   const notesExamDetection = window.detectExamsInText(quickNotes);
   const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
   const isPrenatalTemplate = templateObj.id === 'prenatal';
+  const effectivePatientSex = isPrenatalTemplate ? 'F' : (patientSex || '');
   const isTelessaudeTemplate = templateObj.id === 'telessaude';
   const isVdTemplate = templateObj.id === 'visita_domiciliar';
   const hasAnyExamsToFormat = Boolean(
@@ -966,7 +967,7 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * Se já existir uma linha "- LABS DD/MM/AAAA:" para aquela mesma data, unifique tudo em UMA ÚNICA linha para aquela data (JAMAIS repita duas linhas "- LABS 29/08/2026:" na mesma evolução!).
      * É TERMINANTEMENTE PROIBIDO escrever "Hemograma (Eritrócitos: ... | HCM: ... | CHCM: ... | RDW: ... | VPM: ...)", "Glicemia estimada média", "Colesterol Não-HDL" ou "Relação Colesterol Total/HDL"!
      * CÁLCULO AUTOMÁTICO DE TFG (CKD-EPI 2021) E CLASSIFICAÇÃO KDIGO (G1 A G5):
-       - Dados de idade/sexo informados manualmente pelo médico: Idade = "${patientAge || 'não informada manualmente'}", Sexo = "${patientSex || 'não informado manualmente'}".
+       - Dados de idade/sexo informados manualmente pelo médico: Idade = "${patientAge || 'não informada manualmente'}", Sexo = "${effectivePatientSex || 'não informado manualmente'}".
        - Sempre que houver Creatinina ("Creat"), verifique a idade (no campo manual acima ou impressa no cabeçalho do PDF/laudo) e o sexo (no campo manual acima ou impresso no PDF/laudo).
        - Se e SOMENTE SE você tiver CERTEZA ABSOLUTA tanto da idade (>= 18 anos) quanto do sexo (M ou F), calcule a TFG pela fórmula CKD-EPI 2021 e sua classificação (G1 >=90, G2 60-89, G3a 45-59, G3b 30-44, G4 15-29, G5 <15) e escreva logo após a Creatinina exatamente neste formato: "Creat X,XX | TFG XX (CKD-EPI GX, [idade]a, [M ou F])" (sem repetir "- tfg XX" depois!).
        - Se faltar idade ou sexo ou se não tiver certeza absoluta, NÃO CALCULE A TFG e NÃO INVENTE DADOS (escreva apenas "Creat X,XX")!
@@ -1005,15 +1006,17 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
 
-7. REGRA OBRIGATÓRIA DA SEÇÃO PLANO (LOGO APÓS A CONDUTA EM TODOS OS MODELOS):
-   - A seção PLANO deve vir obrigatoriamente logo após a CONDUTA em todos os atendimentos clínicos estruturados.
+7. REGRA DA SEÇÃO PLANO (LOGO APÓS A CONDUTA EM TODOS OS MODELOS):
+   - A seção PLANO deve vir logo após a CONDUTA em todos os atendimentos clínicos estruturados sempre que houver ações, exames ou metas futuras.
    - O que entra no PLANO:
      * Ações, pedidos de exames ou encaminhamentos programados para PRÓXIMAS CONSULTAS (ex: "Na próxima consulta, solicitar perfil lipídico e glicemia de jejum", "Avaliar encaminhamento para Oftalmologia no retorno se mantiver queixa visual").
-     * Metas terapêuticas e prazos de seguimento ambulatorial.
-     * Se nenhuma ação futura específica foi verbalizada pelo médico na consulta, coloque: "Seguimento ambulatorial na APS conforme necessidade clínica."
-   - Cada item do PLANO também deve vir em sua própria linha separada, sem numeração.
+     * Metas terapêuticas e prazos futuros específicos quando expressos na consulta.
+   - REGRA ESTRITA DE OMISSÃO: É TERMINANTEMENTE PROIBIDO colocar frases genéricas, placeholders ou clichês no PLANO (como "Seguimento ambulatorial na APS conforme necessidade clínica", "Sem pendências", "Acompanhamento ambulatorial", etc.)! Se nenhuma ação futura específica, exame futuro ou encaminhamento futuro foi verbalizado pelo médico para as próximas consultas, NÃO invente texto e NÃO crie a seção PLANO (deixe-a vazia ou omita-a).
+   - Cada item do PLANO que existir deve vir em sua própria linha separada, sem numeração.
 
 8. REGRAS ESPECÍFICAS DE TELESSAÚDE, INTERCONSULTA, PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
+   - No PRÉ-NATAL (OBSTETRÍCIA):
+     * A paciente é SEMPRE do sexo Feminino (F).
    - Na INTERCONSULTA COM A ENFERMAGEM:
      * ${soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader) ? `O médico selecionou a VERSÃO RESUMIDA:
        NÃO gere cabeçalho '#', NÃO inclua MUC nem patologias prévias, e NÃO divida em blocos de SUBJETIVO, OBJETIVO, AVALIAÇÃO e CONDUTA.

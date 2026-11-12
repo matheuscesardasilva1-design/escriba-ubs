@@ -5,7 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261104_34" />
+  <link rel="stylesheet" href="styles.css?v=20261111_35" />
+  <script>
+    try {
+      if (localStorage.getItem('ubs_theme') === 'dark') {
+        document.documentElement.classList.add('dark-mode');
+      }
+    } catch (e) {}
+  </script>
 </head>
 <body>
 
@@ -27,6 +34,9 @@
     </nav>
 
     <div class="topbar-right">
+      <button type="button" class="btn-top" id="btnToggleDarkMode" title="Alternar Modo Escuro / Claro">
+        🌙 Modo Escuro
+      </button>
       <span class="quota-pill" id="btnOpenQuotaMonitor" style="cursor: pointer;" title="Clique para abrir o Mostrador de Limites, Uso e Saldo Disponível de cada Chave API">
         <strong id="dailyTokenCounter" style="color: #059669;">🟢 Sistema Pronto (0 hoje)</strong>
       </span>
