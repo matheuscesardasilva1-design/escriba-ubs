@@ -1021,7 +1021,21 @@ AVALIAÇÃO ANTERIOR:
 ${parsedPrev.avaliacaoText || 'Não informada.'}
 CONDUTA ANTERIOR:
 ${parsedPrev.condutaText || 'Não informada.'}
-` : ''}${previousEvolutionContext ? `\n10. COMPLEMENTAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (CONTINUAÇÃO DE GRAVAÇÃO):\n   - Integre as novas informações faladas neste áudio com a 1ª parte já transcrita deste mesmo paciente:\n=== EVOLUÇÃO DA 1ª PARTE DESTE MESMO PACIENTE ===\n${previousEvolutionContext}\n` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES NOVOS JÁ TRANSCRITOS HOJE (INCLUA EM ORDEM CRONOLÓGICA SEPARANDO LABS E ULTRASSONOGRAFIA) ===\n${preTranscribedExamsText}\n` : ''}
+` : ''}${previousEvolutionContext ? `
+🚨 REGRA INVIOLÁVEL DE CONTINUAÇÃO DE ATENDIMENTO DO MESMO PACIENTE (PARTE 2 / RETOMADA):
+O médico finalizou/pausou momentaneamente a consulta apenas para gerar um encaminhamento ou receituário e agora gravou a CONTINUAÇÃO deste mesmo atendimento.
+A 1ª PARTE DA EVOLUÇÃO JÁ ESTÁ REVISADA E APROVADA PELO MÉDICO ABAIXO:
+=== EVOLUÇÃO APROVADA DA 1ª PARTE (DEVE SER MANTIDA INTEGRALMENTE) ===
+${previousEvolutionContext}
+=== FIM DA 1ª PARTE ===
+
+DIRETRIZES OBRIGATÓRIAS PARA A CONTINUAÇÃO:
+1. NUNCA REESCREVA, NÃO APAGUE E NÃO RESUMA O QUE JÁ FOI DESCRITO NA 1ª PARTE!
+2. NO SUBJETIVO: Mantenha 100% das frases e histórico da 1ª parte intactos. Se o paciente relatou novas queixas ou detalhes no áudio da continuação, adicione ao final do Subjetivo como um novo parágrafo. Se nada de novo foi relatado pelo paciente, mantenha o Subjetivo EXATAMENTE IGUAL ao da 1ª parte.
+3. NO OBJETIVO: Mantenha o exame físico da 1ª parte 100% idêntico. Adicione apenas se algum novo exame físico foi citado no áudio da continuação.
+4. NA CONDUTA (MÁXIMA PRIORIDADE): Todas as condutas, prescrições, receitas e encaminhamentos da 1ª parte DEVEM SER MANTIDOS na íntegra e na mesma numeração! Adicione as novas orientações, receitas ou recomendações decididas na continuação como NOVOS ITENS NUMERADOS subsequentes ao final da lista (ex: itens 4., 5., etc.). NUNCA substitua ou resuma a conduta da 1ª parte!
+5. CABEÇALHO (# MUC, Alergias, etc.): Conserve exatamente os mesmos blocos já aprovados na 1ª parte.
+` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES NOVOS JÁ TRANSCRITOS HOJE (INCLUA EM ORDEM CRONOLÓGICA SEPARANDO LABS E ULTRASSONOGRAFIA) ===\n${preTranscribedExamsText}\n` : ''}
 === DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO HOJE ${notesExamDetection.hasAny ? `(ATENÇÃO: FORAM DETECTADOS EXAMES ${notesExamDetection.hasLab && notesExamDetection.hasImaging ? 'LABORATORIAIS E DE IMAGEM' : (notesExamDetection.hasLab ? 'LABORATORIAIS' : 'DE IMAGEM')} ABAIXO -> FORMATE-OS OBRIGATORIAMENTE EM "EXAMES COMPLEMENTARES" PARA LABS E "ULTRASSONOGRAFIA" PARA ECO/IMAGEM)` : ''} ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / CÁLCULO OBSTÉTRICO DE HOJE ===\n' + zScoreSummary : ''}

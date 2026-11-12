@@ -63,6 +63,10 @@
     return k ? k.slice(-8) : 'default';
   }
 
+  function normalizeCompare(s) {
+    return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
   function getDisabledModelsForKey(apiKey) {
     try {
       return JSON.parse(localStorage.getItem('ubs_disabled_models_' + getKeyShortHash(apiKey)) || '[]');
@@ -2431,22 +2435,242 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       combinedAuditAlerts.push(...dynamicAlerts);
     }
 
+    // Se este atendimento for uma CONTINUAÇÃO (retomada da gravação do mesmo paciente),
+    // FUSIONA CUMULATIVAMENTE a 1ª parte com a continuação, garantindo que NUNCA apague
+    // Subjetivo, Objetivo ou as Condutas já prescritas na 1ª parte!
+    let finalMergedEvolution = cleanText;
+    if (consultation.previousEvolutionText && consultation.previousEvolutionText.trim().length >= 30) {
+      finalMergedEvolution = mergeContinuedEvolutionText(
+        consultation.previousEvolutionText,
+        cleanText,
+        transcriptCandidate,
+        consultation.templateId
+      );
+    }
+
     return {
-      evolutionText: cleanText,
+      evolutionText: finalMergedEvolution,
       cidCiapCodes: codes,
       rawTranscript: fixBrazilianMedicationSpelling(transcriptCandidate || parsed.transcricao_literal_do_audio || ''),
       soapParts: {
-        subjetivo: extractSectionFromText(cleanText, 'subjetivo'),
-        objetivo: extractSectionFromText(cleanText, 'objetivo'),
-        exames: extractSectionFromText(cleanText, 'exames'),
-        avaliacao: extractSectionFromText(cleanText, 'avaliacao'),
-        conduta: extractSectionFromText(cleanText, 'conduta')
+        subjetivo: extractSectionFromText(finalMergedEvolution, 'subjetivo'),
+        objetivo: extractSectionFromText(finalMergedEvolution, 'objetivo'),
+        exames: extractSectionFromText(finalMergedEvolution, 'exames'),
+        avaliacao: extractSectionFromText(finalMergedEvolution, 'avaliacao'),
+        conduta: extractSectionFromText(finalMergedEvolution, 'conduta')
       },
       auditAlerts: combinedAuditAlerts,
       suggestedSpecialty: parsed.especialidade_sugerida_encaminhamento || '',
       tokensUsed,
       modelUsed: lastModelUsed
     };
+  }
+
+  // Divisão determinística das seções do prontuário para preservação e fusão contínua
+  function splitSoapIntoSections(text) {
+    const sections = {
+      header: '',
+      subjetivo: '',
+      objetivo: '',
+      exames: '',
+      avaliacao: '',
+      conduta: ''
+    };
+
+    const raw = String(text || '').trim();
+    if (!raw) return sections;
+
+    const reSubj = /\n\s*(?:4\.\s*)?SUBJETIVO\b/i;
+    const reObj = /\n\s*(?:5\.|6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\b/i;
+    const reExams = /\n\s*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\b/i;
+    const reEval = /\n\s*(?:7\.|8\.|9\.\s*)?AVALIAÇÃO\b/i;
+    const reCond = /\n\s*(?:10\.\s*)?CONDUTA\b/i;
+
+    const mSubj = raw.match(reSubj);
+    if (mSubj) {
+      sections.header = raw.slice(0, mSubj.index).trim();
+      let rest = raw.slice(mSubj.index);
+
+      const mObj = rest.match(reObj);
+      if (mObj) {
+        sections.subjetivo = rest.slice(0, mObj.index).replace(reSubj, '').trim();
+        rest = rest.slice(mObj.index);
+
+        const mEval = rest.match(reEval);
+        const mExams = rest.match(reExams);
+
+        if (mExams && (!mEval || mExams.index < mEval.index)) {
+          sections.objetivo = rest.slice(0, mExams.index).replace(reObj, '').trim();
+          rest = rest.slice(mExams.index);
+
+          const mEvalAfter = rest.match(reEval);
+          if (mEvalAfter) {
+            sections.exames = rest.slice(0, mEvalAfter.index).trim();
+            rest = rest.slice(mEvalAfter.index);
+          }
+        } else if (mEval) {
+          sections.objetivo = rest.slice(0, mEval.index).replace(reObj, '').trim();
+          rest = rest.slice(mEval.index);
+        }
+
+        const mCond = rest.match(reCond);
+        if (mCond) {
+          sections.avaliacao = rest.slice(0, mCond.index).replace(reEval, '').trim();
+          sections.conduta = rest.slice(mCond.index).replace(reCond, '').trim();
+        } else {
+          sections.avaliacao = rest.replace(reEval, '').trim();
+        }
+      } else {
+        sections.subjetivo = rest.replace(reSubj, '').trim();
+      }
+    } else {
+      sections.header = raw;
+    }
+
+    return sections;
+  }
+
+  // Fusão cumulativa e inteligente da 1ª parte com a continuação da consulta
+  function mergeContinuedEvolutionText(prevEvolution, newEvolution, newTranscript, templateId) {
+    if (!prevEvolution || !prevEvolution.trim()) return newEvolution;
+    if (!newEvolution || !newEvolution.trim()) return prevEvolution;
+
+    const prevSections = splitSoapIntoSections(prevEvolution);
+    const newSections = splitSoapIntoSections(newEvolution);
+
+    if (!prevSections.subjetivo && !prevSections.conduta) {
+      return `${prevEvolution}\n\n--- [CONTINUAÇÃO DO ATENDIMENTO] ---\n${newEvolution}`;
+    }
+
+    // 1. Cabeçalho (# MUC, Alergias, Condições Crônicas):
+    // Preserva 100% o cabeçalho já aprovado da 1ª parte
+    let mergedHeader = prevSections.header || '';
+    if (newSections.header) {
+      const newCondLines = (newSections.header.match(/^#\s+[^\n]+/gm) || []).filter(line => {
+        const norm = normalizeCompare(line.replace(/^#\s+/i, ''));
+        return norm && !normalizeCompare(mergedHeader).includes(norm) && !norm.startsWith('muc') && !norm.startsWith('alergia') && !norm.startsWith('tabag');
+      });
+      if (newCondLines.length > 0 && mergedHeader) {
+        mergedHeader = mergedHeader.replace(/(?=\n*#\s*MUC:|\n*#\s*Tabagista:|\s*$)/i, `\n${newCondLines.join('\n')}`);
+      } else if (!mergedHeader) {
+        mergedHeader = newSections.header;
+      }
+    }
+
+    // 2. SUBJETIVO: Preserva integralmente a história clínica da 1ª parte!
+    let mergedSubjetivo = prevSections.subjetivo || '';
+    if (newSections.subjetivo) {
+      const prevNorm = normalizeCompare(mergedSubjetivo);
+      const newNorm = normalizeCompare(newSections.subjetivo);
+      if (newNorm && !prevNorm.includes(newNorm)) {
+        const newSentences = newSections.subjetivo
+          .split(/(?<=[.!?])\s+|\n+/)
+          .map(s => s.trim())
+          .filter(s => s.length > 15 && !prevNorm.includes(normalizeCompare(s)));
+
+        if (newSentences.length > 0) {
+          mergedSubjetivo += `\n\n[Continuação do Atendimento]: ${newSentences.join(' ')}`;
+        }
+      }
+    } else if (!mergedSubjetivo) {
+      mergedSubjetivo = newSections.subjetivo || '';
+    }
+
+    // 3. OBJETIVO: Preserva integralmente o exame físico da 1ª parte!
+    let mergedObjetivo = prevSections.objetivo || '';
+    if (newSections.objetivo) {
+      const prevNorm = normalizeCompare(mergedObjetivo);
+      const newNorm = normalizeCompare(newSections.objetivo);
+      if (newNorm && !prevNorm.includes(newNorm)) {
+        const newObjLines = newSections.objetivo
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l.length > 5 && !prevNorm.includes(normalizeCompare(l)) && !/sem alterações adicionais|exame mantido/i.test(l));
+        if (newObjLines.length > 0) {
+          mergedObjetivo += `\n${newObjLines.join('\n')}`;
+        }
+      }
+    } else if (!mergedObjetivo) {
+      mergedObjetivo = newSections.objetivo || '';
+    }
+
+    // 4. EXAMES COMPLEMENTARES
+    let mergedExames = prevSections.exames || '';
+    if (newSections.exames) {
+      const prevNorm = normalizeCompare(mergedExames);
+      const newExamLines = newSections.exames
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 5 && !prevNorm.includes(normalizeCompare(l)) && !/^EXAMES COMPLEMENTARES/i.test(l));
+      if (newExamLines.length > 0) {
+        mergedExames += (mergedExames ? '\n' : 'EXAMES COMPLEMENTARES\n') + newExamLines.join('\n');
+      }
+    }
+
+    // 5. AVALIAÇÃO
+    let mergedAvaliacao = prevSections.avaliacao || '';
+    if (newSections.avaliacao) {
+      const prevNorm = normalizeCompare(mergedAvaliacao);
+      const newEvalLines = newSections.avaliacao
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 5 && !prevNorm.includes(normalizeCompare(l)));
+      if (newEvalLines.length > 0) {
+        mergedAvaliacao += (mergedAvaliacao ? '\n' : '') + newEvalLines.join('\n');
+      }
+    }
+
+    // 6. CONDUTA (CRÍTICO: Mantém 100% das prescrições e encaminhamentos da 1ª parte e concatena novas condutas/orientações da continuação)
+    let mergedConduta = prevSections.conduta || '';
+    if (newSections.conduta) {
+      const prevItems = (mergedConduta.split(/\n(?=\s*\d+[\.\)]\s*|-\s+)/) || [])
+        .map(item => item.trim())
+        .filter(Boolean);
+
+      const newItems = (newSections.conduta.split(/\n(?=\s*\d+[\.\)]\s*|-\s+)/) || [])
+        .map(item => item.trim())
+        .filter(Boolean);
+
+      if (prevItems.length === 0) {
+        mergedConduta = newSections.conduta;
+      } else {
+        const prevNorm = normalizeCompare(mergedConduta);
+        const trulyNewItems = [];
+
+        newItems.forEach(newItem => {
+          const itemText = newItem.replace(/^\s*(?:\d+[\.\)]|-)\s*/, '').trim();
+          const itemNorm = normalizeCompare(itemText);
+          if (itemNorm.length >= 8 && !prevNorm.includes(itemNorm)) {
+            trulyNewItems.push(itemText);
+          }
+        });
+
+        if (trulyNewItems.length > 0) {
+          let lastNum = prevItems.length;
+          const matchLastNum = prevItems[prevItems.length - 1].match(/^\s*(\d+)[\.\)]/);
+          if (matchLastNum) {
+            lastNum = parseInt(matchLastNum[1], 10);
+          }
+
+          const appendedLines = trulyNewItems.map(text => {
+            lastNum++;
+            return `${lastNum}. ${text}`;
+          });
+
+          mergedConduta = `${prevItems.join('\n')}\n${appendedLines.join('\n')}`;
+        }
+      }
+    }
+
+    let result = '';
+    if (mergedHeader) result += `${mergedHeader}\n\n`;
+    if (mergedSubjetivo) result += `SUBJETIVO\n${mergedSubjetivo}\n\n`;
+    if (mergedObjetivo) result += `OBJETIVO\n${mergedObjetivo}\n\n`;
+    if (mergedExames) result += `${mergedExames}\n\n`;
+    if (mergedAvaliacao) result += `AVALIAÇÃO\n${mergedAvaliacao}\n\n`;
+    if (mergedConduta) result += `CONDUTA\n${mergedConduta}`;
+
+    return result.trim();
   }
 
   // Auditoria Determinística de Alergias e Tabagismo para atendimentos clínicos estruturados (elimina falsos positivos)
