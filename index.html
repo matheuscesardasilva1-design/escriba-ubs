@@ -109,6 +109,25 @@
       </div>
     </div>
 
+    <!-- PAINEL ESPECÍFICO: INTERCONSULTA COM ENFERMAGEM (COMPLETA OU RESUMIDA) -->
+    <div id="interconsultaSubtypeBox" style="display: none; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 10px 14px; margin-bottom: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="font-weight: 800; font-size: 13px; color: #166534;">
+          🤝 Formato da Interconsulta:
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+          <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #14532d; cursor: pointer;">
+            <input type="radio" name="interconsultaSubtype" value="completa" checked />
+            <span>📋 Versão Completa (com cabeçalho, MUC e divisões SOAP)</span>
+          </label>
+          <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 700; color: #14532d; cursor: pointer;">
+            <input type="radio" name="interconsultaSubtype" value="resumida" />
+            <span>⚡ Versão Resumida (texto corrido para ditado rápido, sem subdivisões)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
     <!-- CARTÃO CENTRAL LIMPO E DISCRETO DE ABERTURA DE FOLHA -->
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
@@ -583,6 +602,15 @@
               <option value="">Sem título ## (Nenhum)</option>
             </select>
           </div>
+
+          <!-- Seletor de Formato da Interconsulta (Completa vs Resumida) -->
+          <div id="modalInterconsultaSubtypeWrapper" style="display: none; align-items: center; gap: 6px;">
+            <label for="modalChangeInterconsultaSubtype" style="font-size: 12px; font-weight: 700; color: #166534;">Formato:</label>
+            <select id="modalChangeInterconsultaSubtype" class="select-box" style="padding: 6px 10px; font-size: 12.5px; font-weight: 700; border-color: #86efac; background: #f0fdf4; color: #14532d; border-radius: 8px;">
+              <option value="completa">📋 Versão Completa (SOAP com MUC)</option>
+              <option value="resumida">⚡ Versão Resumida (Texto corrido)</option>
+            </select>
+          </div>
         </div>
 
         <div style="display: flex; align-items: center; gap: 8px;">
@@ -637,6 +665,9 @@
         </button>
         <button type="button" class="btn btn-secondary btn-copy-section" data-sec="conduta">
           Copiar Conduta
+        </button>
+        <button type="button" class="btn btn-secondary btn-copy-section" data-sec="plano">
+          Copiar Plano
         </button>
         <button type="button" class="btn btn-primary" id="btnConvertVdPendenciesToConduct" style="display: none; background: #0d9488; border-color: #0f766e; font-weight: 800;" title="Transforma todas as pendências pós-visita em ações realizadas na CONDUTA (1ª pessoa) e remove o bloco de pendências">
           ✅ Converter Pendências da VD em Conduta

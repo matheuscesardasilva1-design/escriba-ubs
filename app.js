@@ -749,6 +749,10 @@
   }
 
   function getSelectedSoapSubtypeHeader() {
+    if (state.selectedTemplateId === 'interconsulta') {
+      const selectedInter = document.querySelector('input[name="interconsultaSubtype"]:checked');
+      return selectedInter && selectedInter.value === 'resumida' ? 'resumida' : 'completa';
+    }
     const selectedRadio = document.querySelector('input[name="soapVisitSubtype"]:checked');
     if (!selectedRadio) {
       return ''; // Desmarcado por padrão = Sem título ##
@@ -780,11 +784,15 @@
 
   function togglePuericulturaZScorePanel() {
     const soapPanel = document.getElementById('geralSoapSubtypeBox');
+    const interPanel = document.getElementById('interconsultaSubtypeBox');
     const pueriPanel = document.getElementById('puericulturaZScoreBox');
     const pnPanel = document.getElementById('prenatalObjectiveBox');
     const vdPanel = document.getElementById('vdSpecificBox');
     if (soapPanel) {
       soapPanel.style.display = state.selectedTemplateId === 'geral' ? 'block' : 'none';
+    }
+    if (interPanel) {
+      interPanel.style.display = state.selectedTemplateId === 'interconsulta' ? 'block' : 'none';
     }
     if (pueriPanel) {
       pueriPanel.style.display = state.selectedTemplateId === 'puericultura' ? 'block' : 'none';
@@ -2457,7 +2465,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         objetivo: extractSectionFromText(finalMergedEvolution, 'objetivo'),
         exames: extractSectionFromText(finalMergedEvolution, 'exames'),
         avaliacao: extractSectionFromText(finalMergedEvolution, 'avaliacao'),
-        conduta: extractSectionFromText(finalMergedEvolution, 'conduta')
+        conduta: extractSectionFromText(finalMergedEvolution, 'conduta'),
+        plano: extractSectionFromText(finalMergedEvolution, 'plano')
       },
       auditAlerts: combinedAuditAlerts,
       suggestedSpecialty: parsed.especialidade_sugerida_encaminhamento || '',
@@ -2474,7 +2483,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       objetivo: '',
       exames: '',
       avaliacao: '',
-      conduta: ''
+      conduta: '',
+      plano: ''
     };
 
     const raw = String(text || '').trim();
@@ -2485,6 +2495,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const reExams = /\n\s*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\b/i;
     const reEval = /\n\s*(?:7\.|8\.|9\.\s*)?AVALIAÇÃO\b/i;
     const reCond = /\n\s*(?:10\.\s*)?CONDUTA\b/i;
+    const rePlan = /\n\s*(?:11\.\s*)?PLANO\b/i;
 
     const mSubj = raw.match(reSubj);
     if (mSubj) {
@@ -2516,7 +2527,15 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         const mCond = rest.match(reCond);
         if (mCond) {
           sections.avaliacao = rest.slice(0, mCond.index).replace(reEval, '').trim();
-          sections.conduta = rest.slice(mCond.index).replace(reCond, '').trim();
+          rest = rest.slice(mCond.index);
+
+          const mPlan = rest.match(rePlan);
+          if (mPlan) {
+            sections.conduta = rest.slice(0, mPlan.index).replace(reCond, '').trim();
+            sections.plano = rest.slice(mPlan.index).replace(rePlan, '').trim();
+          } else {
+            sections.conduta = rest.replace(reCond, '').trim();
+          }
         } else {
           sections.avaliacao = rest.replace(reEval, '').trim();
         }
@@ -2539,7 +2558,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const newSections = splitSoapIntoSections(newEvolution);
 
     if (!prevSections.subjetivo && !prevSections.conduta) {
-      return `${prevEvolution}\n\n${newEvolution}`;
+      return `${prevEvolution}\n\n\n${newEvolution}`;
     }
 
     // 1. Cabeçalho (# MUC, Alergias, Condições Crônicas):
@@ -2607,38 +2626,37 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    // 5. AVALIAÇÃO
+    // 5. AVALIAÇÃO: Cada diagnóstico em sua própria linha separada, sem numeração
     let mergedAvaliacao = prevSections.avaliacao || '';
     if (newSections.avaliacao) {
       const prevNorm = normalizeCompare(mergedAvaliacao);
       const newEvalLines = newSections.avaliacao
         .split('\n')
-        .map(l => l.trim())
+        .map(l => l.trim().replace(/^\s*(?:\d+[\.\)]|-)\s*/, ''))
         .filter(l => l.length > 5 && !prevNorm.includes(normalizeCompare(l)));
       if (newEvalLines.length > 0) {
         mergedAvaliacao += (mergedAvaliacao ? '\n' : '') + newEvalLines.join('\n');
       }
     }
 
-    // 6. CONDUTA (CRÍTICO: Mantém 100% das prescrições e encaminhamentos da 1ª parte e concatena novas condutas/orientações da continuação)
+    // 6. CONDUTA: Preserva todas as condutas da 1ª parte e concatena novas da continuação sem numeração
     let mergedConduta = prevSections.conduta || '';
     if (newSections.conduta) {
-      const prevItems = (mergedConduta.split(/\n(?=\s*\d+[\.\)]\s*|-\s+)/) || [])
-        .map(item => item.trim())
+      const prevItems = (mergedConduta.split('\n') || [])
+        .map(item => item.trim().replace(/^\s*(?:\d+[\.\)]|-)\s*/, ''))
         .filter(Boolean);
 
-      const newItems = (newSections.conduta.split(/\n(?=\s*\d+[\.\)]\s*|-\s+)/) || [])
-        .map(item => item.trim())
+      const newItems = (newSections.conduta.split('\n') || [])
+        .map(item => item.trim().replace(/^\s*(?:\d+[\.\)]|-)\s*/, ''))
         .filter(Boolean);
 
       if (prevItems.length === 0) {
-        mergedConduta = newSections.conduta;
+        mergedConduta = newItems.join('\n');
       } else {
         const prevNorm = normalizeCompare(mergedConduta);
         const trulyNewItems = [];
 
-        newItems.forEach(newItem => {
-          const itemText = newItem.replace(/^\s*(?:\d+[\.\)]|-)\s*/, '').trim();
+        newItems.forEach(itemText => {
           const itemNorm = normalizeCompare(itemText);
           if (itemNorm.length >= 8 && !prevNorm.includes(itemNorm)) {
             trulyNewItems.push(itemText);
@@ -2646,29 +2664,31 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         });
 
         if (trulyNewItems.length > 0) {
-          let lastNum = prevItems.length;
-          const matchLastNum = prevItems[prevItems.length - 1].match(/^\s*(\d+)[\.\)]/);
-          if (matchLastNum) {
-            lastNum = parseInt(matchLastNum[1], 10);
-          }
-
-          const appendedLines = trulyNewItems.map(text => {
-            lastNum++;
-            return `${lastNum}. ${text}`;
-          });
-
-          mergedConduta = `${prevItems.join('\n')}\n${appendedLines.join('\n')}`;
+          mergedConduta = `${prevItems.join('\n')}\n${trulyNewItems.join('\n')}`;
         }
       }
     }
 
+    // 7. PLANO: Ações futuras planejadas para próximas consultas, sem numeração
+    let mergedPlano = prevSections.plano || '';
+    if (newSections.plano) {
+      const prevNorm = normalizeCompare(mergedPlano);
+      const newPlanLines = (newSections.plano.split('\n') || [])
+        .map(l => l.trim().replace(/^\s*(?:\d+[\.\)]|-)\s*/, ''))
+        .filter(l => l.length > 5 && !prevNorm.includes(normalizeCompare(l)));
+      if (newPlanLines.length > 0) {
+        mergedPlano += (mergedPlano ? '\n' : '') + newPlanLines.join('\n');
+      }
+    }
+
     let result = '';
-    if (mergedHeader) result += `${mergedHeader}\n\n`;
-    if (mergedSubjetivo) result += `SUBJETIVO\n${mergedSubjetivo}\n\n`;
-    if (mergedObjetivo) result += `OBJETIVO\n${mergedObjetivo}\n\n`;
-    if (mergedExames) result += `${mergedExames}\n\n`;
-    if (mergedAvaliacao) result += `AVALIAÇÃO\n${mergedAvaliacao}\n\n`;
+    if (mergedHeader) result += `${mergedHeader}\n\n\n`;
+    if (mergedSubjetivo) result += `SUBJETIVO\n${mergedSubjetivo}\n\n\n`;
+    if (mergedObjetivo) result += `OBJETIVO\n${mergedObjetivo}\n\n\n`;
+    if (mergedExames) result += `${mergedExames}\n\n\n`;
+    if (mergedAvaliacao) result += `AVALIAÇÃO\n${mergedAvaliacao}\n\n\n`;
     if (mergedConduta) result += `CONDUTA\n${mergedConduta}`;
+    if (mergedPlano) result += `\n\n\nPLANO\n${mergedPlano}`;
 
     return result.trim();
   }
@@ -3982,52 +4002,84 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const hasDetailedAlarmLine = allLines.some(l => /Oriento sinais de alarme\s*\(/i.test(l));
 
     const cleanedLines = [];
+    let currentSectionName = '';
     for (let rawLine of allLines) {
       const trimmed = rawLine.trim();
-      if (/^(?:\d+\.\s*)?(?:AVALIAÇÃO|CONDUTA|>>\s*PENDÊNCIAS)/i.test(trimmed)) {
+      if (/^(?:\d+\.\s*)?(?:AVALIAÇÃO|CONDUTA|PLANO|>>\s*PENDÊNCIAS)/i.test(trimmed)) {
         inAvaliacaoOrConduta = true;
+        currentSectionName = trimmed.toUpperCase();
         cleanedLines.push(rawLine);
         continue;
       }
       if (/^(?:\d+\.\s*)?(?:SUBJETIVO|OBJETIVO|EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA|RASTREAMENTOS|SOROLOGIAS)/i.test(trimmed)) {
         inAvaliacaoOrConduta = false;
+        currentSectionName = '';
       }
       if (inAvaliacaoOrConduta) {
-        rawLine = rawLine.replace(/^\s*-\s+/, '');
-        // Garante que qualquer resquício de narrador de 3ª pessoa ou particípio na conduta vire 1ª pessoa profissional médica
-        rawLine = rawLine
-          .replace(/^(?:O\s+)?M[ée]dico\s+prescreveu\s+/i, 'Prescrevo ')
-          .replace(/^(?:O\s+)?M[ée]dico\s+orientou\s+/i, 'Oriento ')
-          .replace(/^(?:O\s+)?M[ée]dico\s+refor[çc]ou\s+(?:orienta[çc][õo]es\s+sobre\s+)?/i, 'Reforço orientações sobre ')
-          .replace(/^(?:O\s+)?M[ée]dico\s+solicitou\s+/i, 'Solicito ')
-          .replace(/^Realizado\s+encaminhamento\s+/i, 'Encaminho ')
-          .replace(/^Parabenizada\s+(?:a\s+)?(?:m[ãa]e|paciente|familiar)\b/i, 'Parabenizo a mãe')
-          .replace(/^Explicado\s+[àa]\s+(?:m[ãa]e|paciente|familiar)\b/i, 'Explico à mãe')
-          .replace(/^Orientad[ao]s?\s+manuten[çc][ãa]o\b/i, 'Oriento manutenção')
-          .replace(/^Orientad[ao]s?\s+medidas\b/i, 'Oriento medidas')
-          .replace(/^Orientad[ao]s?\s+sobre\b/i, 'Oriento sobre')
-          .replace(/^Reiterad[ao]\s+(?:a\s+)?import[âa]ncia\b/i, 'Reitero a importância')
-          .replace(/^Renovad[ao]\s+receita\b/i, 'Renovo receita')
-          .replace(/^Retorno\s+agendado\b/i, 'Agendo retorno')
-          .replace(/^Agendad[ao]\s+retorno\b/i, 'Agendo retorno');
+        // Remove numeração ("1. ", "2. ", "1) ", etc.) e traços ("- ") para que fique em linhas limpas
+        rawLine = rawLine.replace(/^\s*(?:\d+[\.\)]|-)\s*/, '');
 
-        // Garante que qualquer menção a renovação de MUC na Conduta seja escrita por extenso e nunca como #MUC
-        rawLine = rawLine
-          .replace(/renov(?:o|ada[s]?|ação)?\s+(?:de\s+)?receitas?\s+(?:de\s+uso\s+cont[íi]nuo\s+)?\(?conforme\s+#\s*MUC\)?/gi, 'Renovo medicações de uso contínuo')
-          .replace(/renov(?:o|ada[s]?|ação)?\s+(?:de\s+)?(?:receitas?\s+)?#\s*MUC\b/gi, 'Renovo medicações de uso contínuo')
-          .replace(/\s*\(#\s*MUC\)/gi, '')
-          .replace(/#\s*MUC\b/gi, 'medicações de uso contínuo')
-          .replace(/\(conforme\s+medicações\s+de\s+uso\s+contínuo\)/gi, 'de uso contínuo')
-          .replace(/\(conforme\s+#\s*MUC\)/gi, 'de uso contínuo');
-        // Se já descreveu os sinais de alarme específicos, remove a frase genérica duplicada
-        if (hasDetailedAlarmLine && /^Oriento sinais de alarme e(?:,\s*)? na presença/i.test(rawLine.trim())) {
-          continue;
+        if (/CONDUTA/i.test(currentSectionName)) {
+          // Garante que qualquer resquício de narrador de 3ª pessoa ou particípio na conduta vire 1ª pessoa profissional médica
+          rawLine = rawLine
+            .replace(/^(?:O\s+)?M[ée]dico\s+prescreveu\s+/i, 'Prescrevo ')
+            .replace(/^(?:O\s+)?M[ée]dico\s+orientou\s+/i, 'Oriento ')
+            .replace(/^(?:O\s+)?M[ée]dico\s+refor[çc]ou\s+(?:orienta[çc][õo]es\s+sobre\s+)?/i, 'Reforço orientações sobre ')
+            .replace(/^(?:O\s+)?M[ée]dico\s+solicitou\s+/i, 'Solicito ')
+            .replace(/^Realizado\s+encaminhamento\s+/i, 'Encaminho ')
+            .replace(/^Parabenizada\s+(?:a\s+)?(?:m[ãa]e|paciente|familiar)\b/i, 'Parabenizo a mãe')
+            .replace(/^Explicado\s+[àa]\s+(?:m[ãa]e|paciente|familiar)\b/i, 'Explico à mãe')
+            .replace(/^Orientad[ao]s?\s+manuten[çc][ãa]o\b/i, 'Oriento manutenção')
+            .replace(/^Orientad[ao]s?\s+medidas\b/i, 'Oriento medidas')
+            .replace(/^Orientad[ao]s?\s+sobre\b/i, 'Oriento sobre')
+            .replace(/^Reiterad[ao]\s+(?:a\s+)?import[âa]ncia\b/i, 'Reitero a importância')
+            .replace(/^Renovad[ao]\s+receita\b/i, 'Renovo receita')
+            .replace(/^Retorno\s+agendado\b/i, 'Agendo retorno')
+            .replace(/^Agendad[ao]\s+retorno\b/i, 'Agendo retorno');
+
+          // Garante que qualquer menção a renovação de MUC na Conduta seja escrita por extenso e nunca como #MUC
+          rawLine = rawLine
+            .replace(/renov(?:o|ada[s]?|ação)?\s+(?:de\s+)?receitas?\s+(?:de\s+uso\s+cont[íi]nuo\s+)?\(?conforme\s+#\s*MUC\)?/gi, 'Renovo medicações de uso contínuo')
+            .replace(/renov(?:o|ada[s]?|ação)?\s+(?:de\s+)?(?:receitas?\s+)?#\s*MUC\b/gi, 'Renovo medicações de uso contínuo')
+            .replace(/\s*\(#\s*MUC\)/gi, '')
+            .replace(/#\s*MUC\b/gi, 'medicações de uso contínuo')
+            .replace(/\(conforme\s+medicações\s+de\s+uso\s+contínuo\)/gi, 'de uso contínuo')
+            .replace(/\(conforme\s+#\s*MUC\)/gi, 'de uso contínuo');
+
+          // Se já descreveu os sinais de alarme específicos, remove a frase genérica duplicada
+          if (hasDetailedAlarmLine && /^Oriento sinais de alarme e(?:,\s*)? na presença/i.test(rawLine.trim())) {
+            continue;
+          }
+
+          // Se a IA gerou múltiplas condutas coladas em texto corrido na mesma linha, quebra em linhas individuais!
+          const splitSubActions = rawLine
+            .replace(/(?<=[.!?])\s+(?=(?:Prescrevo|Oriento|Solicito|Encaminho|Renovo|Agendo|Explico|Parabenizo|Mantenho|Reforço|Ciente|Familiar)\b)/gi, '\n')
+            .split('\n')
+            .map(a => a.trim().replace(/^\s*(?:\d+[\.\)]|-)\s*/, ''))
+            .filter(Boolean);
+
+          if (splitSubActions.length > 1) {
+            splitSubActions.forEach(action => cleanedLines.push(action));
+            continue;
+          }
         }
       }
       cleanedLines.push(rawLine);
     }
 
-    return { cleanText: cleanedLines.join('\n').trim(), codes: extractedCodes };
+    let spacedText = cleanedLines.join('\n').trim();
+
+    // Garante espaçamento visual nítido (linha em branco visível) entre os grandes blocos para que, ao colar no PEC / e-SUS, as seções não fiquem coladas umas nas outras
+    spacedText = spacedText
+      .replace(/\n*(SUBJETIVO\b)/gi, '\n\n\n$1')
+      .replace(/\n*(OBJETIVO(?:\s*\(EXAME FÍSICO\))?\b)/gi, '\n\n\n$1')
+      .replace(/\n*(EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA\b)/gi, '\n\n\n$1')
+      .replace(/\n*(AVALIAÇÃO\b)/gi, '\n\n\n$1')
+      .replace(/\n*(CONDUTA\b)/gi, '\n\n\n$1')
+      .replace(/\n*(PLANO\b)/gi, '\n\n\n$1')
+      .replace(/\n*(>>\s*PENDÊNCIAS\b)/gi, '\n\n\n$1');
+
+    return { cleanText: spacedText, codes: extractedCodes };
   }
 
   async function callGeminiLiveWebSocket(requestBody, apiKey, modelName, onStatusUpdate) {
@@ -5381,6 +5433,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const modalTplSelect = document.getElementById('modalChangeConsultationTemplate');
     const modalSoapSubtypeWrap = document.getElementById('modalSoapSubtypeWrapper');
     const modalSoapSubtypeSelect = document.getElementById('modalChangeSoapSubtype');
+    const modalInterWrap = document.getElementById('modalInterconsultaSubtypeWrapper');
+    const modalInterSelect = document.getElementById('modalChangeInterconsultaSubtype');
     if (modalTplSelect) {
       modalTplSelect.value = consult.templateId || 'geral';
       if (modalSoapSubtypeWrap) {
@@ -5388,6 +5442,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
       if (modalSoapSubtypeSelect) {
         modalSoapSubtypeSelect.value = consult.soapSubtypeHeader !== undefined ? consult.soapSubtypeHeader : '## DEMANDA ESPONTÂNEA ##';
+      }
+      if (modalInterWrap) {
+        modalInterWrap.style.display = (consult.templateId === 'interconsulta') ? 'inline-flex' : 'none';
+      }
+      if (modalInterSelect) {
+        modalInterSelect.value = (consult.soapSubtypeHeader && /resumid/i.test(consult.soapSubtypeHeader)) ? 'resumida' : 'completa';
       }
     }
 
@@ -7112,6 +7172,14 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         const soapSelect = document.getElementById('modalChangeSoapSubtype');
         if (soapSelect) c.soapSubtypeHeader = soapSelect.value;
       }
+      const interWrap = document.getElementById('modalInterconsultaSubtypeWrapper');
+      if (interWrap) {
+        interWrap.style.display = (newTplId === 'interconsulta') ? 'inline-flex' : 'none';
+      }
+      if (newTplId === 'interconsulta') {
+        const interSelect = document.getElementById('modalChangeInterconsultaSubtype');
+        if (interSelect) c.soapSubtypeHeader = interSelect.value;
+      }
       await window.ScribeDB.saveConsultation(c);
       await refreshQueueSidebar();
       showToast(`📋 Formato alterado para "${newTpl ? newTpl.name : newTplId}". Clique em "Reprocessar no Formato Escolhido" para gerar a nova evolução.`);
@@ -7126,12 +7194,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       showToast(`Modalidade definida como "${c.soapSubtypeHeader}". Clique em "Reprocessar no Formato Escolhido".`);
     });
 
+    document.getElementById('modalChangeInterconsultaSubtype')?.addEventListener('change', async (e) => {
+      if (!state.activeConsultationId) return;
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (!c) return;
+      c.soapSubtypeHeader = e.target.value;
+      await window.ScribeDB.saveConsultation(c);
+      showToast(`Formato definido como "${e.target.value === 'resumida' ? 'Versão Resumida' : 'Versão Completa'}". Clique em "Reprocessar no Formato Escolhido".`);
+    });
+
     const triggerReprocessCurrent = async () => {
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
       if (c) {
         const tplSelect = document.getElementById('modalChangeConsultationTemplate');
         const soapSelect = document.getElementById('modalChangeSoapSubtype');
+        const interSelect = document.getElementById('modalChangeInterconsultaSubtype');
         if (tplSelect && tplSelect.value) {
           const chosenTpl = state.templates[tplSelect.value] || window.DEFAULT_TEMPLATES[tplSelect.value];
           if (chosenTpl) {
@@ -7142,6 +7220,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         }
         if (c.templateId === 'geral' && soapSelect && soapSelect.value) {
           c.soapSubtypeHeader = soapSelect.value;
+        } else if (c.templateId === 'interconsulta') {
+          c.soapSubtypeHeader = interSelect ? interSelect.value : 'completa';
         }
         c.status = 'queued';
         c.errorMessage = '';
@@ -7407,7 +7487,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       objetivo: /(?:6\.\s*)?OBJETIVO(?:\s*\(EXAME FÍSICO\))?\s*\n([\s\S]*?)(?=\n(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA|7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
       exames: /((?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA)\s*\n[\s\S]*?)(?=\n(?:7\.|9\.|\s*AVALIAÇÃO)|\s*$)/i,
       avaliacao: /(?:9\.\s*)?AVALIAÇÃO[^\n]*\n([\s\S]*?)(?=\n(?:10\.|\s*CONDUTA)|\s*$)/i,
-      conduta: /(?:10\.\s*)?CONDUTA\s*\n([\s\S]*?)$/i
+      conduta: /(?:10\.\s*)?CONDUTA\s*\n([\s\S]*?)(?=\n(?:11\.|\s*PLANO)|\s*$)/i,
+      plano: /(?:11\.\s*)?PLANO\s*\n([\s\S]*?)$/i
     };
     const regex = mapHeaders[sectionKey];
     if (!regex) return fullText;

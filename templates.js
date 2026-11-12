@@ -28,7 +28,9 @@ AVALIAÇÃO
 CONDUTA
 Oriento sinais de alarme e na presença emergência. Ciente. 
 Orientações gerais
-Ciente, concordante e sem dúvidas`
+Ciente, concordante e sem dúvidas
+
+PLANO`
   },
 
   prenatal: {
@@ -78,7 +80,9 @@ Oriento sobre pródromos de TP
 Oriento sinais de alarme e, na presença, procurar atendimento médico imediatamente
 Orientações gerais
 Retorno em X dias com enfermagem ou médico
-Ciente, concordante e sem dúvidas`
+Ciente, concordante e sem dúvidas
+
+PLANO`
   },
 
   puericultura: {
@@ -125,7 +129,9 @@ Parabenizo familiar sobre cuidados de saúde com paciente
 Oriento sobre alimentação/aleitamento, prevenção de quedas, cuidados com paciente, prevenção de IVAS
 Orientações gerais
 Oriento retorno em X meses com enfermagem ou antes via acolhimento para demandas agudas
-Familiar ciente, concordante e sem dúvidas`
+Familiar ciente, concordante e sem dúvidas
+
+PLANO`
   },
 
   visita_domiciliar: {
@@ -161,7 +167,9 @@ Ciente, concordante e sem dúvidas
 Receitas / Troca ou ajuste de medicação: 
 Solicitação de exames: 
 Encaminhamento (Regulação Estadual): 
-Outras pendências da equipe: `
+Outras pendências da equipe: 
+
+PLANO`
   },
 
   interconsulta: {
@@ -190,7 +198,9 @@ CONDUTA
 Caso discutido e conduta alinhada com equipe de Enfermagem
 Oriento sinais de alarme e, na presença destes, procurar atendimento médico / emergência imediatamente
 Orientações gerais
-Ciente, concordante e sem dúvidas`
+Ciente, concordante e sem dúvidas
+
+PLANO`
   },
 
   telessaude: {
@@ -297,7 +307,9 @@ Critérios Clínicos Observados:
 Oriento sobre efeitos esperados, tempo de início das transformações e potenciais riscos/efeitos adversos da THAG
 Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
 Orientações gerais e acolhimento
-Ciente, concordante e sem dúvidas`
+Ciente, concordante e sem dúvidas
+
+11. PLANO`
   },
 
   lgbt_seguimento: {
@@ -387,7 +399,9 @@ Critérios Clínicos Observados:
 Oriento sobre manutenção/ajustes de THAG, adesão e monitoramento laboratorial
 Oriento sinais de alarme (eventos tromboembólicos, alterações visuais, dor torácica, dispneia, cefaleia intensa) e na presença procurar emergência imediatamente. Ciente.
 Orientações gerais e acolhimento
-Ciente, concordante e sem dúvidas`
+Ciente, concordante e sem dúvidas
+
+11. PLANO`
   }
 };
 
@@ -967,25 +981,44 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * Apenas na Consulta de Pré-Natal separe em "EXAMES COMPLEMENTARES" (para "- LABS") e "ULTRASSONOGRAFIA" (para "- US OBSTÉTRICA / MORFOLÓGICA").
    - PROIBIDO ESCREVER "N/R" OU "Não realizado" para exames que não constam no laudo.
 
-5. REGRA ESTRITA DA AVALIAÇÃO (SEM TRAÇOS "-" E SEM CID-10/CIAP-2 NO TEXTO!):
-   - Na seção AVALIAÇÃO da "evolucao_completa", escreva as hipóteses diagnósticas / problemas avaliados na consulta de hoje, sem códigos CID-10/CIAP-2 no texto (os códigos vão apenas no array JSON "codigos_cid_ciap").
+5. REGRA ESTRITA DA AVALIAÇÃO (SEM NUMERAÇÃO E CADA DIAGNÓSTICO EM SUA PRÓPRIA LINHA SEPARADA):
+   - Na seção AVALIAÇÃO, liste cada hipótese diagnóstica / problema clínico avaliado em SUA PRÓPRIA LINHA SEPARADA (com quebra de linha \\n).
+   - É TERMINANTEMENTE PROIBIDO juntar múltiplos diagnósticos em um parágrafo contínuo corrido!
+   - NÃO use numeração ("1.", "2.") nem traços "-". Escreva cada diagnóstico em uma linha limpa.
+   - Não coloque códigos CID-10/CIAP-2 dentro do texto (os códigos vão apenas no array JSON "codigos_cid_ciap").
 
-6. REGRA ESTRITA DA CONDUTA MÉDICA (PRIMEIRA PESSOA VERBAL DO MÉDICO OBRIGATÓRIA + MÁXIMA RIQUEZA DE DETALHES E EXPLICAÇÕES DIDÁTICAS DE LIVRO):
-   - A CONDUTA DEVE SER REDIGIDA OBRIGATORIAMENTE EM PRIMEIRA PESSOA DO SINGULAR DO MÉDICO:
-     * Inicie sempre as frases com verbos de ação na 1ª pessoa: "Prescrevo...", "Oriento...", "Explico...", "Parabenizo...", "Reitero...", "Agendo...", "Renovo receita de...", "Mantenho...", "Encaminho...", "Solicito...".
-     * É TERMINANTEMENTE PROIBIDO usar voz passiva em terceira pessoa / particípio (NUNCA escreva: "Parabenizada a mãe...", "Explicado à mãe...", "Orientada manutenção...", "Orientadas medidas...", "Orientado sobre...", "Reiterada a importância...", "Prescrito...", "Agendado retorno...").
-   - NÃO COLOQUE A CONDUTA EM TÓPICOS NUMERADOS OU COM TRAÇOS (NÃO USE 1., 2., 3., OU "-"):
-     * Escreva em parágrafos e linhas de texto corrido bem descritas, elegantes e fluidas, sem listas numeradas nem tópicos.
-   - PRESERVE 100% DOS DETALHES CLÍNICOS E EXPLICAÇÕES DIDÁTICAS DE LIVRO:
-     * O médico quer a conduta ricamente descrita: mantenha todas as explicações didáticas, fisiologia, justificativas pediátricas/clínicas (ex.: prazos de resolução espontânea, por que evitar dipirona em menores de 6 meses, mecanismo de ação, cuidados de decúbito dorsal, massagens e compressas, dosagens por kg, vacinas do calendário e orientações de acolhimento).
-     * Toda essa riqueza teórica deve estar presente, mas formulada sempre como a voz ativa do MÉDICO orientando e explicando à mãe/paciente ("Explico à mãe...", "Oriento que...").
+6. REGRA ESTRITA DA CONDUTA MÉDICA (PRIMEIRA PESSOA DO MÉDICO + CADA CONDUTA EM SUA PRÓPRIA LINHA SEPARADA, SEM NUMERAÇÃO E NUNCA EM BLOCO CORRIDO):
+   - A CONDUTA deve vir OBRIGATORIAMENTE em 1ª pessoa do singular do médico ("Prescrevo...", "Oriento...", "Solicito...", "Encaminho...", "Renovo...", "Agendo...").
+   - CADA AÇÃO MÉDICA DEVE ESTAR EM SUA PRÓPRIA LINHA SEPARADA (com quebra de linha \\n entre cada ação):
+     * Exemplo:
+       Prescrevo Paracetamol 500mg: tomar 1 comprimido até de 6/6h se dor por 3 dias.
+       Solicito RX de punho e mão direita.
+       Encaminho para Ortopedia via regulação estadual.
+       Oriento repouso relativo e evitar carregar peso.
+       Oriento sinais de alarme e na presença procurar emergência imediatamente.
+       Ciente, concordante e sem dúvidas.
+   - É TERMINANTEMENTE PROIBIDO gerar condutas em bloco corrido contínuo (tudo na mesma linha ou sem quebras de linha)!
+   - NÃO COLOQUE NUMERAÇÃO ("1.", "2.", "3."): escreva cada conduta em sua própria linha separada.
    - PRESCRIÇÕES MÉDICAS COMPLETAS:
      * Toda e qualquer medicação prescrita, ajustada ou renovada deve estar detalhada na CONDUTA com nome oficial brasileiro, dosagem, frequência, posologia e duração.
      * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer de registrar as medicações que o médico prescreveu no consultório!
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
 
-7. REGRAS ESPECÍFICAS DE TELESSAÚDE, PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
+7. REGRA OBRIGATÓRIA DA SEÇÃO PLANO (LOGO APÓS A CONDUTA EM TODOS OS MODELOS):
+   - A seção PLANO deve vir obrigatoriamente logo após a CONDUTA em todos os atendimentos clínicos estruturados.
+   - O que entra no PLANO:
+     * Ações, pedidos de exames ou encaminhamentos programados para PRÓXIMAS CONSULTAS (ex: "Na próxima consulta, solicitar perfil lipídico e glicemia de jejum", "Avaliar encaminhamento para Oftalmologia no retorno se mantiver queixa visual").
+     * Metas terapêuticas e prazos de seguimento ambulatorial.
+     * Se nenhuma ação futura específica foi verbalizada pelo médico na consulta, coloque: "Seguimento ambulatorial na APS conforme necessidade clínica."
+   - Cada item do PLANO também deve vir em sua própria linha separada, sem numeração.
+
+8. REGRAS ESPECÍFICAS DE TELESSAÚDE, INTERCONSULTA, PUERICULTURA, PRÉ-NATAL E VISITA DOMICILIAR:
+   - Na INTERCONSULTA COM A ENFERMAGEM:
+     * ${soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader) ? `O médico selecionou a VERSÃO RESUMIDA:
+       NÃO gere cabeçalho '#', NÃO inclua MUC nem patologias prévias, e NÃO divida em blocos de SUBJETIVO, OBJETIVO, AVALIAÇÃO e CONDUTA.
+       Gere estritamente o título "## INTERCONSULTA COM A ENFERMAGEM ##" seguido de TEXTO CORRIDO DETALHADO E OBJETIVO para ditado rápido, relatando a interconsulta a pedido da enfermagem, dados clínicos, exame direcionado se houver, diagnóstico e as condutas pactuadas alinhadas com a equipe de enfermagem.` : `O médico selecionou a VERSÃO COMPLETA:
+       Siga rigorosamente a estrutura padrão completa com cabeçalho "#", "# MUC:", "# Alergias:", SUBJETIVO, OBJETIVO, AVALIAÇÃO, CONDUTA e PLANO.`}
    - Na DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA):
      * DEIXE EXCLUSIVAMENTE A PARTE DA CONDUTA! É TERMINANTEMENTE PROIBIDO gerar blocos de SUBJETIVO, OBJETIVO ou AVALIAÇÃO e PROIBIDO importar cabeçalho '#' com comorbidades anteriores!
      * A evolução do Telessaúde deve conter estritamente o título "## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##" e a seção "CONDUTA". NADA MAIS!
@@ -996,7 +1029,7 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * NUNCA invente nomes de Enfermeiro(a), ACS ou Familiar/Cuidador e NUNCA invente grau de parentesco! Só preencha se tiver sido dito de forma inequívoca.
      * Preencha ao final o checklist ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
-8. BLINDAGEM CONTRA INTERRUPÇÕES DE ENFERMAGEM E DIFERENCIAÇÃO VOZ DO MÉDICO VS. PACIENTE:
+9. BLINDAGEM CONTRA INTERRUPÇÕES DE ENFERMAGEM E DIFERENCIAÇÃO VOZ DO MÉDICO VS. PACIENTE:
    - ${templateObj.id === 'interconsulta' ? 'Este atendimento é uma Interconsulta com a Enfermagem.' : 'Filtre e descarte qualquer interrupção paralela de terceiros/enfermagem falando de outro paciente.'}
    - Quando o [MÉDICO] estiver explicando alterações de exames para o paciente, JAMAIS escreva no SUBJETIVO que "Paciente refere tal alteração".
 ${parsedPrev && !isTelessaudeTemplate ? `
@@ -1077,6 +1110,10 @@ Oriento medidas dietéticas e comportamentais anti-refluxo (fracionar refeiçõe
 Oriento sinais de alarme e na presença procurar atendimento médico imediato.
 Retorno em 30 dias para reavaliação clínica com enfermagem ou médico.
 Ciente, concordante e sem dúvidas.
+
+PLANO
+Na próxima consulta, solicitar perfil lipídico e glicemia de jejum.
+Avaliar desmame do Omeprazol se remissão completa dos sintomas dispépticos.
 
 === MODELO DE REFERÊNCIA A SER SEGUIDO NESTA CONSULTA ===
 ${effectiveTemplateText}
