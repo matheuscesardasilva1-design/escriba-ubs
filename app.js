@@ -2539,7 +2539,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const newSections = splitSoapIntoSections(newEvolution);
 
     if (!prevSections.subjetivo && !prevSections.conduta) {
-      return `${prevEvolution}\n\n--- [CONTINUAÇÃO DO ATENDIMENTO] ---\n${newEvolution}`;
+      return `${prevEvolution}\n\n${newEvolution}`;
     }
 
     // 1. Cabeçalho (# MUC, Alergias, Condições Crônicas):
@@ -2569,7 +2569,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           .filter(s => s.length > 15 && !prevNorm.includes(normalizeCompare(s)));
 
         if (newSentences.length > 0) {
-          mergedSubjetivo += `\n\n[Continuação do Atendimento]: ${newSentences.join(' ')}`;
+          mergedSubjetivo += `\n\n${newSentences.join(' ')}`;
         }
       }
     } else if (!mergedSubjetivo) {
