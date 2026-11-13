@@ -749,7 +749,7 @@ LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES OU CORTAR
    - Transcreva CADA PALAVRA dita pelo médico, paciente e acompanhante, do primeiro segundo até o encerramento do áudio.
 2. IDENTIFICAÇÃO DOS INTERLOCUTORES (PROIBIDO INVENTAR NOMES PRÓPRIOS OU GRAU DE PARENTESCO!):
    - Inicie cada mudança de fala APENAS com "[MÉDICO]: ", "[PACIENTE]: " ou "[ACOMPANHANTE]: " (uma fala por linha).
-   - É TERMINANTEMENTE PROIBIDO adivinhar, deduzir ou inventar nomes próprios de pessoas (como "Joel", "Maria", nome de enfermeira ou ACS) ou grau de parentesco ("filho", "filha", "esposo") se o nome/parentesco não tiver sido pronunciado com 100% de nitidez!
+   - É TERMINANTEMENTE PROIBIDO adivinhar, deduzir ou inventar nomes próprios de pessoas (como "Joel", "Maria", nome de enfermeira ou ACS), grau de parentesco ("filho", "filha", "esposo") ou nomes de unidades de saúde / bairros / cidades (UBS, ESF, UPA, hospital) se não tiverem sido pronunciados com 100% de nitidez!
 3. CAPTAÇÃO TOTAL DE DETALHES CLÍNICOS, TABAGISMO E ALERGIAS (NÃO DEIXE ESCAPAR NADA!):
    - Transcreva todas as queixas, dores, sintomas, história da doença atual e tempo de evolução relatados pelo(a) paciente (mesmo que a voz do paciente esteja mais baixa ou distante do microfone!).
    - Transcreva obrigatoriamente todas as perguntas e respostas sobre TABAGISMO (se fuma, se é ex-tabagista / já fumou e parou, ou se é tabagista passivo / alguém fuma em casa) e ALERGIAS medicamentosas ou alimentares!
@@ -802,6 +802,8 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
     } else {
       effectiveTemplateText = effectiveTemplateText.replace(/^##\s*VISITA DOMICILIAR[^\n#]*##/im, `## VISITA DOMICILIAR - REGISTRO POSTERIOR ##`);
     }
+  } else if (templateObj.id === 'interconsulta' && soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader)) {
+    effectiveTemplateText = `## INTERCONSULTA COM A ENFERMAGEM ##\n\n[Texto corrido direto e objetivo relatando a interconsulta com a enfermagem, quadro clínico, exame direcionado se houver, avaliação e condutas pactuadas, sem cabeçalho #, sem MUC, sem Alergias e sem subdivisões SUBJETIVO, OBJETIVO, AVALIAÇÃO ou CONDUTA.]`;
   }
 
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
@@ -823,8 +825,8 @@ O médico depende desta evolução para o registro clínico e resguardo ético-j
 - É TERMINANTEMENTE PROIBIDO abreviar histórias, sintetizar em poucas linhas, omitir queixas secundárias, usar reticências "..." ou generalizar com termos vagos como "sintomas habituais", "orientadas medidas", "conforme rotina" ou "prescritos sintomáticos"!
 - Você DEVE ouvir e integrar 100% da consulta gravada, das anotações rápidas e dos exames anexados.
 - Cada queixa do paciente, cada resposta ao interrogatório sintomatológico, cada achado de exame físico, cada valor de sinal vital, cada diagnóstico avaliado e CADA medicamento prescrito (com nome completo oficial, miligramas, posologia completa e duração) DEVE estar minuciosamente registrado e organizado nas seções corretas do prontuário (SOAP)!
-- PROIBIÇÃO ABSOLUTA DE INVENTAR NOMES DE PESSOAS OU ESTABELECER GRAU DE PARENTESCO NÃO INFORMADO:
-  * É TERMINANTEMENTE PROIBIDO criar, deduzir ou adivinhar nomes de acompanhantes, familiares, cuidadores (ex.: NUNCA invente "Joel", "Maria", etc.), nomes de enfermeiros(as) ou ACS!
+- PROIBIÇÃO ABSOLUTA DE INVENTAR NOMES DE PESSOAS, UNIDADES DE SAÚDE OU ESTABELECER GRAU DE PARENTESCO NÃO INFORMADO:
+  * É TERMINANTEMENTE PROIBIDO criar, deduzir ou adivinhar nomes de acompanhantes, familiares, cuidadores (ex.: NUNCA invente "Joel", "Maria", etc.), nomes de enfermeiros(as), ACS ou nomes de unidades de saúde / UBS / ESF / UPA / hospitais / bairros que NÃO foram ditos literalmente na consulta ou nas notas!
   * É TERMINANTEMENTE PROIBIDO estabelecer grau de parentesco ("filho", "filha", "esposo", "esposa", "nora", "irmã") se esse parentesco NÃO tiver sido declarado de forma 100% inequívoca e literal na consulta ou nas Anotações Rápidas!
   * Se houver outra voz ou acompanhante na consulta/visita domiciliar mas o nome ou grau de parentesco não tiver sido explicitamente informado, escreva apenas "acompanhante" ou "familiar" (sem nome próprio e sem inventar parentesco) e deixe os campos "# Equipe presente na VD:" e "# Familiar / Cuidador(a) presente na visita:" em branco!
 - ATENÇÃO MÁXIMA A ATENDIMENTO EM EMERGÊNCIA / PRONTO ATENDIMENTO / HOSPITAL:

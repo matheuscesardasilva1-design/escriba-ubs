@@ -2775,6 +2775,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     if (templateId === 'telessaude') return [];
     const text = String(evolutionText || '');
     if (!text.trim()) return [];
+    if (templateId === 'interconsulta' && !/^\s*SUBJETIVO\b/im.test(text)) return [];
 
     const alerts = [];
 
@@ -3523,6 +3524,17 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       if (condutaMatch) {
         text = `## DISCUSSÃO COM TELESSAÚDE (TELECONSULTORIA) ##\n\nCONDUTA\n${condutaMatch[1].trim()}`;
       }
+    }
+
+    // 1.2 Se for INTERCONSULTA COM A ENFERMAGEM (VERSÃO RESUMIDA), remove qualquer cabeçalho "#", MUC, Alergias e subdivisões SOAP:
+    if (templateId === 'interconsulta' && soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader)) {
+      text = text
+        .replace(/^\s*##\s*INTERCONSULTA[^\n#]*##\s*\n*/im, '')
+        .replace(/^\s*#[^\n]*\n?/gm, '')
+        .replace(/^\s*(?:\d+\.\s*)?(?:SUBJETIVO|OBJETIVO(?:\s*\(EXAME FÍSICO\))?|EXAMES COMPLEMENTARES|AVALIAÇÃO|CONDUTA|PLANO)\s*:?\s*$/gim, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      return `## INTERCONSULTA COM A ENFERMAGEM ##\n\n${text}`;
     }
 
     // 2. Padroniza a paridade obstétrica para o formato compacto "# G01PV0PC0A0" (sem espaços entre G, PV, PC, A)
