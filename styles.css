@@ -1462,6 +1462,33 @@ body.dark-mode,
   border-color: #27354a !important;
 }
 
+.dark-mode .zscore-box {
+  background: #0d1f17 !important;
+  border-color: #166534 !important;
+  color: #dcfce7 !important;
+}
+
+.dark-mode .zscore-box strong,
+.dark-mode .zscore-box label {
+  color: #86efac !important;
+}
+
+.dark-mode .zscore-preview {
+  background: #07130d !important;
+  color: #bbf7d0 !important;
+  border: 1px solid #166534 !important;
+}
+
+.dark-mode .prenatal-box {
+  background: #23101a !important;
+  border-color: #9d174d !important;
+  color: #fbcfe8 !important;
+}
+
+.dark-mode .prenatal-grid label {
+  color: #f9a8d4 !important;
+}
+
 .dark-mode #pnCalcPreviewResult {
   background: #2a121d !important;
   border-color: #db2777 !important;
