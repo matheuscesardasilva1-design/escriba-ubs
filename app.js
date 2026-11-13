@@ -2494,6 +2494,50 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       finalEvolution = rawText;
     }
 
+    // VERIFICAÇÃO AUTOMÁTICA DE COMPLETUDE NA 1ª PASSAGEM:
+    // Se a transcrição literal for longa e a evolução gerada vier resumida/curta demais em relação ao diálogo,
+    // expande e converte 100% dos achados, avaliações e orientações para terminologia médica técnica antes de concluir!
+    const isShortFormatTemplate = consultation.templateId === 'telessaude'
+      || (consultation.templateId === 'interconsulta' && soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader));
+    if (
+      hasPreTranscribedDialogue &&
+      !isNonClinicalWarning &&
+      !isShortFormatTemplate &&
+      verbatimTranscript.length >= 900 &&
+      finalEvolution.length < Math.min(900, verbatimTranscript.length * 0.35)
+    ) {
+      if (onProgressMilestone) {
+        onProgressMilestone(82, '🩺 Completando 100% dos achados e termos médicos técnicos...');
+      }
+      const expandBody = {
+        systemInstruction: medicalSystemInstruction,
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ATENDIMENTO ===\n${verbatimTranscript}` },
+            { text: `=== RASCUNHO ATUAL (FICOU RESUMIDO — EXPANDA E COMPLETE 100%!) ===\n${finalEvolution}` },
+            {
+              text: `Compare o rascunho acima linha por linha com a transcrição literal completa. O rascunho omitiu detalhes importantes do atendimento.\nReescreva a "evolucao_completa" mantendo rigorosamente a mesma máscara clínica, porém garantindo que 100% do que foi falado, perguntado, examinado, avaliado e orientado conste de forma integral em terminologia médica técnica formal (ex.: dispneia, disúria, cefaleia, artralgia, parestesia, pirose, etc.), sem resumir nada e sem inventar dados.\nResponda em JSON válido com a chave "evolucao_completa".`
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 65536,
+          responseMimeType: 'application/json'
+        }
+      };
+      try {
+        const expandRes = await callGeminiWithFallbackAndRetry(expandBody, apiKey);
+        const expandRaw = expandRes.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const expandParsed = parseGeminiEvolutionResponse(expandRaw);
+        if (expandParsed.evolucao_completa && expandParsed.evolucao_completa.length > finalEvolution.length) {
+          finalEvolution = expandParsed.evolucao_completa;
+          totalTokensUsed += expandRes.responseJson?.usageMetadata?.totalTokenCount || 0;
+        }
+      } catch (_) {}
+    }
+
     // Se não houve exames complementares novos (e não é Pré-Natal com exames anteriores), garante que não fique um bloco "EXAMES COMPLEMENTARES\n-" vazio
     if (examFiles.length === 0 && !preExams && !hasNotesExams && (!isPrenatalConsult || !consultation.previousConsultationText)) {
       finalEvolution = finalEvolution.replace(/\n*EXAMES COMPLEMENTARES\s*\n\s*-\s*(?:Sem novos exames[^\n]*)?\n*/gi, '\n\n');
