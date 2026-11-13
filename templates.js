@@ -114,8 +114,19 @@ BEG, MUC, ativo, eupneico em ar ambiente, anictérico e acianótico
 Peso: 
 Altura: 
 PC: 
-IMC: 
 Marcos do desenvolvimento: 
+AP: MVUD, SRA. Sem esforço ventilatório
+AC: BNF, 2T, RR, SS
+ABD: Globoso, sem fáscies de dor a palpação superficial e profunda. Não palpo visceromegalias
+Extremidades aquecidas e bem perfundidas. TEC < 2 seg
+Sem sinais de desidratação
+Fontanelas normotensas
+Ortolani: 
+Barlow: 
+Oroscopia: 
+Otoscopia: MTD e MTE translúcidas e sem abaulamentos. Não visualizo secreção em canal auditivo
+Não realizado teste do olho vermelho por falta de oftalmoscopio na UBS
+Não realizado teste do coraçãozinho por falta de oximetro pediátrico na UBS
 
 AVALIAÇÃO
 Criança em desenvolvimento
@@ -1030,6 +1041,7 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * Se o médico não falou nada sobre vacinas, deixe "# Vacinas:" SEM conteúdo (nunca preencha por conta própria, nunca escreva "Pendente" ou "Atualizadas" por suposição).
      * Jamais escreva linhas como "- atualizadas: Pendente".
    - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
+   - Na PUERICULTURA — EXAME FÍSICO (OBJETIVO): Siga fielmente a estrutura pediátrica do modelo (BEG, MUC, ativo, eupneico em ar ambiente, anictérico e acianótico; Peso; Altura; PC; Marcos do desenvolvimento; AP; AC; ABD; Extremidades/TEC; Hidratação; Fontanelas; Ortolani; Barlow; Oroscopia; Otoscopia; e observações sobre teste do olho vermelho/coraçãozinho), atualizando qualquer item conforme o exame físico falado no áudio ou a faixa etária.
    - Na VISITA DOMICILIAR:
      * Só coloque data no título ("## VISITA DOMICILIAR EM DD/MM/AAAA - REGISTRO POSTERIOR ##") se a data da visita tiver sido informada explicitamente (${vdVisitDate ? `use ${vdVisitDate}` : 'caso contrário mantenha "## VISITA DOMICILIAR - REGISTRO POSTERIOR ##" sem assumir a data de hoje'}).
      * NUNCA invente nomes de Enfermeiro(a), ACS ou Familiar/Cuidador e NUNCA invente grau de parentesco! Só preencha se tiver sido dito de forma inequívoca.
