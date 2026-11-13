@@ -173,7 +173,7 @@ body {
 }
 
 .live-proc-inner {
-  max-width: 920px;
+  max-width: 1280px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -197,34 +197,40 @@ body {
 
 /* --- CONTAINER DAS PÁGINAS --- */
 .page-container {
-  max-width: 920px;
-  margin: 28px auto;
-  padding: 0 20px 60px;
+  max-width: 1280px;
+  margin: 18px auto;
+  padding: 0 24px 40px;
 }
 
 /* --- TELA 1: ATENDIMENTO LIMPO E CENTRALIZADO --- */
 .center-header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
 }
 
 .center-header h2 {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 800;
   color: var(--text-main);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .center-header p {
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
 .template-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-bottom: 22px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1024px) {
+  .template-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 640px) {

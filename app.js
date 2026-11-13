@@ -676,7 +676,7 @@
         document.title = `⏸️ Pausado (${mm}:${ss}) • Prontuário APS`;
         updateDynamicFavicon('paused');
       } else {
-        document.title = `🔴 Gravando (${mm}:${ss}) • Prontuário APS`;
+        document.title = `🩺 Em atendimento (${mm}:${ss}) • Prontuário APS`;
         updateDynamicFavicon('recording');
       }
     } else if (state.queueRunning && state.activeProcessingProgress) {
@@ -1301,7 +1301,7 @@
       };
 
       recorder.start(3000);
-      showToast(`🎙️ Gravando atendimento: ${tpl.name}`);
+      showToast(`🩺 Atendimento em andamento: ${tpl.name}`);
       state.templateLocked = true;
       renderTemplateSelector();
       state.timerWorker.postMessage('start');
