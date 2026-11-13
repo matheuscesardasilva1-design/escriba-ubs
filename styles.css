@@ -1208,14 +1208,14 @@ body.dark-mode,
 .dark-mode .input-text,
 .dark-mode .select-box,
 .dark-mode .textarea-box {
-  background: #090e17 !important;
-  color: #f8fafc !important;
-  border-color: #2d3b4f !important;
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border-color: #475569 !important;
 }
 
 .dark-mode .input-text::placeholder,
 .dark-mode .textarea-box::placeholder {
-  color: #64748b;
+  color: #94a3b8;
 }
 
 .dark-mode .input-text:focus,
@@ -1463,50 +1463,55 @@ body.dark-mode,
 }
 
 .dark-mode .zscore-box {
-  background: #0d1f17 !important;
-  border-color: #166534 !important;
-  color: #dcfce7 !important;
+  background: #162032 !important;
+  border-color: #475569 !important;
+  color: #f8fafc !important;
 }
 
 .dark-mode .zscore-box strong,
 .dark-mode .zscore-box label {
-  color: #86efac !important;
+  color: #f1f5f9 !important;
 }
 
 .dark-mode .zscore-preview {
-  background: #07130d !important;
-  color: #bbf7d0 !important;
-  border: 1px solid #166534 !important;
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+  border: 1px solid #475569 !important;
 }
 
 .dark-mode .prenatal-box {
-  background: #23101a !important;
-  border-color: #9d174d !important;
-  color: #fbcfe8 !important;
+  background: #162032 !important;
+  border-color: #475569 !important;
+  color: #f8fafc !important;
 }
 
+.dark-mode .prenatal-box strong,
+.dark-mode .prenatal-box label,
 .dark-mode .prenatal-grid label {
-  color: #f9a8d4 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode .prenatal-box > div > div {
+  background: #1e293b !important;
+  border-color: #475569 !important;
+  color: #f8fafc !important;
 }
 
 .dark-mode #pnCalcPreviewResult {
-  background: #2a121d !important;
-  border-color: #db2777 !important;
-  color: #fbcfe8 !important;
+  background: #0f172a !important;
+  border-color: #64748b !important;
+  color: #f1f5f9 !important;
 }
 
 .dark-mode #vdSpecificBox {
-  background: #1c1917 !important;
-  border-color: #b45309 !important;
-  color: #fde68a !important;
+  background: #1e293b !important;
+  border-color: #64748b !important;
+  color: #f8fafc !important;
 }
 
-.dark-mode #vdSpecificBox * {
-  color: #fde68a !important;
-}
-
+.dark-mode #vdSpecificBox *,
 .dark-mode #vdSpecificBox div {
-  color: #fde68a !important;
+  color: #e2e8f0 !important;
 }
 
 .dark-mode #vdSpecificBox strong {
