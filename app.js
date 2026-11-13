@@ -2201,7 +2201,12 @@
             document.getElementById('btnBannerRetryNow')?.addEventListener('click', async () => {
               nextItem.status = 'queued';
               nextItem.errorMessage = '';
-              if (nextItem.chunkCount > 0) nextItem.rawTranscript = '';
+              if (nextItem.chunkCount > 0) {
+                if (nextItem.previousRawTranscript && nextItem.previousRawTranscript.length >= 50) {
+                  nextItem.previousEvolutionText = '';
+                }
+                nextItem.rawTranscript = nextItem.previousRawTranscript || '';
+              }
               await window.ScribeDB.saveConsultation(nextItem);
               await refreshQueueSidebar();
               processQueueInBackground();
@@ -5230,7 +5235,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         c.status = 'queued';
         c.errorMessage = '';
         if (c.chunkCount > 0) {
-          c.rawTranscript = ''; // Limpa transcrição prévia incompleta para forçar nova transcrição integral com o modelo ativo
+          if (c.previousRawTranscript && c.previousRawTranscript.length >= 50) {
+            c.previousEvolutionText = '';
+          }
+          c.rawTranscript = c.previousRawTranscript || '';
         }
         c.updatedAt = Date.now();
         await window.ScribeDB.saveConsultation(c);
