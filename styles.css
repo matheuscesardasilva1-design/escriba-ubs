@@ -1192,6 +1192,18 @@ body.dark-mode,
   border-color: #27354a !important;
 }
 
+.dark-mode .rec-status-wrap {
+  color: #e2e8f0 !important;
+}
+
+.dark-mode .rec-timer {
+  color: #cbd5e1 !important;
+}
+
+.dark-mode .vu-meter-bar {
+  background: #334155 !important;
+}
+
 /* Campos de Texto, Seleção e Textareas */
 .dark-mode .input-text,
 .dark-mode .select-box,
