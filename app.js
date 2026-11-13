@@ -4872,6 +4872,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         templateId: consult.templateId,
         templateName: consult.templateName,
         evolucaoTexto: currentEvolutionText,
+        rawTranscript: consult.rawTranscript || '',
+        preTranscribedExamsText: consult.preTranscribedExamsText || '',
         especialidade,
         motivoEncaminhamento,
         dadosExtrasRegulacao,
@@ -4881,7 +4883,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
       const requestBody = {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2 }
+        generationConfig: { temperature: 0.15, maxOutputTokens: 65536 }
       };
 
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);

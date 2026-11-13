@@ -935,11 +935,19 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - CONTROLE DE HGT E CONTROLE DE PA DOMICILIAR SEMPRE NO SUBJETIVO (NUNCA NO OBJETIVO!):
      * Sempre que forem relatados ou lidos valores de Glicemia Capilar (HGT) ou de Pressão Arterial aferidos em domicílio, registre dentro do "SUBJETIVO" ("Controle de HGT: ..." / "Controle de PA: ..."). NUNCA coloque médias domiciliares de PA dentro do "OBJETIVO"!
 
-3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — PROIBIDO ESCREVER "EXAME FÍSICO NÃO DETALHADO NA TRANSCRIÇÃO":
+3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — PADRÃO ÚNICO E IMUTÁVEL (PROIBIDO VARIAR OU ESCREVER POR EXTENSO):
    - É TERMINANTEMENTE PROIBIDO escrever frases metalinguísticas como "Exame físico não detalhado na transcrição", "além da avaliação dos exames laboratoriais", "Exame físico não realizado" ou "Não mencionado no áudio"!
-   - Mantenha SEMPRE a ectoscopia base do modelo ("BEG, LOC, MUC") no "OBJETIVO"!
+   - PADRÃO FIXO OBRIGATÓRIO DO "OBJETIVO" EM TODOS OS ATENDIMENTOS (NUNCA MUDE ESTE FORMATO):
+     * Linha 1 (Ectoscopia base): escreva SEMPRE exatamente "BEG, LOC, MUC" (exceto na Puericultura, que usa "BEG, MUC, ativo, eupneico em ar ambiente, anictérico e acianótico"). É PROIBIDO expandir "MUC" por extenso ("mucosas úmidas e coradas") ou substituir por "corado, hidratado, anictérico, acianótico"!
+     * Linha 2 (Sinais vitais / antropometria aferidos hoje, se houver): use sempre siglas padrão separadas por " | " ou uma por linha (ex.: "PA: 120/80 mmHg | FC: 78 bpm | FR: 16 irpm | Tax: 36,5 °C | SpO2: 98% | Peso: 70 kg").
+     * Linhas seguintes (Exame segmentar — SOMENTE os sistemas/achados falados pelo médico ou previstos no modelo): use SEMPRE as siglas padronizadas em linhas curtas e objetivas, NUNCA em parágrafo corrido por extenso:
+       - AC: (ex.: AC: RCR em 2T, BNF, sem sopros)
+       - AP: (ex.: AP: MV+ bilateralmente, sem RA)
+       - ABD: (ex.: ABD: Plano, flácido, RHA+, indolor à palpação)
+       - MMII: (ex.: MMII: Sem edema, panturrilhas livres)
+       - Demais segmentos examinados (Oroscopia:, Otoscopia:, Pele:, SN:, Osteoarticular:, etc.) sempre no mesmo formato "Sigla/Segmento: achado objetivo".
    - No Pré-Natal, mantenha a linha "ABD: Globoso, indolor a palpação superficial e profunda" (ou atualize-a caso o médico descreva dor à palpação, contrações/dinâmica uterina, Giordano, etc.).
-   - Em TODOS os modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER sinal vital ou achado de exame físico (PA aferida hoje, FC, Peso, AU, BCF, AP, AC, ABD, MMII, Pele/couro cabeludo, estado afetivo/psíquico observado em consultório, oroscopia, otoscopia, toque vaginal, especular, etc.), inclua-os no bloco "OBJETIVO"!
+   - Em TODOS os modelos de consulta, sempre que o médico falar no áudio ou escrever nas anotações rápidas QUALQUER sinal vital ou achado de exame físico (PA aferida hoje, FC, Peso, AU, BCF, AP, AC, ABD, MMII, Pele/couro cabeludo, estado afetivo/psíquico observado em consultório, oroscopia, otoscopia, toque vaginal, especular, etc.), inclua-os no bloco "OBJETIVO" usando esse padrão fixo!
    - NUNCA copie o exame físico antigo (PA, Peso, AU, BCF da consulta passada) como se fosse o de hoje!
 
 4. REGRA ESTRITA DE EXAMES COMPLEMENTARES (ORDEM CRONOLÓGICA ESTRITA, ZERO DUPLICAÇÃO E ZERO TÍTULOS REPLICADOS!):
@@ -1086,11 +1094,9 @@ Refere boa adesão às medicações contínuas habituais para HAS e DM. Nega que
 Controle de PA: Refere médias domiciliares de 125/80 mmHg.
 
 OBJETIVO
-BEG, LOC, corado, hidratado, anictérico, acianótico.
-PA: 120/80 mmHg
-FC: 74 bpm
-Peso: 78 kg
-ABD: Plano, flácido, doloroso à palpação superficial e profunda em epigástrio, sem massas ou visceromegalias, descompressão brusca negativa (RHA presentes e normais).
+BEG, LOC, MUC
+PA: 120/80 mmHg | FC: 74 bpm | Peso: 78 kg
+ABD: Plano, flácido, doloroso à palpação superficial e profunda em epigástrio, sem massas ou visceromegalias, DB negativa, RHA+
 
 EXAMES COMPLEMENTARES
 - LABS 15/09/2026: Hb 14,2 | Ht 42 | Leuco 6.800 | Plaq 240.000 | GJ 108 | HbA1c 6,2% | Creat 0,90 | TGO 22 | TGP 25 | EQU sem alterações
@@ -1163,6 +1169,8 @@ window.buildReferralPrompt = function({
   templateId,
   templateName,
   evolucaoTexto,
+  rawTranscript,
+  preTranscribedExamsText,
   especialidade,
   motivoEncaminhamento,
   dadosExtrasRegulacao,
@@ -1178,9 +1186,17 @@ window.buildReferralPrompt = function({
     ? `\n- MOTIVO ESPECÍFICO / CONDIÇÃO INDICADA PELO MÉDICO: "${motivoEncaminhamento.trim()}" (BUSCA DIRETA NO PROTOCOLO)\n`
     : '';
 
+  const transcriptBlock = (rawTranscript && rawTranscript.trim().length > 20)
+    ? `\n=== TRANSCRIÇÃO LITERAL DA CONSULTA (USE PARA RESGATAR QUALQUER DETALHE CLÍNICO, TEMPO DE EVOLUÇÃO, TRATAMENTOS PRÉVIOS OU EXAMES CITADOS NO ÁUDIO) ===\n${rawTranscript.trim()}\n`
+    : '';
+
+  const examsBlock = (preTranscribedExamsText && preTranscribedExamsText.trim().length > 10)
+    ? `\n=== EXAMES ANEXADOS / PRÉ-TRANSCRITOS ===\n${preTranscribedExamsText.trim()}\n`
+    : '';
+
   return `Você é um Médico Regulador experiente e Médico de Família da APS especialista nos Protocolos de Regulação Ambulatorial do TelessaúdeRS / RegulaSUS (SES-RS / GERCON / SISREG).
 
-Sua missão é gerar uma solicitação médica de encaminhamento com enquadramento oficial no protocolo do TelessaúdeRS para a especialidade solicitada: "${especialidade}".
+Sua missão é gerar uma solicitação médica de encaminhamento COMPLETA, DETALHADA e PRONTA PARA REGULAÇÃO (GERCON/SISREG) com enquadramento oficial no protocolo do TelessaúdeRS para a especialidade solicitada: "${especialidade}".
 
 === CONTEXTO DA CONSULTA NA UBS ===
 - Tipo de Atendimento: ${templateName || 'Consulta APS'} (${templateId || 'geral'})
@@ -1190,7 +1206,7 @@ Sua missão é gerar uma solicitação médica de encaminhamento com enquadramen
 ${protocolBlock}
 === EVOLUÇÃO CLÍNICA COMPLETA DO PACIENTE ===
 ${evolucaoTexto}
-
+${transcriptBlock}${examsBlock}
 === REGRAS MANDATÓRIAS (SIGA COM MÁXIMA RIGIDEZ MÉDICA) ===
 
 1. ENQUADRAMENTO CLÍNICO NO PROTOCOLO TELESSAÚDERS:
@@ -1202,8 +1218,10 @@ ${evolucaoTexto}
    - Não inclua queixas ou detalhes irrelevantes de outros aparelhos sem relação (ex.: em Ginecologia, não cite exame oftalmológico ou dor no ombro; em Ortopedia, não cite preventivo ginecológico).
    - CONTUDO, É ESTRITAMENTE OBRIGATÓRIO manter completas as seções de Condições de Saúde, Medicações em Uso Contínuo (MUC com doses e posologia na íntegra), Alergias, Tabagismo e Exames Complementares descritos, pois o médico regulador necessita dessas informações para a regulação do paciente!
 
-3. PREENCHIMENTO COMPLETO E ESTRUTURADO — PROIBIDO RESUMIR OU SUPRIMIR:
-   - Redija a JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO de forma técnica e estruturada nos seguintes blocos obrigatórios:
+3. PREENCHIMENTO COMPLETO E ESTRUTURADO — PROIBIDO RESUMIR, SUPRIMIR OU ESCREVER "NÃO INFORMADO" SE HOUVER DADOS:
+   - Leia TODAS as fontes acima (Evolução Clínica, Transcrição Literal da Consulta, Notas Rápidas, Dados Adicionais e Exames Anexados) antes de redigir.
+   - É TERMINANTEMENTE PROIBIDO escrever "Não informado", "Não descrito" ou deixar seções rasas/genéricas quando a informação estiver presente na evolução, na transcrição literal, nas notas ou nos exames!
+   - Redija a JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO de forma técnica, completa e estruturada nos seguintes blocos obrigatórios:
      * MOTIVO DO ENCAMINHAMENTO E HISTÓRIA CLÍNICA: Tempo de evolução, queixa principal, sintomas, gravidade, impacto funcional e tratamentos já realizados na APS com doses, tempo de uso e resposta terapêutica.
      * EXAME FÍSICO DIRECIONADO: Sinais vitais pertinentes e achados semiológicos objetivos (manobras de Tinel/Phalen se punho/mão, amplitude articular, ectoscopia, etc.).
      * CONDIÇÕES DE SAÚDE / COMORBIDADES: Todas as patologias prévias do paciente (ex: HAS, DM, obesidade, asma, etc.).
