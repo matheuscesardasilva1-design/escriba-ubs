@@ -45,6 +45,7 @@
   // 4. Flash 3: Gemini 3 Flash e 3 Flash Preview (20 atendimentos/dia — restam 2 hoje)
   // 5. Modelos com cota diária esgotada hoje (25/20): Gemini 3.8 Flash e 3.6 Flash (restabelecem amanhã)
   const GEMINI_MODELS = [
+    'gemini-4-hydrogen',
     'gemini-2.5-flash',
     'gemini-3-flash',
     'gemini-3-flash-preview',
@@ -191,14 +192,18 @@
             if (name.includes('3.7') || name.includes('live') || name.includes('native-audio-dialog') || name.includes('gemma')) return false;
 
             const isFlash = name.includes('flash');
-            return isFlash;
+            const isHydrogen = name.includes('hydrogen');
+            return isFlash || isHydrogen;
           });
 
         // Hierarquia de pontuação dos modelos clínicos estáveis (garante rapidez e fidelidade idêntica ao padrão em todos os atendimentos):
-        // 1) Gemini 2.5 Flash e Gemini 3 Flash (modelos clínicos principais mais fiéis): 260 pontos
+        // 1) Gemini 4 Hydrogen, Gemini 2.5 Flash e Gemini 3 Flash (modelos clínicos principais mais fiéis): 260+ pontos
         // 2) Gemini 3.5 Flash-Lite e 3.1 Flash-Lite (alta velocidade e 500 req/dia): 220 pontos
         // 3) Outros modelos Flash (3.8, 3.6, 2.5-lite): 180 pontos
         const scoreModel = (name) => {
+          if (name.includes('hydrogen')) {
+            return 268;
+          }
           if (name === 'gemini-2.5-flash' || name === 'gemini-3-flash' || name === 'gemini-3-flash-preview') {
             return 260 + (name === 'gemini-2.5-flash' ? 5 : 2);
           }
@@ -312,6 +317,7 @@
   const MODEL_QUOTA_CATALOG = [
     { id: 'gemini-3.5-flash-lite', label: '⚡ Gemini 3.5 Flash Lite', dailyLimit: 500, rpmLimit: 15 },
     { id: 'gemini-3.1-flash-lite', label: '⚡ Gemini 3.1 Flash Lite', dailyLimit: 500, rpmLimit: 15 },
+    { id: 'gemini-4-hydrogen',     label: '🚀 Gemini 4 Hydrogen',     dailyLimit: 20,  rpmLimit: 10 },
     { id: 'gemini-2.5-flash',      label: '💎 Gemini 2.5 Flash',      dailyLimit: 20,  rpmLimit: 10 },
     { id: 'gemini-3-flash',        label: '💎 Gemini 3 Flash',        dailyLimit: 20,  rpmLimit: 10 },
     { id: 'gemini-3.8-flash',      label: '💎 Gemini 3.8 Flash',      dailyLimit: 20,  rpmLimit: 10 },
@@ -411,6 +417,7 @@
     if (clean.includes('antigravity')) return 'Antigravity Managed Agent';
     if (clean.includes('3.8-flash')) return 'Gemini 3.8 Flash';
     if (clean.includes('3.6-flash')) return 'Gemini 3.6 Flash';
+    if (clean.includes('hydrogen')) return 'Gemini 4 Hydrogen';
     if (clean.includes('2.5-flash') && !clean.includes('lite')) return 'Gemini 2.5 Flash';
     if (clean.includes('3-flash')) return 'Gemini 3 Flash';
     if (clean.includes('gemma')) return 'Gemma 4';
@@ -6773,7 +6780,30 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       btn.innerHTML = '⏳ Verificando no Google...';
     }
 
-    const modelsToProbe = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3-flash'];
+    const modelsToProbe = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-4-hydrogen', 'gemini-2.5-flash', 'gemini-3-flash'];
+
+    const syncDiscoveredModelsToSelect = (modelsList) => {
+      const sel = document.getElementById('preferredModelSelect');
+      if (!sel || !Array.isArray(modelsList)) return;
+      const existingValues = new Set(Array.from(sel.options).map(o => o.value));
+      const newOnes = modelsList
+        .filter(m => {
+          const methods = Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : [];
+          if (!methods.includes('generateContent')) return false;
+          const n = String(m.name || '').replace(/^models\//, '').trim();
+          if (!n || existingValues.has(n) || !n.startsWith('gemini-')) return false;
+          if (/tts|embedding|imagen|banana|image|veo|robotics|computer-use|live|native-audio-dialog|gemma|1\.0|1\.5|2\.0|3\.7/i.test(n)) return false;
+          return true;
+        })
+        .map(m => String(m.name || '').replace(/^models\//, '').trim());
+      for (const modelId of newOnes) {
+        const opt = document.createElement('option');
+        opt.value = modelId;
+        opt.textContent = `🆕 ${formatModelName(modelId)} (Descoberto na API)`;
+        sel.appendChild(opt);
+        existingValues.add(modelId);
+      }
+    };
 
     try {
       for (let kIdx = 0; kIdx < keys.length; kIdx++) {
@@ -6790,6 +6820,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           if (listResp.ok) {
             const listData = await listResp.json();
             if (Array.isArray(listData.models)) {
+              syncDiscoveredModelsToSelect(listData.models);
               availableSet = new Set(
                 listData.models
                   .filter(m => !Array.isArray(m.supportedGenerationMethods) || m.supportedGenerationMethods.includes('generateContent'))
