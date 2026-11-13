@@ -54,6 +54,7 @@
     <div class="brand" id="brandHomeBtn" style="cursor: pointer;" title="Ir para a primeira página">
       <div class="brand-icon">⚕</div>
       <span class="brand-title">Prontuário APS</span>
+      <span id="appVersionBadge" style="font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: rgba(99, 102, 241, 0.14); color: #4f46e5; border: 1px solid rgba(99, 102, 241, 0.28); margin-left: 6px; white-space: nowrap;" title="Versão atual carregada pelo navegador">v2026.11.12-42</span>
     </div>
 
     <nav class="nav-tabs">
@@ -841,6 +842,12 @@
                 </button>
               </div>
             </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; padding: 6px 8px; background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 8px;">
+              <input type="text" id="referralImproveInstruction" class="input-text" placeholder="O que melhorar? (opcional: ex. detalhar exame físico, tempo de tratamento, exames...)" style="flex: 1; min-width: 220px; padding: 6px 10px; font-size: 12px;" />
+              <button type="button" class="btn btn-primary" id="btnImproveReferral" style="padding: 6px 12px; font-size: 12px; background: #7c3aed; border-color: #7c3aed; white-space: nowrap;">
+                ✨ Melhorar Encaminhamento
+              </button>
+            </div>
             <textarea id="referralResultEditor" class="referral-editor"></textarea>
           </div>
         </div>
@@ -1037,9 +1044,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261112_41"></script>
-  <script src="zscore.js?v=20261112_41"></script>
-  <script src="db.js?v=20261112_41"></script>
-  <script src="app.js?v=20261112_41"></script>
+  <script src="templates.js?v=20261112_42"></script>
+  <script src="zscore.js?v=20261112_42"></script>
+  <script src="db.js?v=20261112_42"></script>
+  <script src="app.js?v=20261112_42"></script>
 </body>
 </html>

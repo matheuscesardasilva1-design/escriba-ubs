@@ -4947,6 +4947,89 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
   }
 
+  async function improveCurrentReferral() {
+    if (!state.activeConsultationId) return;
+    const apiKey = getSavedApiKey();
+    if (!apiKey) {
+      openApiKeyModal();
+      return;
+    }
+    const editor = document.getElementById('referralResultEditor');
+    const currentRefText = (editor && editor.value.trim()) || '';
+    if (!currentRefText) {
+      alert('Gere ou selecione um encaminhamento primeiro para poder melhorá-lo.');
+      return;
+    }
+    const consult = await window.ScribeDB.getConsultation(state.activeConsultationId);
+    if (!consult) return;
+
+    const btn = document.getElementById('btnImproveReferral');
+    const instrInput = document.getElementById('referralImproveInstruction');
+    const improvementInstruction = (instrInput && instrInput.value.trim()) || '';
+    const evolutionTextarea = document.getElementById('mainEvolutionEditor');
+    const currentEvolutionText = (evolutionTextarea && evolutionTextarea.value.trim()) || consult.evolutionText || '';
+    const extraDataInput = document.getElementById('referralExtraDataInput');
+    const dadosExtrasRegulacao = extraDataInput ? extraDataInput.value.trim() : '';
+
+    let activeSpec = consult.referralSpecialty || 'Especialidade Médica';
+    if (Array.isArray(consult.referrals) && state.activeReferralId) {
+      const found = consult.referrals.find(r => r.id === state.activeReferralId);
+      if (found && found.specialty) activeSpec = found.specialty;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Melhorando...';
+    }
+
+    try {
+      const prompt = window.buildImproveReferralPrompt({
+        currentReferralText: currentRefText,
+        evolucaoTexto: currentEvolutionText,
+        rawTranscript: consult.rawTranscript || '',
+        preTranscribedExamsText: consult.preTranscribedExamsText || '',
+        quickNotes: consult.quickNotes || '',
+        dadosExtrasRegulacao,
+        especialidade: activeSpec,
+        improvementInstruction
+      });
+      const requestBody = {
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.15, maxOutputTokens: 65536 }
+      };
+      const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
+      const improvedText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '')
+        .replace(/^```[a-z]*\n?/gim, '')
+        .replace(/```$/gim, '')
+        .trim();
+
+      if (!improvedText || improvedText.length < 40) {
+        throw new Error('A IA retornou uma resposta vazia ou muito curta.');
+      }
+
+      if (editor) editor.value = improvedText;
+      if (instrInput) instrInput.value = '';
+      if (Array.isArray(consult.referrals) && state.activeReferralId) {
+        const idx = consult.referrals.findIndex(r => r.id === state.activeReferralId);
+        if (idx >= 0) {
+          consult.referrals[idx].text = improvedText;
+        }
+      }
+      consult.referralText = improvedText;
+      await window.ScribeDB.saveConsultation(consult);
+      addDailyTokenUsage(responseJson?.usageMetadata?.totalTokenCount || 800);
+      renderSavedReferralsForConsultation(consult);
+      showToast('✨ Encaminhamento melhorado e enriquecido com sucesso!');
+    } catch (err) {
+      alert('Erro ao melhorar encaminhamento: ' + err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '✨ Melhorar Encaminhamento';
+      }
+    }
+  }
+
   function toggleReferralDrawer(forceOpen) {
     const body = document.getElementById('referralDrawerBody');
     const btn = document.getElementById('referralDrawerToggleBtn');
@@ -7451,6 +7534,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     });
 
     document.getElementById('btnGenerateReferral')?.addEventListener('click', generateStateReferral);
+    document.getElementById('btnImproveReferral')?.addEventListener('click', improveCurrentReferral);
     document.getElementById('btnCopyJustificationOnly')?.addEventListener('click', () => {
       const fullText = document.getElementById('referralResultEditor')?.value || '';
       // Extrai apenas o bloco da justificativa clínica pronta para o GERCON/SISREG

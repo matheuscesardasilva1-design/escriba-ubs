@@ -1269,3 +1269,42 @@ ENQUADRAMENTO NO PROTOCOLO TELESSAÚDERS:
 ⚠️ PENDÊNCIAS SEGUNDO O PROTOCOLO TELESSAÚDERS:
 [Lista em tópicos dos exames, tempos de tratamento ou dados de exame físico exigidos pelo protocolo do TelessaúdeRS para esta condição que NÃO constam na evolução atual, ou declare: "✅ Todos os critérios e exames exigidos pelo protocolo do TelessaúdeRS para esta condição estão preenchidos na justificativa."]`;
 };
+
+window.buildImproveReferralPrompt = function({
+  currentReferralText,
+  evolucaoTexto,
+  rawTranscript,
+  preTranscribedExamsText,
+  quickNotes,
+  dadosExtrasRegulacao,
+  especialidade,
+  improvementInstruction
+}) {
+  const instrBlock = (improvementInstruction && improvementInstruction.trim())
+    ? `\n=== PEDIDO ESPECÍFICO DO MÉDICO PARA ESTA MELHORIA ===\n${improvementInstruction.trim()}\n`
+    : '';
+  const transcriptBlock = (rawTranscript && rawTranscript.trim().length > 20)
+    ? `\n=== TRANSCRIÇÃO LITERAL DA CONSULTA ===\n${rawTranscript.trim()}\n`
+    : '';
+  const examsBlock = (preTranscribedExamsText && preTranscribedExamsText.trim().length > 10)
+    ? `\n=== EXAMES ANEXADOS / PRÉ-TRANSCRITOS ===\n${preTranscribedExamsText.trim()}\n`
+    : '';
+
+  return `Você é um Médico Regulador experiente (TelessaúdeRS / RegulaSUS / GERCON / SISREG).
+O médico assistente revisou o encaminhamento abaixo para "${especialidade || 'Especialidade Médica'}" e considerou que ele está fraco, resumido demais ou com falta de informações clínicas.
+
+Sua missão é REESCREVER, ENRIQUECER E COMPLETAR o encaminhamento mantendo rigorosamente a mesma estrutura de 3 blocos (JUSTIFICATIVA CLÍNICA PARA A REGULAÇÃO, ENQUADRAMENTO NO PROTOCOLO TELESSAÚDERS e ⚠️ PENDÊNCIAS SEGUNDO O PROTOCOLO TELESSAÚDERS), resgatando 100% dos detalhes clínicos, tempo de evolução, impacto funcional, achados semiológicos, comorbidades, MUC completa com doses/posologias, alergias, tabagismo, tratamentos prévios na APS e TODOS os exames com datas e valores exatos presentes nos registros abaixo.
+PROIBIDO inventar dados não presentes nos registros! Se algo realmente não constar em nenhuma fonte, mantenha a sinalização clara apenas em Pendências.
+${instrBlock}
+=== ENCAMINHAMENTO ATUAL (PARA MELHORAR E ENRIQUECER) ===
+${currentReferralText}
+
+=== EVOLUÇÃO CLÍNICA COMPLETA ===
+${evolucaoTexto || ''}
+${transcriptBlock}${examsBlock}
+=== NOTAS RÁPIDAS / DADOS ADICIONAIS ===
+${quickNotes || 'Nenhuma'}
+${dadosExtrasRegulacao ? `\nDados adicionais informados: ${dadosExtrasRegulacao}` : ''}
+
+Responda APENAS com o texto final melhorado do encaminhamento (sem markdown \`\`\`, sem comentários extras).`;
+};
