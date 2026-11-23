@@ -4116,7 +4116,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
 
     // 2. Remove frases metalinguísticas inaceitáveis no Objetivo e garante ectoscopia padrão
-    text = text.replace(/OBJETIVO\s*\n\s*(?:Exame\s+f[íi]sico\s+n[ãa]o\s+detalhado[^\n]*|Exame\s+f[íi]sico\s+n[ãa]o\s+mencionado[^\n]*|N[ãa]o\s+detalhado\s+na\s+transcri[çc][ãa]o[^\n]*)\n*/gi, 'OBJETIVO\nBEG, LOC, corada, hidratada, anictérica, acianótica.\n\n');
+    text = text.replace(/OBJETIVO\s*\n\s*(?:Exame\s+f[íi]sico\s+n[ãa]o\s+detalhado[^\n]*|Exame\s+f[íi]sico\s+n[ãa]o\s+mencionado[^\n]*|N[ãa]o\s+detalhado\s+na\s+transcri[çc][ãa]o[^\n]*)\n*/gi, 'OBJETIVO\nBEG, LOC, MUC\n\n');
 
     // 3. Se média domiciliar de PA ou HGT foi parar no Objetivo, move automaticamente para o final do Subjetivo
     const homePaInObjMatch = text.match(/\nOBJETIVO\s*\n([\s\S]*?)(\n\s*(?:EXAMES|ULTRASSONOGRAFIA|AVALIAÇÃO)\b)/i);
@@ -4227,6 +4227,39 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     spacedText = spacedText
       .replace(/\n+^[ \t]*PLANO[ \t]*\n+[ \t]*(?:Seguimento ambulatorial na APS(?: conforme necessidade cl[íi]nica)?\.?|Sem pend[êe]ncias(?: futuras)?\.?|Nenhuma a[çc][ãa]o futura espec[íi]fica\.?)[ \t]*$/gm, '')
       .replace(/\n+^[ \t]*PLANO[ \t]*$(?=\s*$)/gm, '');
+
+    // Se a IA colocou ações da próxima consulta dentro de CONDUTA sem criar a seção PLANO, promove-as para PLANO automaticamente
+    if (!/^[ \t]*PLANO[ \t]*$/m.test(spacedText) && /^[ \t]*CONDUTA[ \t]*$/m.test(spacedText)) {
+      const condutaBlockMatch = spacedText.match(/(^[ \t]*CONDUTA[ \t]*\n)([\s\S]*?)(\n+[ \t]*>>\s*PENDÊNCIAS[\s\S]*)?$/m);
+      if (condutaBlockMatch) {
+        const condHeader = condutaBlockMatch[1];
+        const condBody = condutaBlockMatch[2] || '';
+        const pendSuffix = condutaBlockMatch[3] || '';
+        const condLines = condBody.split('\n');
+        const keptCondLines = [];
+        const extractedPlanLines = [];
+        const isFuturePlanLine = (ln) => {
+          const t = ln.trim();
+          if (!t) return false;
+          if (/^(?:Agendo|Oriento)\s+retorno\b/i.test(t) && !/\b(?:na\s+pr[óo]xima\s+consulta|para\s+(?:solicitar|pedir|encaminhar|avaliar))/i.test(t)) {
+            return false;
+          }
+          return /\b(?:na\s+pr[óo]xima\s+consulta|em\s+pr[óo]xima\s+consulta|na\s+pr[óo]xima\s+avalia[çc][ãa]o|na\s+consulta\s+seguinte|no\s+pr[óo]ximo\s+retorno|no\s+pr[óo]ximo\s+acompanhamento)\b/i.test(t)
+            || /\b(?:no\s+retorno|em\s+retorno)\b[^.\n]{0,40}\b(?:solicitar|solicitarei|pedir|pedirei|encaminhar|encaminharei|avaliar|avaliarei|reavaliar|considerar|iniciar|trocar|ajustar)\b/i.test(t);
+        };
+        for (const ln of condLines) {
+          if (isFuturePlanLine(ln)) {
+            extractedPlanLines.push(ln.trim());
+          } else {
+            keptCondLines.push(ln);
+          }
+        }
+        if (extractedPlanLines.length > 0 && keptCondLines.some(l => l.trim().length > 0)) {
+          const newCondutaPart = `${condHeader}${keptCondLines.join('\n').trimEnd()}\n\n\nPLANO\n${extractedPlanLines.join('\n')}${pendSuffix}`;
+          spacedText = spacedText.replace(condutaBlockMatch[0], newCondutaPart);
+        }
+      }
+    }
 
     // Garante espaçamento visual nítido entre os grandes blocos para colar no PEC / e-SUS.
     // IMPORTANTE: só reconhece o TÍTULO da seção quando ele está SOZINHO e em MAIÚSCULAS no início da linha.
@@ -4440,10 +4473,15 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     let lastError = null;
     let allFailedByDailyQuota = false;
     const keysToTry = getSavedApiKeysList(apiKey);
+    const maxTransientRounds = 3;
 
-    for (let kIdx = 0; kIdx < keysToTry.length; kIdx++) {
-      const currentKey = keysToTry[kIdx];
-      const modelsToTry = [...(await getActiveGeminiModels(currentKey))];
+    for (let round = 1; round <= maxTransientRounds; round++) {
+      let sawTransientFailure = false;
+      allFailedByDailyQuota = false;
+
+      for (let kIdx = 0; kIdx < keysToTry.length; kIdx++) {
+        const currentKey = keysToTry[kIdx];
+        const modelsToTry = [...(await getActiveGeminiModels(currentKey))];
 
       for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
         const model = modelsToTry[mIdx];
@@ -4610,6 +4648,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
               }
 
               allFailedByDailyQuota = false;
+              sawTransientFailure = true;
               if (elDaily) {
                 if (res.status === 503) {
                   elDaily.textContent = `🟡 Servidor Google ocupado (alternando)...`;
@@ -4620,7 +4659,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                 }
               }
               lastError = new Error(`Limite (${res.status}): ${errMsg}`);
-              // Se houver outros modelos na fila, tenta apenas 1 vez rápido (2s) antes de pular para outro modelo!
+              // Se houver outros modelos na fila, tenta apenas 1 vez rápido antes de pular para outro modelo; se for o último da chave, aguarda rápido antes de tentar de novo
               if (attempt < maxAttempts && mIdx === modelsToTry.length - 1) {
                 const waitSec = res.status === 503 ? 3 : 4;
                 if (onStatusUpdate) onStatusUpdate(`⏳ Aguardando servidor (${waitSec}s)...`);
@@ -4635,6 +4674,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             break;
           } catch (networkErr) {
             if (networkErr && networkErr.name === 'AbortError') {
+              sawTransientFailure = true;
               lastError = new Error(`Tempo limite excedido no modelo ${formatModelName(model)}, alternando automaticamente...`);
               if (onStatusUpdate) onStatusUpdate(`⚡ Alternando modelo (${formatModelName(model)} demorou)...`);
               // Não marca como esgotado hoje por timeout! Timeout é apenas lentidão temporária ou áudio longo.
@@ -4644,6 +4684,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             if (networkErr.message && networkErr.message.includes('Credencial de API')) {
               throw networkErr;
             }
+            sawTransientFailure = true;
             if (attempt < maxAttempts) {
               if (onStatusUpdate) onStatusUpdate(`🌐 Reconectando em 3s...`);
               await sleep(3000);
@@ -4651,6 +4692,17 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           }
         }
       }
+      }
+
+      if (!allFailedByDailyQuota && sawTransientFailure && round < maxTransientRounds) {
+        const roundWaitSec = round * 4;
+        if (onStatusUpdate) {
+          onStatusUpdate(`⏳ Servidor Google instável (503). Nova tentativa automática (${round + 1}/${maxTransientRounds}) em ${roundWaitSec}s...`);
+        }
+        await sleep(roundWaitSec * 1000);
+        continue;
+      }
+      break;
     }
 
     if (allFailedByDailyQuota) {

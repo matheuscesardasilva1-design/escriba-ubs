@@ -1015,10 +1015,10 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
 
-7. REGRA DA SEÇÃO PLANO (OPCIONAL — NEM TODO ATENDIMENTO TEM PLANO!):
-   - A seção PLANO é OPCIONAL e só existe quando o médico DISSE, de forma explícita, ações/exames/encaminhamentos/metas para as PRÓXIMAS CONSULTAS (ex: "na próxima consulta a gente pede perfil lipídico", "se mantiver a queixa, encaminho para Oftalmologia no retorno").
-   - Quando existir, ela vem logo após a CONDUTA, com cada item em sua própria linha, sem numeração.
-   - Se o médico NÃO falou nada assim: NÃO escreva a palavra "PLANO", NÃO crie a seção e NÃO invente texto. O atendimento termina na CONDUTA.
+7. REGRA DA SEÇÃO PLANO (OPCIONAL — MAS OBRIGATÓRIA SEMPRE QUE HOUVER AÇÃO PARA PRÓXIMA CONSULTA!):
+   - A seção PLANO é OPCIONAL e só existe quando o médico DISSE ações/exames/encaminhamentos/metas para as PRÓXIMAS CONSULTAS (ex: "na próxima consulta a gente pede perfil lipídico", "no retorno solicitar TSH", "se mantiver a queixa, encaminho para Oftalmologia no retorno").
+   - SEMPRE que o médico falar algo para a próxima consulta/retorno, NÃO deixe essa frase dentro da CONDUTA — coloque OBRIGATORIAMENTE abaixo do título "PLANO" ao final, com cada item em sua própria linha, sem numeração!
+   - Se o médico NÃO falou nada para próximas consultas: NÃO escreva a palavra "PLANO", NÃO crie a seção e NÃO invente texto. O atendimento termina na CONDUTA.
    - É TERMINANTEMENTE PROIBIDO usar frases genéricas no PLANO (como "Seguimento ambulatorial na APS conforme necessidade clínica", "Sem pendências", "Acompanhamento ambulatorial").
    - Retorno/agendamento já combinado ("retorno em 30 dias") pertence à CONDUTA, não ao PLANO.
 
