@@ -57,6 +57,8 @@
   ];
 
   const cachedDiscoveredModelsByKey = {};
+  const cachedEmergencyLiveModelsByKey = {};
+  const cachedEmergencyGemmaModelsByKey = {};
   const modelOutputTokenLimits = {};
 
   function getKeyShortHash(apiKey) {
@@ -171,7 +173,17 @@
             modelOutputTokenLimits[shortName] = m.outputTokenLimit;
           }
         });
-        const allCapable = (data.models || [])
+        const rawModels = Array.isArray(data.models) ? data.models : [];
+        cachedEmergencyLiveModelsByKey[keyHash] = rawModels
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('bidiGenerateContent'))
+          .map(m => (m.name || '').replace(/^models\//, ''))
+          .filter(n => n && !n.includes('tts') && !n.includes('translate'));
+        cachedEmergencyGemmaModelsByKey[keyHash] = rawModels
+          .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map(m => (m.name || '').replace(/^models\//, ''))
+          .filter(n => n && n.includes('gemma-4'));
+
+        const allCapable = rawModels
           .filter(m => {
             const methods = Array.isArray(m.supportedGenerationMethods) ? m.supportedGenerationMethods : [];
             return methods.includes('generateContent') || methods.includes('bidiGenerateContent');
@@ -2305,7 +2317,7 @@
           if (onProgressMilestone) {
             onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
           }
-        });
+        }, { allowLiveFallback: true });
         const stage1Text = (stage1Res.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
         totalTokensUsed += stage1Res.responseJson?.usageMetadata?.totalTokenCount || 0;
         lastModelUsed = stage1Res.modelUsed || lastModelUsed;
@@ -2422,7 +2434,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       if (onProgressMilestone) {
         onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
       }
-    });
+    }, { allowGemmaFallback: hasPreTranscribedDialogue && examFiles.length === 0 });
 
     if (onProgressMilestone) {
       onProgressMilestone(95, '🏷️ Validando cabeçalho #, exames e CIAP-2 / CID-10...', '');
@@ -4469,7 +4481,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     });
   }
 
-  async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate) {
+  async function callGeminiWithFallbackAndRetry(requestBody, apiKey, onStatusUpdate, options = {}) {
     let lastError = null;
     let allFailedByDailyQuota = false;
     const keysToTry = getSavedApiKeysList(apiKey);
@@ -4703,6 +4715,64 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         continue;
       }
       break;
+    }
+
+    // FALLBACK DE EMERGÊNCIA (se todos os modelos REST Flash falharem por 503 ou cota):
+    // 1) Para transcrição de áudio (Etapa 1), tenta os modelos Live API (cota Ilimitada) via WebSocket
+    if (options.allowLiveFallback) {
+      for (const currentKey of keysToTry) {
+        const kHash = getKeyShortHash(currentKey);
+        const liveCandidates = (cachedEmergencyLiveModelsByKey[kHash] && cachedEmergencyLiveModelsByKey[kHash].length > 0)
+          ? cachedEmergencyLiveModelsByKey[kHash]
+          : ['gemini-3.5-transcribe-live', 'gemini-3-flash-live', 'gemini-3.8-live', 'gemini-2.5-flash-native-audio-dialog'];
+        for (const liveModel of liveCandidates) {
+          try {
+            if (onStatusUpdate) onStatusUpdate(`🎙️ Fallback Live API (${formatModelName(liveModel)})...`);
+            const liveRes = await callGeminiLiveWebSocket(requestBody, currentKey, liveModel, onStatusUpdate);
+            if (liveRes && liveRes.responseJson) {
+              recordKeyModelUsage(currentKey, liveModel, liveRes.responseJson?.usageMetadata?.totalTokenCount || 0);
+              updateTokenMonitorUI(liveModel);
+              renderApiKeysQuotaDashboard();
+              return liveRes;
+            }
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 2) Para estruturação de texto (Etapa 2 já com transcrição pronta), tenta Gemma 4 (14.4K/dia)
+    if (options.allowGemmaFallback) {
+      for (const currentKey of keysToTry) {
+        const kHash = getKeyShortHash(currentKey);
+        const gemmaCandidates = (cachedEmergencyGemmaModelsByKey[kHash] && cachedEmergencyGemmaModelsByKey[kHash].length > 0)
+          ? cachedEmergencyGemmaModelsByKey[kHash]
+          : ['gemma-4-31b-it', 'gemma-4-26b-it'];
+        for (const gemmaModel of gemmaCandidates) {
+          try {
+            if (onStatusUpdate) onStatusUpdate(`⚡ Fallback de emergência (${formatModelName(gemmaModel)})...`);
+            const gemmaBody = {
+              contents: requestBody.contents,
+              generationConfig: {
+                temperature: requestBody.generationConfig?.temperature ?? 0.1,
+                maxOutputTokens: Math.min(requestBody.generationConfig?.maxOutputTokens || 8192, 8192)
+              }
+            };
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${gemmaModel}:generateContent?key=${encodeURIComponent(currentKey)}`;
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(gemmaBody)
+            });
+            if (res.ok) {
+              const responseJson = await res.json();
+              recordKeyModelUsage(currentKey, gemmaModel, responseJson?.usageMetadata?.totalTokenCount || 0);
+              updateTokenMonitorUI(gemmaModel);
+              renderApiKeysQuotaDashboard();
+              return { responseJson, modelUsed: gemmaModel };
+            }
+          } catch (_) {}
+        }
+      }
     }
 
     if (allFailedByDailyQuota) {
