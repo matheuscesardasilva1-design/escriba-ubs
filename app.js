@@ -4212,6 +4212,14 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             .replace(/\(conforme\s+medicações\s+de\s+uso\s+contínuo\)/gi, 'de uso contínuo')
             .replace(/\(conforme\s+#\s*MUC\)/gi, 'de uso contínuo');
 
+          // Bloqueia alucinação comum: se a IA escreveu "Renovo medicações de uso contínuo" mas o áudio/notas de hoje NÃO mencionam renovação/receita/uso contínuo, remove a linha
+          if (/^Renovo\s+(?:receitas?\s+de\s+)?medica[çc][õo]es\s+de\s+uso\s+cont[íi]nuo\b/i.test(rawLine.trim())) {
+            const todayEvidence = `${rawTranscript || ''}\n${quickNotes || ''}`;
+            if (todayEvidence.trim().length >= 20 && !/\b(?:renov|receita|receitu[áa]rio|uso\s+cont[íi]nuo|mantenho|manter\s+(?:as?\s+)?medica|mesmos?\s+rem[ée]dio)/i.test(todayEvidence)) {
+              continue;
+            }
+          }
+
           // Se já descreveu os sinais de alarme específicos, remove a frase genérica duplicada
           if (hasDetailedAlarmLine && /^Oriento sinais de alarme e(?:,\s*)? na presença/i.test(rawLine.trim())) {
             continue;
@@ -4309,22 +4317,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         if (!hasFinished) {
           hasFinished = true;
           try { ws.close(); } catch (_) {}
-          if (accumulatedText.trim().length >= 15) {
-            resolve({
-              responseJson: {
-                candidates: [{
-                  content: {
-                    parts: [{ text: accumulatedText.trim() }]
-                  }
-                }]
-              },
-              modelUsed: cleanModel
-            });
-          } else {
-            reject(new Error(`Timeout na comunicação WebSocket Live API com modelo ${cleanModel}`));
-          }
+          // Nunca aceita transcrição cortada/incompleta em caso de timeout
+          reject(new Error(`Timeout na comunicação WebSocket Live API com modelo ${cleanModel}`));
         }
-      }, 30000);
+      }, 60000);
 
       ws.onopen = () => {
         if (onStatusUpdate) onStatusUpdate(`⚡ Conectado ao ${formatModelName(cleanModel)} (Live)...`);

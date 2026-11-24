@@ -761,6 +761,7 @@ LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES OU CORTAR
 2. IDENTIFICAÇÃO DOS INTERLOCUTORES (PROIBIDO INVENTAR NOMES PRÓPRIOS OU GRAU DE PARENTESCO!):
    - Inicie cada mudança de fala APENAS com "[MÉDICO]: ", "[PACIENTE]: " ou "[ACOMPANHANTE]: " (uma fala por linha).
    - É TERMINANTEMENTE PROIBIDO adivinhar, deduzir ou inventar nomes próprios de pessoas (como "Joel", "Maria", nome de enfermeira ou ACS), grau de parentesco ("filho", "filha", "esposo") ou nomes de unidades de saúde / bairros / cidades (UBS, ESF, UPA, hospital) se não tiverem sido pronunciados com 100% de nitidez!
+   - PROIBIÇÃO DE ALUCINAÇÃO EM SILÊNCIO OU RUÍDO: Nunca invente palavras, falas, queixas ou condutas (como renovação de receitas) que não estejam claramente audíveis. Se um trecho estiver inaudível, não invente conteúdo.
 3. CAPTAÇÃO TOTAL DE DETALHES CLÍNICOS, TABAGISMO E ALERGIAS (NÃO DEIXE ESCAPAR NADA!):
    - Transcreva todas as queixas, dores, sintomas, história da doença atual e tempo de evolução relatados pelo(a) paciente (mesmo que a voz do paciente esteja mais baixa ou distante do microfone!).
    - Transcreva obrigatoriamente todas as perguntas e respostas sobre TABAGISMO (se fuma, se é ex-tabagista / já fumou e parou, ou se é tabagista passivo / alguém fuma em casa) e ALERGIAS medicamentosas ou alimentares!
@@ -1069,7 +1070,8 @@ ${isPrenatalTemplate ? `
 ${parsedPrev.labExamLines.length > 0 ? 'EXAMES COMPLEMENTARES ANTERIORES (- LABS):\n' + parsedPrev.labExamLines.join('\n') : 'Sem labs anteriores.'}
 ${parsedPrev.usgExamLines.length > 0 ? '\nULTRASSONOGRAFIAS ANTERIORES (- US):\n' + parsedPrev.usgExamLines.join('\n\n') : ''}
 ` : ''}
-=== (${isPrenatalTemplate ? 'C' : 'B'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (PARA ATUALIZAR # MUC, CHECAR ADESÃO E PROMOVER APENAS PATOLOGIAS CRÔNICAS PARA AS "#") ===
+=== (${isPrenatalTemplate ? 'C' : 'B'}) AVALIAÇÃO E CONDUTA DA ÚLTIMA CONSULTA (APENAS REFERÊNCIA PARA ATUALIZAR # MUC E PATOLOGIAS CRÔNICAS — PROIBIDO COPIAR PARA A CONDUTA DE HOJE!) ===
+ATENÇÃO CRÍTICA: A "CONDUTA ANTERIOR" abaixo é apenas histórico do que foi feito na consulta PASSADA. É TERMINANTEMENTE PROIBIDO copiar itens da "CONDUTA ANTERIOR" (como "Renovo medicações de uso contínuo", receitas antigas ou pedidos antigos) para a "CONDUTA" de HOJE se o médico NÃO disse isso explicitamente na consulta de HOJE!
 AVALIAÇÃO ANTERIOR:
 ${parsedPrev.avaliacaoText || 'Não informada.'}
 CONDUTA ANTERIOR:
