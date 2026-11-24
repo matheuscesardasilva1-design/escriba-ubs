@@ -6311,15 +6311,19 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const mainRaw = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
     const extraRaw = String(localStorage.getItem('ubs_extra_api_keys') || sessionStorage.getItem('ubs_extra_api_keys') || '').trim();
     const combined = `${mainRaw}\n${extraRaw}`;
-    const matches = combined.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
-    let allKeys = [...new Set(matches)];
+    const aizaMatches = combined.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
+    const tokenMatches = combined
+      .split(/[\s,;]+/)
+      .map(s => s.replace(/^['"]|['"]$/g, '').trim())
+      .filter(s => s.length >= 25 && /^[A-Za-z0-9_-]+$/.test(s));
+    let allKeys = [...new Set([...aizaMatches, ...tokenMatches])];
     if (allKeys.length === 0 && mainRaw) {
       allKeys = [mainRaw];
     }
     if (preferredKey && typeof preferredKey === 'string') {
-      const prefMatches = preferredKey.match(/AIza[0-9A-Za-z_-]{20,}/g) || [preferredKey];
+      const prefMatches = preferredKey.match(/AIza[0-9A-Za-z_-]{20,}/g) || [preferredKey.trim()];
       for (const pk of prefMatches.reverse()) {
-        allKeys = [pk, ...allKeys.filter(k => k !== pk)];
+        if (pk) allKeys = [pk, ...allKeys.filter(k => k !== pk)];
       }
     }
     return allKeys;
@@ -7804,7 +7808,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         sessionStorage.removeItem('ubs_extra_api_keys');
       }
 
-      // Salva no Gerenciador de Senhas do Google Chrome vinculado à conta fixa "Chave API Gemini - Prontuário APS"
+      // Salva no Gerenciador de Senhas do Google Chrome sem travar o fechamento do modal
       try {
         if (mainKey && window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
           const cred = new window.PasswordCredential({
@@ -7812,7 +7816,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             name: 'Chave API Gemini - Prontuário APS',
             password: mainKey
           });
-          await navigator.credentials.store(cred);
+          Promise.resolve(navigator.credentials.store(cred)).catch(() => {});
         }
       } catch (_) {}
 
@@ -7852,8 +7856,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       showToast(`⚡ Modelo preferido alterado para: ${formatModelName(chosen)}`);
     });
 
+    document.getElementById('extraApiKeysInput')?.addEventListener('change', (e) => {
+      const val = String(e.target.value || '').trim();
+      const mode = document.querySelector('input[name="keyStorageMode"]:checked')?.value || 'permanent';
+      if (mode === 'session') {
+        if (val) sessionStorage.setItem('ubs_extra_api_keys', val);
+        else sessionStorage.removeItem('ubs_extra_api_keys');
+      } else {
+        if (val) localStorage.setItem('ubs_extra_api_keys', val);
+        else localStorage.removeItem('ubs_extra_api_keys');
+      }
+      updateApiKeyStatusBadge();
+      updateTokenMonitorUI();
+      renderApiKeysQuotaDashboard();
+    });
+
     document.getElementById('apiKeyForm')?.addEventListener('submit', saveApiKeyHandler);
-    document.getElementById('btnSaveApiKey')?.addEventListener('click', saveApiKeyHandler);
 
     document.getElementById('btnRetryAllPending')?.addEventListener('click', retryAllPendingConsultations);
 
