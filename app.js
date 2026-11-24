@@ -2516,7 +2516,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       !isNonClinicalWarning &&
       !isShortFormatTemplate &&
       verbatimTranscript.length >= 900 &&
-      finalEvolution.length < Math.min(900, verbatimTranscript.length * 0.35)
+      finalEvolution.length < Math.min(1800, verbatimTranscript.length * 0.45)
     ) {
       if (onProgressMilestone) {
         onProgressMilestone(82, '🩺 Completando 100% dos achados e termos médicos técnicos...');
@@ -3412,10 +3412,16 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       extractedTabagismoFromHeader = val;
       return `# Tabagista: ${val}`;
     });
+    // Se a IA escreveu "# Tabagista: Ex-tabagista...", converte para "# Ex-tabagista..." (nunca ao lado de Tabagista!)
+    headerPart = headerPart.replace(/^#\s*Tabagist[ao]\s*:\s*(Ex-?tabagista[^\n]*)$/gim, (_, val) => {
+      const cleanedVal = val.replace(/^Ex-?tabagista\s*:\s*/i, 'Ex-tabagista ').trim();
+      extractedTabagismoFromHeader = cleanedVal;
+      return `# ${cleanedVal}`;
+    });
     headerPart = headerPart.replace(/^#\s*(Ex-?tabagista[^\n]*)$/gim, (_, val) => {
       const cleanedVal = val.replace(/^Ex-?tabagista\s*:\s*/i, 'Ex-tabagista ').trim();
       extractedTabagismoFromHeader = cleanedVal;
-      return `# Tabagista: ${cleanedVal}`;
+      return `# ${cleanedVal}`;
     });
     headerPart = headerPart.replace(/^#\s*Nega\s+tabagismo(?:\s*(?:\/|e)\s*etilismo)?\s*$/gim, (full) => {
       extractedTabagismoFromHeader = 'Nega';
@@ -3472,18 +3478,19 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const currentTabMatch = headerPart.match(/^#\s*Tabagist[ao]\s*:\s*(.*)$/im);
     const currentTabVal = currentTabMatch ? currentTabMatch[1].trim() : '';
 
-    // Se o paciente é EX-TABAGISTA (parou de fumar), garante que NUNCA fique rotulado apenas como tabagista ativo ("Sim") nem em branco!
-    if (exSmokerMatch && (!currentTabVal || /^(?:sim|ativ[oa]|tabagista)$/i.test(currentTabVal))) {
+    // Se o paciente é EX-TABAGISTA (parou de fumar), usa linha própria "# Ex-tabagista..." e NUNCA coloca dentro de "# Tabagista:"!
+    const hasExTabagistaHeader = /^#\s*Ex-?tabagista\b/im.test(headerPart);
+    if (exSmokerMatch && !hasExTabagistaHeader && (!currentTabVal || /^(?:sim|ativ[oa]|tabagista|nega)$/i.test(currentTabVal))) {
       const rawEx = exSmokerMatch[0].trim();
       const formattedEx = /^ex-?tabagista/i.test(rawEx)
         ? rawEx.replace(/^ex-?tabagista/i, 'Ex-tabagista')
         : `Ex-tabagista (${rawEx})`;
       if (currentTabMatch) {
-        headerPart = headerPart.replace(/^#\s*Tabagist[ao]\s*:\s*.*$/im, `# Tabagista: ${formattedEx}`);
+        headerPart = headerPart.replace(/^#\s*Tabagist[ao]\s*:\s*.*$/im, `# ${formattedEx}`);
       } else {
-        headerPart = `${headerPart.trimEnd()}\n# Tabagista: ${formattedEx}\n`;
+        headerPart = `${headerPart.trimEnd()}\n# ${formattedEx}\n`;
       }
-    } else if (!currentTabVal) {
+    } else if (!currentTabVal && !hasExTabagistaHeader) {
       let inferredTab = '';
       if (extractedTabagismoFromHeader) {
         inferredTab = extractedTabagismoFromHeader;
@@ -3697,10 +3704,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           }
         }
 
-        // Limpa apenas sufixos transitórios de status das linhas "#" (sem apagar a patologia crônica!) e bloqueia queixas agudas no cabeçalho "#"
+        // Normaliza apenas prefixo "# Hipótese:" e remove queixas agudas pontuais do cabeçalho "#" (preservando demais descrições clínicas!)
         headerPart = headerPart
           .replace(/^#\s*Hip[óo]tese\s*:\s*/gim, '# ')
-          .replace(/^(#\s*[^\n,;()-]+?)\s*(?:[,;-]\s*|\s+\(\s*)(?:compensad[oa]|descompensad[oa]|controlad[oa]|em\s+controle|bom\s+controle|controle\s+adequad[oa]|controle\s+irregular|controle\s+insatisfat[óo]rio|em\s+tratamento|em\s+acompanhamento|em\s+investiga[çc][ãa]o|sem\s+queixas|est[áa]vel)[^\n]*$/gim, '$1')
           .replace(/^#\s*(?:IVAS|Infec[çc][ãa]o\s+de\s+vias\s+a[ée]reas\s+superiores|Nasofaringite\s+aguda|Resfriado\s+comum|S[íi]ndrome\s+gripal|Gripe|Amigdalite\s+aguda|Faringoamigdalite|Faringite\s+aguda|Sinusite\s+aguda|Rinossinusite\s+aguda|Otite\s+m[ée]dia\s+aguda|Otite\s+externa\s+aguda|Gastroenterite\s+aguda|GECA|Diarreia\s+aguda|Viroses?|Dengue|Cistite\s+aguda|Infec[çc][ãa]o\s+do\s+trato\s+urin[áa]rio|ITU\s+baixa|ITU\s+aguda|Lombalgia\s+aguda|Cervicalgia\s+aguda|Cefaleia\s+aguda|SOF\s+positivo|Puericultura\s+de\s+rotina|Consulta\s+de\s+rotina|Check-?up|Renova[çc][ãa]o\s+de\s+receita)[^\n]*\n?/gim, '');
 
         for (const block of prevBlocks) {
@@ -4075,9 +4081,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       .replace(/Paciente\s+nega\s+ser\s+doador\s+de\s+[óo]rg[ãa]os,?\s*(?:mas\s*)?(?:ap[óo]s\s+esclarecimento\s+m[ée]dico,?\s*)?manifestou\s+interesse\s+em\s+ser\s+doador[^.\n]*/gi, 'Manifesta interesse em ser doador de órgãos.')
       .replace(/ap[óo]s\s+esclarecimento\s+m[ée]dico,?\s*/gi, '');
 
-    // 2. Remove condutas/orientações médicas que vazaram para dentro do SUBJETIVO
+    // 2. Evita frases em 3ª pessoa sobre o médico dentro do SUBJETIVO sem apagar informações clínicas reais
     subjContent = subjContent.replace(
-      /(?:(?:O\s+)?M[ée]dico\s+(?:refor[çc]ou|orientou|explicou|solicitou|prescreveu|enfatizou|reiterou|esclareceu)|Realizado\s+encaminhamento|Orientado\s+(?:o\s+)?paciente\s+a\s+acompanhar)[^.\n]*\.?\s*/gi,
+      /\b(?:O\s+)?M[ée]dico\s+(?:refor[çc]ou|orientou|explicou|solicitou|prescreveu|enfatizou|reiterou|esclareceu)\s+/gi,
       ''
     );
 
