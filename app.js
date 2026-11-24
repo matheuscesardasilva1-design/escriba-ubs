@@ -2317,7 +2317,7 @@
           if (onProgressMilestone) {
             onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
           }
-        }, { allowLiveFallback: true });
+        }, { allowLiveFallback: true, maxRounds: 1 });
         const stage1Text = (stage1Res.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
         totalTokensUsed += stage1Res.responseJson?.usageMetadata?.totalTokenCount || 0;
         lastModelUsed = stage1Res.modelUsed || lastModelUsed;
@@ -4324,7 +4324,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             reject(new Error(`Timeout na comunicação WebSocket Live API com modelo ${cleanModel}`));
           }
         }
-      }, 75000);
+      }, 30000);
 
       ws.onopen = () => {
         if (onStatusUpdate) onStatusUpdate(`⚡ Conectado ao ${formatModelName(cleanModel)} (Live)...`);
@@ -4485,7 +4485,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     let lastError = null;
     let allFailedByDailyQuota = false;
     const keysToTry = getSavedApiKeysList(apiKey);
-    const maxTransientRounds = 3;
+    const maxTransientRounds = options.maxRounds || 2;
 
     for (let round = 1; round <= maxTransientRounds; round++) {
       let sawTransientFailure = false;
@@ -4493,18 +4493,19 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
       for (let kIdx = 0; kIdx < keysToTry.length; kIdx++) {
         const currentKey = keysToTry[kIdx];
+        const keyTag = keysToTry.length > 1 ? ` [Chave ${kIdx + 1}/${keysToTry.length}]` : '';
         const modelsToTry = [...(await getActiveGeminiModels(currentKey))];
 
       for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
         const model = modelsToTry[mIdx];
-        const maxAttempts = 2;
+        const maxAttempts = (keysToTry.length > 1 || mIdx < modelsToTry.length - 1) ? 1 : 2;
         let disableThinkingForThisModel = false;
         let fallbackMaxTokens = null;
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
             if (onStatusUpdate) {
-              onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${formatModelName(model)})...` : `⚡ Estruturando (${formatModelName(model)})...`);
+              onStatusUpdate(attempt > 1 ? `⏳ Tentativa ${attempt} (${formatModelName(model)})${keyTag}...` : `⚡ Estruturando (${formatModelName(model)})${keyTag}...`);
             }
 
             // Se for modelo da Live API (WebSocket)
@@ -4539,8 +4540,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             }
 
             const abortCtrl = new AbortController();
-            // Timeout de 120s (2 min) para acomodar áudios longos e raciocínio clínico completo do Gemini sem abortar prematuramente
-            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), 120000);
+            // Timeout de 65s para evitar travar minutos em um modelo congestionado antes de alternar para outra chave/modelo
+            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), 65000);
             let res;
             try {
               res = await fetch(url, {
@@ -4722,9 +4723,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     if (options.allowLiveFallback) {
       for (const currentKey of keysToTry) {
         const kHash = getKeyShortHash(currentKey);
-        const liveCandidates = (cachedEmergencyLiveModelsByKey[kHash] && cachedEmergencyLiveModelsByKey[kHash].length > 0)
+        const liveCandidates = ((cachedEmergencyLiveModelsByKey[kHash] && cachedEmergencyLiveModelsByKey[kHash].length > 0)
           ? cachedEmergencyLiveModelsByKey[kHash]
-          : ['gemini-3.5-transcribe-live', 'gemini-3-flash-live', 'gemini-3.8-live', 'gemini-2.5-flash-native-audio-dialog'];
+          : ['gemini-3.5-transcribe-live', 'gemini-3-flash-live']).slice(0, 2);
         for (const liveModel of liveCandidates) {
           try {
             if (onStatusUpdate) onStatusUpdate(`🎙️ Fallback Live API (${formatModelName(liveModel)})...`);
