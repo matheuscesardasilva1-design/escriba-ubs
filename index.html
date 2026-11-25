@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261125_56" />
+  <link rel="stylesheet" href="styles.css?v=20261125_57" />
   <script>
     (function() {
       try {
@@ -54,7 +54,7 @@
     <div class="brand" id="brandHomeBtn" style="cursor: pointer;" title="Ir para a primeira página">
       <div class="brand-icon">⚕</div>
       <span class="brand-title">Prontuário APS</span>
-      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.25-56</span>
+      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.25-57</span>
     </div>
 
     <nav class="nav-tabs">
@@ -399,9 +399,12 @@
             </div>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <label for="audioFileInput" class="btn btn-primary" style="cursor: pointer; padding: 6px 12px; font-size: 12px; font-weight: 700; background: #0284c7; border-color: #0369a1;" title="Anexar 1 ou mais áudios desta Visita Domiciliar (o sistema junta todos na mesma evolução)">
-              🎙️ + Adicionar Áudio(s) da VD
+            <label for="audioFileInput" class="btn btn-primary" style="cursor: pointer; padding: 6px 12px; font-size: 12px; font-weight: 700; background: #0284c7; border-color: #0369a1;" title="Enviar arquivo(s) de áudio da VD ou áudio gravado na UBS relatando como foi a VD e o que foi feito">
+              📂 Enviar Áudio(s) da VD / Relato na UBS
             </label>
+            <button type="button" class="btn btn-primary" id="btnQuickRecordVdUbsReport" style="padding: 6px 12px; font-size: 12px; font-weight: 700; background: #7c3aed; border-color: #6d28d9;" title="Gravar agora na UBS um áudio relatando como foi a VD e o que foi feito para juntar na evolução">
+              🎙️ Gravar Relato Pós-VD na UBS
+            </button>
             <input type="date" id="vdVisitDateInput" class="input-text" style="padding: 6px 10px; font-size: 12.5px; width: auto; border-color: #fcd34d; background: #ffffff;" title="Data real em que a Visita Domiciliar foi realizada (opcional)" autocomplete="off" />
             <button type="button" class="btn btn-secondary" id="btnClearVdDate" style="padding: 5px 8px; font-size: 11.5px;" title="Limpar data da VD">Limpar</button>
           </div>
@@ -607,6 +610,10 @@
           <button type="button" class="btn btn-primary" id="btnContinueRecordingPatient" title="Abrir novamente a folha deste mesmo paciente para gravar uma continuação e juntar na mesma evolução">
             ➕ Continuar Atendimento
           </button>
+          <label class="btn btn-secondary" style="cursor: pointer; font-weight: 700; color: #0284c7; border-color: #7dd3fc;" title="Enviar arquivo de áudio gravado posteriormente na UBS (ex: relato de como foi a VD e o que foi feito) para incluir nesta evolução">
+            📂 + Enviar Áudio Pós-VD / Extra
+            <input type="file" id="continuationAudioFileInput" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" multiple style="display: none;" />
+          </label>
           <button type="button" class="btn btn-secondary" id="btnToggleEvolvedPEC">
             📌 Marcar como Evoluído no PEC
           </button>
@@ -1056,9 +1063,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261125_56"></script>
-  <script src="zscore.js?v=20261125_56"></script>
-  <script src="db.js?v=20261125_56"></script>
-  <script src="app.js?v=20261125_56"></script>
+  <script src="templates.js?v=20261125_57"></script>
+  <script src="zscore.js?v=20261125_57"></script>
+  <script src="db.js?v=20261125_57"></script>
+  <script src="app.js?v=20261125_57"></script>
 </body>
 </html>

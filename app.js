@@ -5036,6 +5036,16 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     return fullProtocolText.slice(0, 50000);
   }
 
+  function cleanReferralOutputText(rawText) {
+    return String(rawText || '')
+      .replace(/^```[a-z]*\n?/gim, '')
+      .replace(/```$/gim, '')
+      .replace(/\*+/g, '')
+      .replace(/^[ \t]*(?:EXAME\s+F[ÍI]SICO\s+(?:DIRECIONADO|FOCADO)|MOTIVO\s+DO\s+ENCAMINHAMENTO(?:\s+E\s+HIST[ÓO]RIA\s+CL[ÍI]NICA)?)\s*:\s*\n?/gim, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
   async function generateStateReferral() {
     if (!state.activeConsultationId) {
       alert('Selecione um atendimento primeiro para gerar o encaminhamento.');
@@ -5116,10 +5126,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
       const rawRefText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-      const refText = rawRefText
-        .replace(/^```[a-z]*\n?/gim, '')
-        .replace(/```$/gim, '')
-        .trim();
+      const refText = cleanReferralOutputText(rawRefText);
       const tokens = responseJson?.usageMetadata?.totalTokenCount || 800;
 
       if (!Array.isArray(consult.referrals)) {
@@ -5221,10 +5228,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         generationConfig: { temperature: 0.15, maxOutputTokens: 65536 }
       };
       const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
-      const improvedText = (responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '')
-        .replace(/^```[a-z]*\n?/gim, '')
-        .replace(/```$/gim, '')
-        .trim();
+      const improvedText = cleanReferralOutputText(responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '');
 
       if (!improvedText || improvedText.length < 40) {
         throw new Error('A IA retornou uma resposta vazia ou muito curta.');
@@ -7442,11 +7446,84 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     });
 
-    // Upload de Áudio (WhatsApp / iPhone 14)
+    // Upload de Áudio (WhatsApp / iPhone 14 / VD)
     document.getElementById('audioFileInput')?.addEventListener('change', (e) => {
       if (e.target.files && e.target.files.length > 0) {
         handleExternalAudioUpload(e.target.files);
         e.target.value = '';
+      }
+    });
+
+    // Upload de Áudio Pós-VD / Extra para juntar em uma evolução já existente no Histórico
+    document.getElementById('continuationAudioFileInput')?.addEventListener('change', async (e) => {
+      const fileList = e.target.files;
+      if (!fileList || fileList.length === 0 || !state.activeConsultationId) return;
+      const files = Array.from(fileList);
+      e.target.value = '';
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (!c) return;
+      c.previousEvolutionText = c.evolutionText || c.previousEvolutionText || '';
+      c.previousRawTranscript = c.rawTranscript || c.previousRawTranscript || '';
+      await window.ScribeDB.deleteAudioChunksOnly(c.id);
+      c.chunkCount = 0;
+      c.audioBytes = 0;
+      c.audioDeleted = false;
+      c.isMultiFileExternalAudio = files.length > 1;
+      c.audioFilesCount = files.length;
+      c.status = 'queued';
+      c.errorMessage = '';
+      c.updatedAt = Date.now();
+      await window.ScribeDB.saveConsultation(c);
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const cleanMime = normalizeAudioMimeType(f, f.name);
+        await window.ScribeDB.saveAudioChunk(c.id, i, f, cleanMime);
+      }
+      await refreshQueueSidebar();
+      const updated = await window.ScribeDB.getConsultation(c.id);
+      await renderActiveConsultationView(updated);
+      showToast(`🎙️ Relato pós-VD (${files.length} áudio) enviado! Integrando na evolução de "${c.patientLabel}"...`);
+      processQueueInBackground();
+    });
+
+    // Botão rápido dentro do campo de VD para gravar o relato pós-VD na UBS e juntar nos áudios da visita
+    let vdUbsReportRecorder = null;
+    let vdUbsReportStream = null;
+    let vdUbsReportChunks = [];
+    document.getElementById('btnQuickRecordVdUbsReport')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btnQuickRecordVdUbsReport');
+      if (vdUbsReportRecorder && vdUbsReportRecorder.state === 'recording') {
+        vdUbsReportRecorder.stop();
+        return;
+      }
+      try {
+        vdUbsReportStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+        const mime = getSupportedAudioMimeType() || 'audio/webm';
+        vdUbsReportChunks = [];
+        vdUbsReportRecorder = new MediaRecorder(vdUbsReportStream, { mimeType: mime, audioBitsPerSecond: 32000 });
+        vdUbsReportRecorder.ondataavailable = (ev) => {
+          if (ev.data && ev.data.size > 0) vdUbsReportChunks.push(ev.data);
+        };
+        vdUbsReportRecorder.onstop = () => {
+          try { vdUbsReportStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+          const blob = new Blob(vdUbsReportChunks, { type: mime });
+          if (blob.size > 0) {
+            const reportFile = new File([blob], `Relato_UBS_Pos_VD_${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h')}.webm`, { type: mime });
+            handleExternalAudioUpload([reportFile]);
+          }
+          if (btn) {
+            btn.textContent = '🎙️ Gravar Relato Pós-VD na UBS';
+            btn.style.background = '#7c3aed';
+          }
+        };
+        vdUbsReportRecorder.start(1000);
+        if (btn) {
+          btn.textContent = '⏹️ Finalizar Relato Pós-VD na UBS';
+          btn.style.background = '#dc2626';
+        }
+        showToast('🎙️ Relatando na UBS como foi a VD e o que foi feito... Clique novamente no botão para finalizar.');
+      } catch (err) {
+        alert('Não foi possível acessar o microfone: ' + err.message);
       }
     });
 
