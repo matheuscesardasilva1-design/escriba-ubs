@@ -1370,6 +1370,14 @@
     if (vdDateEl) vdDateEl.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
+    const liveRefCustom = document.getElementById('liveReferralCustomSpecialty');
+    const liveRefCond = document.getElementById('liveReferralConditionInput');
+    const liveRefExtra = document.getElementById('liveReferralExtraDataInput');
+    const liveRefEditor = document.getElementById('liveReferralResultEditor');
+    if (liveRefCustom) liveRefCustom.value = '';
+    if (liveRefCond) liveRefCond.value = '';
+    if (liveRefExtra) liveRefExtra.value = '';
+    if (liveRefEditor) liveRefEditor.value = '';
     if (liveBox) liveBox.style.display = 'none';
     if (liveEditor) liveEditor.value = '';
     if (summaryEl) {
@@ -1580,6 +1588,20 @@
       if (currentPrevConsult) consult.previousConsultationText = currentPrevConsult;
       if (currentPreTranscribedExams) consult.preTranscribedExamsText = currentPreTranscribedExams;
       consult.zScoreSummary = currentZScore;
+      const liveRefText = (document.getElementById('liveReferralResultEditor')?.value || '').trim();
+      const liveRefSpec = (document.getElementById('liveReferralCustomSpecialty')?.value || '').trim()
+        || (document.getElementById('liveReferralSpecialtySelect')?.value || '').trim();
+      if (liveRefText) {
+        if (!Array.isArray(consult.referrals)) consult.referrals = [];
+        consult.referrals.push({
+          id: 'ref_' + Date.now() + '_live',
+          specialty: liveRefSpec || 'Especialidade',
+          text: liveRefText,
+          createdAt: Date.now()
+        });
+        consult.referralText = liveRefText;
+        consult.referralSpecialty = liveRefSpec || 'Especialidade';
+      }
       consult.status = 'queued';
       consult.updatedAt = Date.now();
       await window.ScribeDB.saveConsultation(consult);
@@ -1596,6 +1618,14 @@
     if (vdDateEl) vdDateEl.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
+    const liveRefCustom = document.getElementById('liveReferralCustomSpecialty');
+    const liveRefCond = document.getElementById('liveReferralConditionInput');
+    const liveRefExtra = document.getElementById('liveReferralExtraDataInput');
+    const liveRefEditor = document.getElementById('liveReferralResultEditor');
+    if (liveRefCustom) liveRefCustom.value = '';
+    if (liveRefCond) liveRefCond.value = '';
+    if (liveRefExtra) liveRefExtra.value = '';
+    if (liveRefEditor) liveRefEditor.value = '';
     clearZScoreInputs();
 
     showToast('✅ Atendimento salvo e enviado para o Histórico! Tela pronta para o próximo paciente.');
@@ -1838,6 +1868,14 @@
     if (vdDateEl) vdDateEl.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
+    const liveRefCustom = document.getElementById('liveReferralCustomSpecialty');
+    const liveRefCond = document.getElementById('liveReferralConditionInput');
+    const liveRefExtra = document.getElementById('liveReferralExtraDataInput');
+    const liveRefEditor = document.getElementById('liveReferralResultEditor');
+    if (liveRefCustom) liveRefCustom.value = '';
+    if (liveRefCond) liveRefCond.value = '';
+    if (liveRefExtra) liveRefExtra.value = '';
+    if (liveRefEditor) liveRefEditor.value = '';
     updateQuickNotesExamBadge();
     showToast(`▶️ Transcrevendo ${files.length} áudio(s) com os dados preenchidos!`);
     await refreshQueueSidebar();
@@ -1936,6 +1974,14 @@
     if (vdDateEl) vdDateEl.value = '';
     if (quickNotesInput) quickNotesInput.value = '';
     if (prevConsultInput) prevConsultInput.value = '';
+    const liveRefCustom = document.getElementById('liveReferralCustomSpecialty');
+    const liveRefCond = document.getElementById('liveReferralConditionInput');
+    const liveRefExtra = document.getElementById('liveReferralExtraDataInput');
+    const liveRefEditor = document.getElementById('liveReferralResultEditor');
+    if (liveRefCustom) liveRefCustom.value = '';
+    if (liveRefCond) liveRefCond.value = '';
+    if (liveRefExtra) liveRefExtra.value = '';
+    if (liveRefEditor) liveRefEditor.value = '';
     updateQuickNotesExamBadge();
     showToast('📄 Laudos / Notas enviados para a fila de estruturação!');
     await refreshQueueSidebar();
@@ -5046,6 +5092,105 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       .trim();
   }
 
+  async function generateLiveReferralDuringConsultation() {
+    const apiKey = getSavedApiKey();
+    if (!apiKey) {
+      openApiKeyModal();
+      return;
+    }
+    const specialtySelect = document.getElementById('liveReferralSpecialtySelect');
+    const customSpecialty = document.getElementById('liveReferralCustomSpecialty');
+    const conditionInput = document.getElementById('liveReferralConditionInput');
+    const extraDataInput = document.getElementById('liveReferralExtraDataInput');
+    const editor = document.getElementById('liveReferralResultEditor');
+    const btn = document.getElementById('btnGenerateLiveReferralNow');
+
+    const especialidade = (customSpecialty?.value.trim()) || (specialtySelect?.value.trim()) || 'Especialidade Médica';
+    const motivoEncaminhamento = (conditionInput?.value.trim()) || '';
+    const dadosExtrasRegulacao = (extraDataInput?.value.trim()) || '';
+    const quickNotes = (document.getElementById('quickNotesInput')?.value || '').trim();
+    const prevConsult = (document.getElementById('previousConsultationInput')?.value || '').trim();
+    const preExams = (document.getElementById('liveExamTranscriptionEditor')?.value || state.preTranscribedExamsText || '').trim();
+    const draftTyped = (editor?.value || '').trim();
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = `⏳ Gerando encaminhamento (${especialidade}) sem parar gravação...`;
+    }
+
+    try {
+      let liveAudioPart = null;
+      if (state.isRecording && state.recordingConsultationId && state.mediaRecorder) {
+        try {
+          if (state.mediaRecorder.state === 'recording') {
+            state.mediaRecorder.requestData();
+          }
+          if (state.lastChunkSavePromise) {
+            await state.lastChunkSavePromise;
+          }
+          const partialBlob = await window.ScribeDB.assembleAudioBlob(state.recordingConsultationId);
+          if (partialBlob && partialBlob.size > 0 && partialBlob.size <= 19 * 1024 * 1024) {
+            const cleanMime = normalizeAudioMimeType(partialBlob, '');
+            const b64 = await blobToBase64(partialBlob);
+            liveAudioPart = { inlineData: { mimeType: cleanMime, data: b64 } };
+          }
+        } catch (_) {}
+      }
+
+      const slug = getTelessaudeSlug(especialidade);
+      let telessaudeProtocol = null;
+      if (slug) {
+        try {
+          telessaudeProtocol = await fetchTelessaudeProtocol(slug);
+        } catch (_) {}
+      }
+
+      const combinedContextText = [
+        prevConsult ? `=== EVOLUÇÃO ANTERIOR DO PACIENTE ===\n${prevConsult}` : '',
+        quickNotes ? `=== ANOTAÇÕES RÁPIDAS DE HOJE ===\n${quickNotes}` : '',
+        draftTyped ? `=== RASCUNHO DIGITADO PELO MÉDICO NO ENCAMINHAMENTO ===\n${draftTyped}` : ''
+      ].filter(Boolean).join('\n\n') || 'Consulta em andamento (utilize o áudio gravado até o momento, motivo e dados adicionais informados).';
+
+      const caseEvidence = `${especialidade}\n${motivoEncaminhamento}\n${dadosExtrasRegulacao}\n${combinedContextText}`;
+      const targetedProtocol = extractRelevantProtocolSection(telessaudeProtocol?.conteudo_extraido || '', caseEvidence, motivoEncaminhamento);
+
+      const prompt = window.buildReferralPrompt({
+        templateId: state.selectedTemplateId,
+        templateName: state.templates[state.selectedTemplateId]?.name || 'Consulta APS',
+        evolucaoTexto: combinedContextText,
+        rawTranscript: '',
+        preTranscribedExamsText: preExams,
+        especialidade,
+        motivoEncaminhamento,
+        dadosExtrasRegulacao,
+        quickNotes,
+        telessaudeProtocolText: targetedProtocol
+      });
+
+      const userParts = [];
+      if (liveAudioPart) userParts.push(liveAudioPart);
+      userParts.push({ text: prompt });
+
+      const requestBody = {
+        contents: [{ role: 'user', parts: userParts }],
+        generationConfig: { temperature: 0.15, maxOutputTokens: 65536 }
+      };
+
+      const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
+      const refText = cleanReferralOutputText(responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '');
+      if (editor) editor.value = refText;
+      addDailyTokenUsage(responseJson?.usageMetadata?.totalTokenCount || 800);
+      showToast(`🏛️ Encaminhamento (${especialidade}) gerado durante o atendimento!`);
+    } catch (err) {
+      alert('Erro ao gerar encaminhamento durante a consulta: ' + err.message);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '⚡ Gerar Encaminhamento Agora (Sem Parar o Atendimento)';
+      }
+    }
+  }
+
   async function generateStateReferral() {
     if (!state.activeConsultationId) {
       alert('Selecione um atendimento primeiro para gerar o encaminhamento.');
@@ -7843,6 +7988,30 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     document.getElementById('btnGenerateReferral')?.addEventListener('click', generateStateReferral);
     document.getElementById('btnImproveReferral')?.addEventListener('click', improveCurrentReferral);
+
+    document.getElementById('btnToggleLiveReferralDrawer')?.addEventListener('click', () => {
+      const body = document.getElementById('liveReferralDrawerBody');
+      const btn = document.getElementById('liveReferralDrawerToggleBtn');
+      if (!body) return;
+      const isHidden = body.style.display === 'none' || !body.style.display;
+      body.style.display = isHidden ? 'block' : 'none';
+      if (btn) btn.textContent = isHidden ? '▲ Minimizar Encaminhamento' : '▼ Abrir Encaminhamento';
+    });
+    document.getElementById('liveReferralSpecialtySelect')?.addEventListener('change', () => {
+      const customSpec = document.getElementById('liveReferralCustomSpecialty');
+      if (customSpec) customSpec.value = '';
+    });
+    document.getElementById('btnGenerateLiveReferralNow')?.addEventListener('click', generateLiveReferralDuringConsultation);
+    document.getElementById('btnCopyLiveJustificationOnly')?.addEventListener('click', () => {
+      const fullText = document.getElementById('liveReferralResultEditor')?.value || '';
+      const justMatch = fullText.match(/JUSTIFICATIVA CLÍNICA PARA A? REGULAÇÃO:\s*\n+([\s\S]+?)(?=\n+(?:ENQUADRAMENTO|⚠️\s*PENDÊNCIAS)|$)/i);
+      const textToCopy = (justMatch && justMatch[1].trim()) ? justMatch[1].trim() : fullText;
+      copyToClipboard(textToCopy, '📋 Justificativa clínica copiada para o GERCON/SISREG!');
+    });
+    document.getElementById('btnCopyLiveReferralAll')?.addEventListener('click', () => {
+      const text = document.getElementById('liveReferralResultEditor')?.value || '';
+      copyToClipboard(text, '🏛️ Encaminhamento completo copiado!');
+    });
     document.getElementById('btnCopyJustificationOnly')?.addEventListener('click', () => {
       const fullText = document.getElementById('referralResultEditor')?.value || '';
       // Extrai apenas o bloco da justificativa clínica pronta para o GERCON/SISREG

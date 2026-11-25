@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261125_57" />
+  <link rel="stylesheet" href="styles.css?v=20261125_58" />
   <script>
     (function() {
       try {
@@ -54,7 +54,7 @@
     <div class="brand" id="brandHomeBtn" style="cursor: pointer;" title="Ir para a primeira página">
       <div class="brand-icon">⚕</div>
       <span class="brand-title">Prontuário APS</span>
-      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.25-57</span>
+      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.25-58</span>
     </div>
 
     <nav class="nav-tabs">
@@ -475,6 +475,90 @@
             </div>
           </div>
           <textarea id="quickNotesInput" class="textarea-box" rows="7" placeholder="Sinais vitais, anotações ou exames..." autocomplete="off"></textarea>
+        </div>
+      </div>
+
+      <!-- ENCAMINHAMENTO DURANTE O ATENDIMENTO (SEM PRECISAR FINALIZAR A GRAVAÇÃO) -->
+      <div class="referral-section" id="liveReferralSection" style="margin-bottom: 12px;">
+        <div class="referral-header-toggle" id="btnToggleLiveReferralDrawer" title="Clique para preencher ou gerar encaminhamento durante a consulta sem parar o atendimento">
+          <div style="font-weight: 800; font-size: 13.5px; color: #5b21b6; display: flex; align-items: center; gap: 8px;">
+            <span>🏛️ Encaminhamentos — Preencher / Gerar Durante o Atendimento</span>
+            <span class="tab-badge" id="liveSavedReferralsCountBadge" style="background: #ede9fe; color: #5b21b6;">Sem parar gravação</span>
+          </div>
+          <button type="button" class="btn btn-secondary" id="liveReferralDrawerToggleBtn" style="padding: 4px 10px; font-size: 12px;">
+            ▼ Abrir Encaminhamento
+          </button>
+        </div>
+
+        <div id="liveReferralDrawerBody" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #e9d5ff;">
+          <div style="background: #ffffff; border: 1px solid #d8b4fe; border-radius: 10px; padding: 12px;">
+            <div class="referral-grid">
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Especialidade Solicitada (SUS / Regulação):
+                </label>
+                <select id="liveReferralSpecialtySelect" class="select-box">
+                  <option value="Cardiologia">Cardiologia</option>
+                  <option value="Pneumologia">Pneumologia</option>
+                  <option value="Pré-Natal de Alto Risco (PNAR)">Pré-Natal de Alto Risco (PNAR)</option>
+                  <option value="Endocrinologia e Metabologia">Endocrinologia e Metabologia</option>
+                  <option value="Ambulatório Trans / Processo Transexualizador">Ambulatório Trans / Processo Transexualizador</option>
+                  <option value="Ortopedia e Traumatologia">Ortopedia e Traumatologia</option>
+                  <option value="Neuropediatria / Neurologia Infantil">Neuropediatria / Neurologia Infantil</option>
+                  <option value="Pediatria / Especialidade Pediátrica">Pediatria / Especialidade Pediátrica</option>
+                  <option value="Neurologia Adulto">Neurologia Adulto</option>
+                  <option value="Ginecologia / Mastologia">Ginecologia / Mastologia</option>
+                  <option value="Oftalmologia">Oftalmologia Adulto</option>
+                  <option value="Oftalmologia Pediátrica">Oftalmologia Pediátrica</option>
+                  <option value="Otorrinolaringologia">Otorrinolaringologia</option>
+                  <option value="Cirurgia Geral / Ambulatorial">Cirurgia Geral / Ambulatorial</option>
+                  <option value="Urologia">Urologia</option>
+                  <option value="Gastroenterologia / Hepatologia">Gastroenterologia / Hepatologia</option>
+                  <option value="Reumatologia">Reumatologia</option>
+                  <option value="Nefrologia">Nefrologia</option>
+                  <option value="Vascular / Angiologia">Vascular / Angiologia</option>
+                  <option value="Psiquiatria / Saúde Mental">Psiquiatria / Saúde Mental</option>
+                  <option value="Dermatologia">Dermatologia</option>
+                  <option value="Fonoaudiologia / Reabilitação">Fonoaudiologia / Reabilitação</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                  Ou digite outra especialidade/exame (opcional):
+                </label>
+                <input type="text" id="liveReferralCustomSpecialty" class="input-text" placeholder="Ex: Cirurgia Plástica / Ecocardiograma..." autocomplete="off" />
+              </div>
+            </div>
+
+            <div style="margin-bottom: 8px;">
+              <label style="font-size: 11.5px; font-weight: 800; color: #5b21b6; display: flex; align-items: center; justify-content: space-between; margin-bottom: 3px;">
+                <span>🎯 Motivo do Encaminhamento / Condição Específica (TelessaúdeRS):</span>
+                <span style="font-size: 11px; font-weight: 600; color: #7c3aed;">Preencha durante a consulta</span>
+              </label>
+              <input type="text" id="liveReferralConditionInput" class="input-text" placeholder="Ex: Investigação de Insuficiência Cardíaca / Túnel do Carpo / Miomatose Uterina / Gonartrose..." autocomplete="off" style="font-weight: 600; border-color: #c084fc; background: #faf5ff;" />
+            </div>
+
+            <div style="margin-bottom: 10px;">
+              <label style="font-size: 11.5px; font-weight: 700; color: #4c1d95; display: block; margin-bottom: 3px;">
+                📋 Tratamentos Prévios na APS / Dados Adicionais para a Regulação (opcional):
+              </label>
+              <input type="text" id="liveReferralExtraDataInput" class="input-text" placeholder="Ex: Tratamento otimizado na APS há 6 meses sem controle; exames prévios adicionais..." autocomplete="off" />
+            </div>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+              <button type="button" class="btn btn-primary" id="btnGenerateLiveReferralNow" style="flex: 1; background: #7c3aed;">
+                ⚡ Gerar Encaminhamento Agora (Sem Parar o Atendimento)
+              </button>
+              <button type="button" class="btn btn-primary" id="btnCopyLiveJustificationOnly" style="padding: 6px 12px; font-size: 12px; background: #059669; border-color: #059669;">
+                📋 Copiar Justificativa p/ GERCON
+              </button>
+              <button type="button" class="btn btn-secondary" id="btnCopyLiveReferralAll" style="padding: 6px 12px; font-size: 12px;">
+                📋 Copiar Tudo
+              </button>
+            </div>
+
+            <textarea id="liveReferralResultEditor" class="referral-editor" rows="7" placeholder="Você pode ir digitando/preenchendo o encaminhamento aqui durante a consulta OU clicar em '⚡ Gerar Encaminhamento Agora' acima (usa o áudio gravado até o momento + Evolução Anterior + Anotações Rápidas sem interromper a gravação)..."></textarea>
+          </div>
         </div>
       </div>
 
@@ -1063,9 +1147,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261125_57"></script>
-  <script src="zscore.js?v=20261125_57"></script>
-  <script src="db.js?v=20261125_57"></script>
-  <script src="app.js?v=20261125_57"></script>
+  <script src="templates.js?v=20261125_58"></script>
+  <script src="zscore.js?v=20261125_58"></script>
+  <script src="db.js?v=20261125_58"></script>
+  <script src="app.js?v=20261125_58"></script>
 </body>
 </html>
