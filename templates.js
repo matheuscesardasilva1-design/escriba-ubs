@@ -151,8 +151,6 @@ Familiar ciente, concordante e sem dúvidas`
 # MUC:
 # Tabagista:
 # Alergias:
-# Equipe presente na VD: Enfermeiro(a):  | ACS: 
-# Familiar / Cuidador(a) presente na visita: 
 
 SUBJETIVO
 Visita domiciliar realizada
@@ -748,12 +746,22 @@ window.parsePreviousConsultationData = function(prevRawText) {
 // ============================================================================
 // ETAPA 1 DEDICADA: TRANSCRIÇÃO LITERAL PALAVRA POR PALAVRA DE 100% DO ÁUDIO
 // ============================================================================
-window.buildVerbatimAudioTranscriptionPrompt = function(durationSeconds) {
+window.buildVerbatimAudioTranscriptionPrompt = function(durationSeconds, contextInfo = {}) {
   const approxMin = durationSeconds ? Math.max(1, Math.round(durationSeconds / 60)) : null;
-  return `Você é um transcritor médico forense especialista em consultas da Atenção Primária à Saúde (UBS / SUS).
-Sua ÚNICA tarefa nesta etapa é ouvir o áudio anexado do segundo 00:00 até o último segundo${approxMin ? ` (duração aproximada: ${approxMin} min)` : ''} e transcrever LITERALMENTE, PALAVRA POR PALAVRA, 100% de tudo o que foi dito na consulta.
+  const audioCount = contextInfo.audioFilesCount || 1;
+  const contextLines = [];
+  if (contextInfo.templateName) contextLines.push(`- Tipo de Atendimento: ${contextInfo.templateName}`);
+  if (audioCount > 1) contextLines.push(`- ATENÇÃO MÚLTIPLOS ÁUDIOS (${audioCount} arquivos anexados): Ouça e transcreva TODOS os ${audioCount} arquivos de áudio em sequência cronológica contínua, juntando e integrando 100% das informações de todos os áudios!`);
+  if (contextInfo.previousHeaderSummary) contextLines.push(`- Contexto Prévio / Comorbidades e MUC do Paciente:\n${contextInfo.previousHeaderSummary}`);
+  if (contextInfo.quickNotes) contextLines.push(`- Notas Rápidas do Médico Hoje:\n${contextInfo.quickNotes}`);
+  const contextBlock = contextLines.length > 0
+    ? `\n=== CONTEXTO CLÍNICO DA CONSULTA (USE PARA ENTENDER OS TERMOS MÉDICOS, MEDICAÇÕES E MANTER A LINHA DE RACIOCÍNIO) ===\n${contextLines.join('\n')}\n`
+    : '';
 
-LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES OU CORTAR TRECHOS (TRANSCRIÇÃO 100% INTEGRAL):
+  return `Você é um transcritor médico forense especialista em consultas da Atenção Primária à Saúde (UBS / SUS).
+Sua ÚNICA tarefa nesta etapa é ouvir ${audioCount > 1 ? `TODOS os ${audioCount} arquivos de áudio anexados na íntegra` : 'o áudio anexado do segundo 00:00 até o último segundo'}${approxMin ? ` (duração aproximada: ${approxMin} min)` : ''} e transcrever LITERALMENTE, PALAVRA POR PALAVRA, 100% de tudo o que foi dito na consulta, mantendo perfeita coerência com o contexto clínico.
+${contextBlock}
+LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES/DOSAGENS OU CORTAR TRECHOS (TRANSCRIÇÃO 100% INTEGRAL):
 1. PROIBIÇÃO TOTAL DE ABREVIAR OU SINTETIZAR:
    - O médico precisa desta transcrição completa para compor o prontuário legal do paciente.
    - É TERMINANTEMENTE PROIBIDO resumir falas, omitir perguntas ou respostas, abreviar frases, pular assuntos ou parar a transcrição antes do último segundo da gravação!
@@ -761,7 +769,7 @@ LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES OU CORTAR
 2. IDENTIFICAÇÃO DOS INTERLOCUTORES (PROIBIDO INVENTAR NOMES PRÓPRIOS OU GRAU DE PARENTESCO!):
    - Inicie cada mudança de fala APENAS com "[MÉDICO]: ", "[PACIENTE]: " ou "[ACOMPANHANTE]: " (uma fala por linha).
    - É TERMINANTEMENTE PROIBIDO adivinhar, deduzir ou inventar nomes próprios de pessoas (como "Joel", "Maria", nome de enfermeira ou ACS), grau de parentesco ("filho", "filha", "esposo") ou nomes de unidades de saúde / bairros / cidades (UBS, ESF, UPA, hospital) se não tiverem sido pronunciados com 100% de nitidez!
-   - PROIBIÇÃO DE ALUCINAÇÃO EM SILÊNCIO OU RUÍDO: Nunca invente palavras, falas, queixas ou condutas (como renovação de receitas) que não estejam claramente audíveis. Se um trecho estiver inaudível, não invente conteúdo.
+   - PROIBIÇÃO DE ALUCINAÇÃO EM SILÊNCIO OU RUÍDO E PROIBIÇÃO DE SUPOR DOSAGENS: Nunca invente palavras, falas, queixas, condutas (como renovação de receitas) ou miligramagens/dosagens de medicamentos que não tenham sido ditas de forma clara no áudio. Se o médico falou apenas o nome do remédio sem dizer a dose em mg/mcg/gotas, transcreva apenas o nome dito!
 3. CAPTAÇÃO TOTAL DE DETALHES CLÍNICOS, TABAGISMO E ALERGIAS (NÃO DEIXE ESCAPAR NADA!):
    - Transcreva todas as queixas, dores, sintomas, história da doença atual e tempo de evolução relatados pelo(a) paciente (mesmo que a voz do paciente esteja mais baixa ou distante do microfone!).
    - Transcreva obrigatoriamente todas as perguntas e respostas sobre TABAGISMO (se fuma, se é ex-tabagista / já fumou e parou, ou se é tabagista passivo / alguém fuma em casa) e ALERGIAS medicamentosas ou alimentares!
@@ -836,11 +844,14 @@ ${isVdTemplate
 O médico depende desta evolução para o registro clínico e resguardo ético-jurídico no prontuário.
 - É TERMINANTEMENTE PROIBIDO abreviar histórias, sintetizar em poucas linhas, omitir queixas secundárias, usar reticências "..." ou generalizar com termos vagos como "sintomas habituais", "orientadas medidas", "conforme rotina" ou "prescritos sintomáticos"!
 - Você DEVE ouvir e integrar 100% da consulta gravada, das anotações rápidas e dos exames anexados.
-- Cada queixa do paciente, cada resposta ao interrogatório sintomatológico, cada achado de exame físico, cada valor de sinal vital, cada diagnóstico avaliado e CADA medicamento prescrito (com nome completo oficial, miligramas, posologia completa e duração) DEVE estar minuciosamente registrado e organizado nas seções corretas do prontuário (SOAP)!
+- Cada queixa do paciente, cada resposta ao interrogatório sintomatológico, cada achado de exame físico, cada valor de sinal vital, cada diagnóstico avaliado e CADA medicamento prescrito DEVE estar minuciosamente registrado e organizado nas seções corretas do prontuário (SOAP)!
+- PROIBIÇÃO ABSOLUTA DE SUPOR OU INVENTAR DOSAGEM DE MEDICAÇÃO (mg, mcg, UI, ml, gotas):
+  * É TERMINANTEMENTE PROIBIDO inventar, supor ou deduzir a miligramagem/concentração ou posologia de uma medicação se o médico NÃO disse essa dosagem no áudio ou nas notas rápidas (e não consta na # MUC anterior)!
+  * Se o médico citou apenas o nome da medicação sem especificar a dose (ex.: no Pré-Natal ou em qualquer consulta), escreva APENAS o nome da medicação e a orientação que foi efetivamente falada — NUNCA atribua uma dosagem por conta própria!
 - PROIBIÇÃO ABSOLUTA DE INVENTAR NOMES DE PESSOAS, UNIDADES DE SAÚDE OU ESTABELECER GRAU DE PARENTESCO NÃO INFORMADO:
   * É TERMINANTEMENTE PROIBIDO criar, deduzir ou adivinhar nomes de acompanhantes, familiares, cuidadores (ex.: NUNCA invente "Joel", "Maria", etc.), nomes de enfermeiros(as), ACS ou nomes de unidades de saúde / UBS / ESF / UPA / hospitais / bairros que NÃO foram ditos literalmente na consulta ou nas notas!
   * É TERMINANTEMENTE PROIBIDO estabelecer grau de parentesco ("filho", "filha", "esposo", "esposa", "nora", "irmã") se esse parentesco NÃO tiver sido declarado de forma 100% inequívoca e literal na consulta ou nas Anotações Rápidas!
-  * Se houver outra voz ou acompanhante na consulta/visita domiciliar mas o nome ou grau de parentesco não tiver sido explicitamente informado, escreva apenas "acompanhante" ou "familiar" (sem nome próprio e sem inventar parentesco) e deixe os campos "# Equipe presente na VD:" e "# Familiar / Cuidador(a) presente na visita:" em branco!
+  * Se houver outra voz ou acompanhante na consulta/visita domiciliar mas o nome ou grau de parentesco não tiver sido explicitamente informado, escreva apenas "acompanhante" ou "familiar" (sem nome próprio e sem inventar parentesco)!
 - ATENÇÃO MÁXIMA A ATENDIMENTO EM EMERGÊNCIA / PRONTO ATENDIMENTO / HOSPITAL:
   * Se a paciente relatar no áudio (ou nas notas) que esteve na Emergência / Pronto Atendimento / Maternidade / Hospital entre as consultas, você DEVE relatar detalhadamente no SUBJETIVO: motivo/queixas que a levaram à emergência, data/local se citados, avaliação realizada, medicações administradas e exames feitos na urgência!
   * E se ela realizou exames laboratoriais ou de imagem na Emergência/Urgência, ao colocá-los em EXAMES COMPLEMENTARES / ULTRASSONOGRAFIA, identifique explicitamente "(REALIZADO NA EMERGÊNCIA / URGÊNCIA)" ao lado da data do exame — JAMAIS jogue exames ou avaliações feitas na emergência como se tivessem sido realizados de forma eletiva na UBS!
@@ -941,7 +952,8 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - SEPARAÇÃO ESTRITA: O SUBJETIVO É EXCLUSIVAMENTE A VOZ E HISTÓRIA DO PACIENTE!
      * É TERMINANTEMENTE PROIBIDO colocar qualquer fala, conselho, orientação médica, encaminhamento ou prescrição do médico dentro do SUBJETIVO!
      * NUNCA escreva frases como "Médico orientou", "Médico reforçou", "Médico explicou", "Realizado encaminhamento" dentro do SUBJETIVO! Toda e qualquer orientação ou encaminhamento falado pelo médico durante a consulta pertence OBRIGATORIAMENTE à seção CONDUTA.
-   - LINGUAGEM SEMIOLÓGICA TÉCNICA E ORGANIZAÇÃO EM PARÁGRAFOS CLÍNICOS (QUALIDADE DE MÉDICO DE FAMÍLIA SÊNIOR):
+   - LINGUAGEM SEMIOLÓGICA TÉCNICA, LINHA DE RACIOCÍNIO CLÍNICO CONTÍNUA E ORGANIZAÇÃO EM PARÁGRAFOS:
+     * ENTENDIMENTO DO CONTEXTO E LINHA DE RACIOCÍNIO MÉDICO: Não escreva frases soltas ou desconexas! Construa o "SUBJETIVO" com uma linha de raciocínio clínico contínua, lógica e coesa (conectando o motivo da consulta, início e evolução temporal dos sintomas, características semiológicas, fatores de melhora/piora, relação com as comorbidades crônicas do cabeçalho "#" e adesão à "# MUC", sintomas associados e negados). Quando houver mais de um arquivo de áudio (ex.: múltiplos áudios de Visita Domiciliar), junte e integre o conteúdo de TODOS os áudios em uma narrativa única e coerente!
      * Escreva o "SUBJETIVO" SEMPRE em linguagem médica técnica, formal, clara e bem estruturada em parágrafos por tema clínico (1º Motivo da consulta e história da doença atual detalhada; 2º Saúde mental / comorbidades / revisão de sistemas; 3º Adesão e tolerabilidade medicamentosa; 4º Contexto familiar, regulatório ou trabalhista).
      * TRADUÇÃO OBRIGATÓRIA PARA TERMINOLOGIA MÉDICA TÉCNICA (SEM OMITIR NENHUM SINTOMA): Converta 100% das expressões leigas/coloquiais do diálogo para termos semiológicos técnicos de prontuário (ex.: "falta de ar" → dispneia; "batedeira/coração acelerado" → palpitações; "ardência ao urinar" → disúria; "urinar toda hora" → polaciúria; "dor de cabeça" → cefaleia; "enjoo" → náuseas; "azia/queimação" → pirose; "barriga estufada" → distensão abdominal; "dor nas juntas" → artralgia; "formigamento/dormência" → parestesia; "fraqueza/cansaço" → astenia/fadiga; "inchaço nas pernas" → edema de membros inferiores; "catarro" → expectoração; "sangue nas fezes" → hematoquezia).
      * COBERTURA INTEGRAL DE TUDO O QUE FOI FALADO, AVALIADO E ORIENTADO: 100% das queixas, perguntas negativas/positivas, achados examinados, hipóteses avaliadas e orientações/prescrições do médico devem constar na evolução final na primeira geração, sem resumir nem cortar conteúdo.
@@ -1010,8 +1022,8 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
        Ciente, concordante e sem dúvidas.
    - É TERMINANTEMENTE PROIBIDO gerar condutas em bloco corrido contínuo (tudo na mesma linha ou sem quebras de linha)!
    - NÃO COLOQUE NUMERAÇÃO ("1.", "2.", "3."): escreva cada conduta em sua própria linha separada.
-   - PRESCRIÇÕES MÉDICAS COMPLETAS:
-     * Toda e qualquer medicação prescrita, ajustada ou renovada deve estar detalhada na CONDUTA com nome oficial brasileiro, dosagem, frequência, posologia e duração.
+   - PRESCRIÇÕES MÉDICAS FIÉIS (PROIBIDO INVENTAR DOSAGEM NÃO FALADA):
+     * Toda medicação prescrita, ajustada ou renovada deve estar na CONDUTA com o nome oficial brasileiro e as informações de dose/posologia/duração que o médico EFETIVAMENTE FALOU ou anotou. Se o médico não falou a miligramagem/dosagem, NÃO invente e NÃO suponha uma dosagem!
      * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer de registrar as medicações que o médico prescreveu no consultório!
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
@@ -1047,7 +1059,8 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - Na PUERICULTURA — EXAME FÍSICO (OBJETIVO): Siga fielmente a estrutura pediátrica do modelo (BEG, MUC, ativo, eupneico em ar ambiente, anictérico e acianótico; Peso; Altura; PC; Marcos do desenvolvimento; AP; AC; ABD; Extremidades/TEC; Hidratação; Fontanelas; Ortolani; Barlow; Oroscopia; Otoscopia; e observações sobre teste do olho vermelho/coraçãozinho), atualizando qualquer item conforme o exame físico falado no áudio ou a faixa etária.
    - Na VISITA DOMICILIAR:
      * Só coloque data no título ("## VISITA DOMICILIAR EM DD/MM/AAAA - REGISTRO POSTERIOR ##") se a data da visita tiver sido informada explicitamente (${vdVisitDate ? `use ${vdVisitDate}` : 'caso contrário mantenha "## VISITA DOMICILIAR - REGISTRO POSTERIOR ##" sem assumir a data de hoje'}).
-     * NUNCA invente nomes de Enfermeiro(a), ACS ou Familiar/Cuidador e NUNCA invente grau de parentesco! Só preencha se tiver sido dito de forma inequívoca.
+     * QUEM ESTAVA NA VD FICA NO SUBJETIVO (NUNCA NO CABEÇALHO "#"): NÃO coloque "# Equipe presente na VD:" nem "# Familiar / Cuidador(a) presente na visita:" no cabeçalho "#" do topo! Registre quem estava presente na visita (equipe/enfermagem/ACS e familiar/cuidador, somente se tiver sido dito no áudio ou nas notas, sem inventar nomes nem parentesco) dentro do primeiro parágrafo do "SUBJETIVO"!
+     * Se houver múltiplos arquivos de áudio anexados na Visita Domiciliar, junte e analise 100% dos áudios em conjunto para compor a evolução completa da visita.
      * Preencha ao final o checklist ">> PENDÊNCIAS PARA REALIZAR NO POSTO (UBS) PÓS-VISITA:".
 
 9. BLINDAGEM CONTRA INTERRUPÇÕES DE ENFERMAGEM E DIFERENCIAÇÃO VOZ DO MÉDICO VS. PACIENTE:

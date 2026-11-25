@@ -310,7 +310,7 @@
   };
 
   function loadCustomOrDefaultTemplates() {
-    const saved = localStorage.getItem('ubs_custom_templates_v10');
+    const saved = localStorage.getItem('ubs_custom_templates_v11');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -322,7 +322,7 @@
   }
 
   function saveTemplatesToLocal() {
-    localStorage.setItem('ubs_custom_templates_v10', JSON.stringify(state.templates));
+    localStorage.setItem('ubs_custom_templates_v11', JSON.stringify(state.templates));
   }
 
   // Limites diários oficiais por Chave API no Google AI Studio (Modelos Multimodais de Áudio)
@@ -1198,9 +1198,10 @@
       await populateMicrophones();
 
       const mimeType = getSupportedAudioMimeType();
+      // 32 kbps Opus mono mantém 100% da nitidez de voz humana e reduz 1 hora de consulta para ~14 MB (cabendo direto sem falhar após 1h!)
       const recorderOptions = mimeType
-        ? { mimeType, audioBitsPerSecond: 64000 }
-        : { audioBitsPerSecond: 64000 };
+        ? { mimeType, audioBitsPerSecond: 32000 }
+        : { audioBitsPerSecond: 32000 };
 
       const recorder = new MediaRecorder(stream, recorderOptions);
       state.mediaRecorder = recorder;
@@ -1762,60 +1763,60 @@
     const vdDateEl = document.getElementById('vdVisitDateInput');
     const summaryEl = document.getElementById('liveExamCalculatedSummary');
 
-    let lastCreatedId = null;
+    const now = Date.now();
+    const consultId = 'cons_' + now + '_up';
+    const firstFile = files[0];
+    const firstMime = normalizeAudioMimeType(firstFile, firstFile.name);
+    const cleanFileName = firstFile.name.replace(/\.[^.]+$/, '').replace(/WhatsApp Ptt /i, 'Visita ');
+    const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
+    const label = baseLabel || (files.length > 1 ? `${cleanFileName} (+${files.length - 1} áudio)` : cleanFileName);
 
+    const newConsultation = {
+      id: consultId,
+      patientLabel: label,
+      patientAge: currentPatientAge,
+      patientSex: currentPatientSex,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      templateIcon: tpl.icon,
+      soapSubtypeHeader: currentSoapSubtype,
+      vdVisitDate: currentVdVisitDate,
+      createdAt: now,
+      updatedAt: now,
+      status: 'queued',
+      durationSeconds: Math.max(5, Math.round(totalBytes / 3000)),
+      chunkCount: 0,
+      isMultiFileExternalAudio: files.length > 1,
+      audioFilesCount: files.length,
+      examFileCount: attachedExams.length,
+      audioBytes: 0,
+      mimeType: firstMime,
+      fileName: files.map(f => f.name).join(' + '),
+      quickNotes: currentNotes,
+      previousConsultationText: currentPrevConsult,
+      preTranscribedExamsText: currentPreTranscribedExams,
+      zScoreSummary: currentZScore,
+      evolutionText: '',
+      soapParts: null,
+      referralText: '',
+      auditAlerts: [],
+      tokensUsed: 0,
+      errorMessage: ''
+    };
+
+    await window.ScribeDB.saveConsultation(newConsultation);
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      const now = Date.now() + i;
-      const consultId = 'cons_' + now + '_up' + i;
       const cleanMime = normalizeAudioMimeType(file, file.name);
-      const cleanFileName = file.name.replace(/\.[^.]+$/, '').replace(/WhatsApp Ptt /i, 'Visita ');
-
-      const label = files.length === 1
-        ? (baseLabel || cleanFileName)
-        : (baseLabel ? `${baseLabel} (${i + 1})` : cleanFileName);
-
-      const newConsultation = {
-        id: consultId,
-        patientLabel: label,
-        patientAge: currentPatientAge,
-        patientSex: currentPatientSex,
-        templateId: tpl.id,
-        templateName: tpl.name,
-        templateIcon: tpl.icon,
-        soapSubtypeHeader: currentSoapSubtype,
-        vdVisitDate: currentVdVisitDate,
-        createdAt: now,
-        updatedAt: now,
-        status: 'queued',
-        durationSeconds: Math.max(5, Math.round(file.size / 3000)),
-        chunkCount: 1,
-        examFileCount: i === 0 ? attachedExams.length : 0,
-        audioBytes: file.size,
-        mimeType: cleanMime,
-        fileName: file.name,
-        quickNotes: currentNotes,
-        previousConsultationText: currentPrevConsult,
-        preTranscribedExamsText: i === 0 ? currentPreTranscribedExams : '',
-        zScoreSummary: currentZScore,
-        evolutionText: '',
-        soapParts: null,
-        referralText: '',
-        auditAlerts: [],
-        tokensUsed: 0,
-        errorMessage: ''
-      };
-
-      await window.ScribeDB.saveConsultation(newConsultation);
-      await window.ScribeDB.saveAudioChunk(consultId, 0, file, cleanMime);
-
-      if (i === 0 && attachedExams.length > 0) {
-        for (const exam of attachedExams) {
-          await window.ScribeDB.saveExamFile(consultId, exam);
-        }
-      }
-      lastCreatedId = consultId;
+      await window.ScribeDB.saveAudioChunk(consultId, i, file, cleanMime);
     }
+
+    if (attachedExams.length > 0) {
+      for (const exam of attachedExams) {
+        await window.ScribeDB.saveExamFile(consultId, exam);
+      }
+    }
+    const lastCreatedId = consultId;
 
     state.pendingExamFiles = [];
     state.pendingAudioFiles = [];
@@ -2256,32 +2257,52 @@
     const isPrenatalConsult = consultation.templateId === 'prenatal';
     const hasNotesExams = window.detectExamsInText ? window.detectExamsInText(consultation.quickNotes).hasAny : false;
 
-    // 1. Prepara o Áudio da consulta (local, na nuvem via remoteFileUri, ou transcrição literal salva)
+    // 1. Prepara o(s) Áudio(s) da consulta (local, múltiplos áudios de VD/WhatsApp, na nuvem via remoteFileUri, ou transcrição literal salva)
     let hasAudioAttached = false;
-    let audioPart = null;
+    const audioParts = [];
+    const blobToGeminiAudioPart = async (blobItem, fName) => {
+      const cleanMime = normalizeAudioMimeType(blobItem, fName || '');
+      if (blobItem.size > 19 * 1024 * 1024) {
+        try {
+          if (onProgressMilestone) onProgressMilestone(14, '☁️ Enviando arquivo de áudio longo (>1h)...');
+          const fileUri = await uploadLargeFileToGeminiFileAPI(blobItem, cleanMime, apiKey);
+          if (fileUri) return { fileData: { mimeType: cleanMime, fileUri } };
+        } catch (upErr) {
+          console.warn('Upload resumable falhou, usando envio direto em base64:', upErr);
+        }
+      }
+      const base64Audio = await blobToBase64(blobItem);
+      return { inlineData: { mimeType: cleanMime, data: base64Audio } };
+    };
+
     if (consultation.chunkCount > 0 && !consultation.audioDeleted) {
-      const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
-      if (audioBlob && audioBlob.size > 0) {
-        hasAudioAttached = true;
-        const cleanMime = normalizeAudioMimeType(audioBlob, consultation.fileName || '');
-        if (audioBlob.size > 12 * 1024 * 1024) {
-          if (onProgressMilestone) onProgressMilestone(14, '☁️ Enviando arquivo de áudio longo...');
-          const fileUri = await uploadLargeFileToGeminiFileAPI(audioBlob, cleanMime, apiKey);
-          audioPart = { fileData: { mimeType: cleanMime, fileUri } };
-        } else {
-          const base64Audio = await blobToBase64(audioBlob);
-          audioPart = { inlineData: { mimeType: cleanMime, data: base64Audio } };
+      if (consultation.isMultiFileExternalAudio && window.ScribeDB.getAudioChunks) {
+        const chunkRecords = await window.ScribeDB.getAudioChunks(consultation.id);
+        for (let cIdx = 0; cIdx < chunkRecords.length; cIdx++) {
+          const rec = chunkRecords[cIdx];
+          if (rec && rec.blob && rec.blob.size > 0) {
+            const p = await blobToGeminiAudioPart(rec.blob, consultation.fileName || '');
+            audioParts.push(p);
+          }
+        }
+        hasAudioAttached = audioParts.length > 0;
+      } else {
+        const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
+        if (audioBlob && audioBlob.size > 0) {
+          const p = await blobToGeminiAudioPart(audioBlob, consultation.fileName || '');
+          audioParts.push(p);
+          hasAudioAttached = true;
         }
       }
     }
     if (!hasAudioAttached && consultation.remoteFileUri) {
       hasAudioAttached = true;
-      audioPart = {
+      audioParts.push({
         fileData: {
           mimeType: consultation.mimeType || 'audio/webm',
           fileUri: consultation.remoteFileUri
         }
-      };
+      });
     }
 
     let totalTokensUsed = 0;
@@ -2290,21 +2311,31 @@
 
     // =========================================================================
     // ETAPA 1 DE 2 (DEDICADA EXCLUSIVAMENTE À TRANSCRIÇÃO LITERAL DE 100% DO ÁUDIO):
-    // Quando o modelo faz apenas a transcrição em texto puro (sem dividir tokens nem
-    // atenção com as 150 linhas de regras da máscara SOAP e sem JSON), ele transcreve
-    // PALAVRA POR PALAVRA do segundo 00:00 até o fim sem resumir e sem pular queixas!
     // =========================================================================
-    if (hasAudioAttached && audioPart && window.buildVerbatimAudioTranscriptionPrompt) {
+    if (hasAudioAttached && audioParts.length > 0 && window.buildVerbatimAudioTranscriptionPrompt) {
       if (onProgressMilestone) {
-        onProgressMilestone(22, '🎙️ Etapa 1/2: Transcrevendo 100% do áudio palavra por palavra...');
+        onProgressMilestone(22, audioParts.length > 1
+          ? `🎙️ Etapa 1/2: Juntando e transcrevendo os ${audioParts.length} arquivos de áudio...`
+          : '🎙️ Etapa 1/2: Transcrevendo 100% do áudio palavra por palavra...');
       }
       try {
-        const verbatimPrompt = window.buildVerbatimAudioTranscriptionPrompt(consultation.durationSeconds);
+        const prevHeaderLines = (consultation.previousConsultationText || '')
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l.startsWith('#'))
+          .slice(0, 12)
+          .join('\n');
+        const verbatimPrompt = window.buildVerbatimAudioTranscriptionPrompt(consultation.durationSeconds, {
+          templateName: tpl.name,
+          quickNotes: consultation.quickNotes || '',
+          previousHeaderSummary: prevHeaderLines,
+          audioFilesCount: audioParts.length
+        });
         const stage1Body = {
           contents: [{
             role: 'user',
             parts: [
-              audioPart,
+              ...audioParts,
               { text: verbatimPrompt }
             ]
           }],
@@ -2375,8 +2406,8 @@
       parts.push({
         text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE (LEIA DO INÍCIO AO FIM E INCLUA 100% DAS QUEIXAS, INTERROGATÓRIO, HISTÓRIA, EXAME FÍSICO E CONDUTAS NA EVOLUÇÃO!) ===\n${verbatimTranscript}`
       });
-    } else if (hasAudioAttached && audioPart) {
-      parts.push(audioPart);
+    } else if (hasAudioAttached && audioParts.length > 0) {
+      parts.push(...audioParts);
     }
 
     // 2. Inclui PDFs / Imagens de Exames (se já não tiverem sido transcritos na hora durante a consulta)
@@ -3584,6 +3615,25 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
       // Remove "(Vínculo: )" vazio ou "(Vínculo: não informado)"
       text = text.replace(/\s*\(\s*V[íi]nculo\s*:\s*(?:n[ãa]o\s+informado|n[ãa]o\s+especificado|-|)\s*\)/gi, '');
+
+      // Remove do cabeçalho "#" as linhas "# Equipe presente na VD:" e "# Familiar / Cuidador(a) presente na visita:"
+      // e, se tiverem conteúdo preenchido, move para o início do SUBJETIVO!
+      const vdHeaderPresenceNotes = [];
+      text = text.replace(/^#\s*(?:Equipe\s+presente\s+na\s+VD|Familiar\s*\/\s*Cuidador(?:\(a\))?\s+presente\s+na\s+visita)\s*:\s*([^\n]*)\n?/gim, (_, val) => {
+        const cleaned = (val || '')
+          .replace(/Enfermeir[oa](?:\(a\))?\s*:\s*(?=\||$)/gi, '')
+          .replace(/ACS\s*:\s*$/gi, '')
+          .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+          .trim();
+        if (cleaned && !/^(?:n[ãa]o\s+informad[oa]|-|nenhum)$/i.test(cleaned)) {
+          vdHeaderPresenceNotes.push(cleaned);
+        }
+        return '';
+      });
+      if (vdHeaderPresenceNotes.length > 0 && /\n\s*SUBJETIVO\b/i.test(text)) {
+        const presenceSentence = `Presença na visita: ${vdHeaderPresenceNotes.join(' | ')}.`;
+        text = text.replace(/(\n\s*SUBJETIVO\s*\n+)/i, `$1${presenceSentence}\n`);
+      }
     }
 
     // 1.1 Se for DISCUSSÃO COM TELESSAÚDE, garante que mantenha EXCLUSIVAMENTE a CONDUTA:
@@ -4267,11 +4317,13 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         const isFuturePlanLine = (ln) => {
           const t = ln.trim();
           if (!t) return false;
-          if (/^(?:Agendo|Oriento)\s+retorno\b/i.test(t) && !/\b(?:na\s+pr[óo]xima\s+consulta|para\s+(?:solicitar|pedir|encaminhar|avaliar))/i.test(t)) {
+          if (/^(?:Agendo|Oriento)\s+retorno\b/i.test(t) && !/\b(?:na\s+pr[óo]xima|para\s+(?:solicitar|pedir|encaminhar|avaliar|reavaliar|checar|repetir|coletar))/i.test(t)) {
             return false;
           }
-          return /\b(?:na\s+pr[óo]xima\s+consulta|em\s+pr[óo]xima\s+consulta|na\s+pr[óo]xima\s+avalia[çc][ãa]o|na\s+consulta\s+seguinte|no\s+pr[óo]ximo\s+retorno|no\s+pr[óo]ximo\s+acompanhamento)\b/i.test(t)
-            || /\b(?:no\s+retorno|em\s+retorno)\b[^.\n]{0,40}\b(?:solicitar|solicitarei|pedir|pedirei|encaminhar|encaminharei|avaliar|avaliarei|reavaliar|considerar|iniciar|trocar|ajustar)\b/i.test(t);
+          return /\b(?:na\s+pr[óo]xima\s+consulta|em\s+pr[óo]xima\s+consulta|na\s+pr[óo]xima\s+avalia[çc][ãa]o|na\s+pr[óo]xima\s+visita|no\s+pr[óo]ximo\s+atendimento|na\s+consulta\s+seguinte|na\s+consulta\s+subsequente|no\s+pr[óo]ximo\s+retorno|no\s+pr[óo]ximo\s+acompanhamento|para\s+a\s+pr[óo]xima\s+consulta)\b/i.test(t)
+            || /\b(?:no\s+retorno|em\s+retorno|ap[óo]s\s+retorno)\b[^.\n]{0,60}\b(?:solicitar|solicitarei|pedir|pedirei|encaminhar|encaminharei|avaliar|avaliarei|reavaliar|considerar|iniciar|trocar|ajustar|titular|repetir|checar|verificar|definir|decidir|coletar|dosar|exame)\b/i.test(t)
+            || /^(?:Planejo|Programo|Fica\s+planejad[oa]|Fica\s+programad[oa]|Plano\s*:|Aguardar\s+resultado[^.\n]*para\s+(?:definir|avaliar|encaminhar|solicitar))\b/i.test(t)
+            || /\b(?:se\s+mantiver|se\s+persistir|caso\s+persista|caso\s+mantenha|se\s+n[ãa]o\s+houver\s+melhora)\b[^.\n]{0,60}\b(?:encaminh|solicit|pedir|iniciar|trocar|associar)\b/i.test(t);
         };
         for (const ln of condLines) {
           if (isFuturePlanLine(ln)) {
@@ -4542,14 +4594,16 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             }
 
             const abortCtrl = new AbortController();
-            // Timeout de 65s para evitar travar minutos em um modelo congestionado antes de alternar para outra chave/modelo
-            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), 65000);
+            const serializedBody = JSON.stringify(bodyForModel);
+            // Consultas longas (>1h ou payload >3.5MB) recebem timeout de 180s (3 min) para nunca abortar no meio da transcrição!
+            const timeoutMs = serializedBody.length > 3500000 ? 180000 : 75000;
+            const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), timeoutMs);
             let res;
             try {
               res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bodyForModel),
+                body: serializedBody,
                 signal: abortCtrl.signal
               });
             } finally {
@@ -6311,8 +6365,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
   function getSavedApiKeysList(preferredKey) {
     const mainRaw = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
+    const secondRaw = String(localStorage.getItem('ubs_second_api_key') || sessionStorage.getItem('ubs_second_api_key') || '').trim();
     const extraRaw = String(localStorage.getItem('ubs_extra_api_keys') || sessionStorage.getItem('ubs_extra_api_keys') || '').trim();
-    const combined = `${mainRaw}\n${extraRaw}`;
+    const domMain = document.getElementById('apiKeyInput')?.value?.trim() || '';
+    const domSecond = document.getElementById('secondApiKeyInput')?.value?.trim() || '';
+    const domExtra = document.getElementById('extraApiKeysInput')?.value?.trim() || '';
+    const combined = `${mainRaw}\n${secondRaw}\n${extraRaw}\n${domMain}\n${domSecond}\n${domExtra}`;
     const aizaMatches = combined.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
     const tokenMatches = combined
       .split(/[\s,;]+/)
@@ -7179,18 +7237,18 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
   function openApiKeyModal() {
     const modal = document.getElementById('apiKeyModal');
-    const mainKey = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || '').trim();
+    const all = getSavedApiKeysList();
+    const mainKey = String(localStorage.getItem('ubs_gemini_api_key') || sessionStorage.getItem('ubs_gemini_api_key') || all[0] || '').trim();
+    const secondKey = String(localStorage.getItem('ubs_second_api_key') || sessionStorage.getItem('ubs_second_api_key') || all[1] || '').trim();
     const extraKeys = String(localStorage.getItem('ubs_extra_api_keys') || sessionStorage.getItem('ubs_extra_api_keys') || '').trim();
     const input = document.getElementById('apiKeyInput');
+    const secondInput = document.getElementById('secondApiKeyInput');
     const extraInput = document.getElementById('extraApiKeysInput');
-    if (input) input.value = mainKey || getSavedApiKey() || '';
+    if (input) input.value = mainKey;
+    if (secondInput) secondInput.value = (secondKey && secondKey !== mainKey) ? secondKey : (all[1] || '');
     if (extraInput) {
-      if (extraKeys) {
-        extraInput.value = extraKeys;
-      } else {
-        const all = getSavedApiKeysList();
-        extraInput.value = all.slice(1).join('\n');
-      }
+      const remaining = all.filter(k => k !== mainKey && k !== secondKey);
+      extraInput.value = remaining.join('\n') || (extraKeys !== secondKey ? extraKeys : '');
     }
     const sel = document.getElementById('preferredModelSelect');
     if (sel) sel.value = localStorage.getItem('ubs_preferred_model') || 'auto';
@@ -7788,27 +7846,45 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       document.getElementById('apiKeyModal').style.display = 'none';
     });
 
-    const saveApiKeyHandler = async (e) => {
-      if (e && e.preventDefault) e.preventDefault();
+    let lastApiKeySaveTs = 0;
+    const persistKeysFromInputsNow = () => {
       const mainKey = document.getElementById('apiKeyInput')?.value.trim() || '';
-      const extraKeys = document.getElementById('extraApiKeysInput')?.value.trim() || '';
+      const secondKey = document.getElementById('secondApiKeyInput')?.value.trim() || '';
+      const extraKeysRaw = document.getElementById('extraApiKeysInput')?.value.trim() || '';
+      const combinedExtras = [secondKey, extraKeysRaw].filter(Boolean).join('\n');
       const mode = document.querySelector('input[name="keyStorageMode"]:checked')?.value || 'permanent';
 
       if (mode === 'session') {
         if (mainKey) sessionStorage.setItem('ubs_gemini_api_key', mainKey);
         else sessionStorage.removeItem('ubs_gemini_api_key');
-        if (extraKeys) sessionStorage.setItem('ubs_extra_api_keys', extraKeys);
+        if (secondKey) sessionStorage.setItem('ubs_second_api_key', secondKey);
+        else sessionStorage.removeItem('ubs_second_api_key');
+        if (combinedExtras) sessionStorage.setItem('ubs_extra_api_keys', combinedExtras);
         else sessionStorage.removeItem('ubs_extra_api_keys');
         localStorage.removeItem('ubs_gemini_api_key');
+        localStorage.removeItem('ubs_second_api_key');
         localStorage.removeItem('ubs_extra_api_keys');
       } else {
         if (mainKey) localStorage.setItem('ubs_gemini_api_key', mainKey);
         else localStorage.removeItem('ubs_gemini_api_key');
-        if (extraKeys) localStorage.setItem('ubs_extra_api_keys', extraKeys);
+        if (secondKey) localStorage.setItem('ubs_second_api_key', secondKey);
+        else localStorage.removeItem('ubs_second_api_key');
+        if (combinedExtras) localStorage.setItem('ubs_extra_api_keys', combinedExtras);
         else localStorage.removeItem('ubs_extra_api_keys');
         sessionStorage.removeItem('ubs_gemini_api_key');
+        sessionStorage.removeItem('ubs_second_api_key');
         sessionStorage.removeItem('ubs_extra_api_keys');
       }
+      return { mainKey, secondKey, combinedExtras };
+    };
+
+    const saveApiKeyHandler = async (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      const nowTs = Date.now();
+      if (nowTs - lastApiKeySaveTs < 300) return;
+      lastApiKeySaveTs = nowTs;
+
+      const { mainKey } = persistKeysFromInputsNow();
 
       // Salva no Gerenciador de Senhas do Google Chrome sem travar o fechamento do modal
       try {
@@ -7858,22 +7934,21 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       showToast(`⚡ Modelo preferido alterado para: ${formatModelName(chosen)}`);
     });
 
-    document.getElementById('extraApiKeysInput')?.addEventListener('change', (e) => {
-      const val = String(e.target.value || '').trim();
-      const mode = document.querySelector('input[name="keyStorageMode"]:checked')?.value || 'permanent';
-      if (mode === 'session') {
-        if (val) sessionStorage.setItem('ubs_extra_api_keys', val);
-        else sessionStorage.removeItem('ubs_extra_api_keys');
-      } else {
-        if (val) localStorage.setItem('ubs_extra_api_keys', val);
-        else localStorage.removeItem('ubs_extra_api_keys');
-      }
-      updateApiKeyStatusBadge();
-      updateTokenMonitorUI();
-      renderApiKeysQuotaDashboard();
+    ['apiKeyInput', 'secondApiKeyInput', 'extraApiKeysInput'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const syncHandler = () => {
+        persistKeysFromInputsNow();
+        updateApiKeyStatusBadge();
+        updateTokenMonitorUI();
+        renderApiKeysQuotaDashboard();
+      };
+      el.addEventListener('input', syncHandler);
+      el.addEventListener('change', syncHandler);
     });
 
     document.getElementById('apiKeyForm')?.addEventListener('submit', saveApiKeyHandler);
+    document.getElementById('btnSaveApiKey')?.addEventListener('click', saveApiKeyHandler);
 
     document.getElementById('btnRetryAllPending')?.addEventListener('click', retryAllPendingConsultations);
 
@@ -7897,6 +7972,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     document.getElementById('btnResetTemplatesDefault')?.addEventListener('click', () => {
       if (confirm('Restaurar todos os 8 modelos para o texto original padrão?')) {
         localStorage.removeItem('ubs_custom_templates_v10');
+        localStorage.removeItem('ubs_custom_templates_v11');
         loadCustomOrDefaultTemplates();
         openTemplateEditorModal();
         showToast('🔄 Modelos originais restaurados!');

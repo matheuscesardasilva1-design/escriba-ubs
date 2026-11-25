@@ -157,6 +157,21 @@ window.ScribeDB = (function() {
     });
   }
 
+  async function getAudioChunks(consultationId) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction('audio_chunks', 'readonly');
+      const index = tx.objectStore('audio_chunks').index('consultationId');
+      const req = index.getAll(IDBKeyRange.only(consultationId));
+      req.onsuccess = () => {
+        const records = req.result || [];
+        records.sort((a, b) => a.chunkIndex - b.chunkIndex);
+        resolve(records);
+      };
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
   // Exclui apenas os chunks de áudio e PDFs para liberar espaço no HD (mantendo o texto do prontuário)
   async function deleteAudioChunksOnly(consultationId) {
     const db = await openDB();
@@ -311,6 +326,7 @@ window.ScribeDB = (function() {
     saveExamFile,
     getExamFilesForConsultation,
     assembleAudioBlob,
+    getAudioChunks,
     deleteAudioChunksOnly,
     deleteConsultation,
     autoCleanupOldAudio,
