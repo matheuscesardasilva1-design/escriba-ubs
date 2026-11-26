@@ -57,6 +57,8 @@
   ];
 
   const cachedDiscoveredModelsByKey = {};
+  // Pausa curta (2 min) de modelos que responderam 503 "high demand", para as próximas consultas não perderem tempo neles
+  const modelCooldownUntil = {};
   const cachedEmergencyLiveModelsByKey = {};
   const cachedEmergencyGemmaModelsByKey = {};
   const modelOutputTokenLimits = {};
@@ -278,6 +280,10 @@
         if (removed > 0) await refreshQueueSidebar();
       } catch (_) {}
     }, 3600 * 1000);
+
+    // Reenvio automático das consultas que falharam por instabilidade do Google (503 / limite / timeout):
+    // não precisa mais clicar em "Processar Agora" nos dias de muito movimento.
+    setInterval(() => { autoRetryTransientErrors(); }, 60 * 1000);
   });
 
   // --- MODO ESCURO (DARK MODE) SELECIONÁVEL PELO USUÁRIO ---
@@ -4594,7 +4600,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       for (let kIdx = 0; kIdx < keysToTry.length; kIdx++) {
         const currentKey = keysToTry[kIdx];
         const keyTag = keysToTry.length > 1 ? ` [Chave ${kIdx + 1}/${keysToTry.length}]` : '';
-        const modelsToTry = [...(await getActiveGeminiModels(currentKey))];
+        let modelsToTry = [...(await getActiveGeminiModels(currentKey))];
+        const cooldownNow = Date.now();
+        const notCooling = modelsToTry.filter(m => !(modelCooldownUntil[currentKey.slice(-8) + '|' + m] > cooldownNow));
+        if (notCooling.length > 0) modelsToTry = notCooling;
 
       for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
         const model = modelsToTry[mIdx];
@@ -4764,6 +4773,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
               allFailedByDailyQuota = false;
               sawTransientFailure = true;
+              if (res.status === 503) {
+                modelCooldownUntil[currentKey.slice(-8) + '|' + model] = Date.now() + 120000;
+              }
               if (elDaily) {
                 if (res.status === 503) {
                   elDaily.textContent = `🟡 Servidor Google ocupado (alternando)...`;
@@ -5680,6 +5692,72 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     } else if ((await window.ScribeDB.getAllConsultations()).some(c => c.status === 'queued') && getSavedApiKey()) {
       processQueueInBackground();
     }
+  }
+
+  async function autoRetryTransientErrors() {
+    try {
+      if (state.queueRunning || !getSavedApiKey()) return;
+      const all = await window.ScribeDB.getAllConsultations();
+      let count = 0;
+      for (const c of all) {
+        if (c.status !== 'error') continue;
+        const msg = String(c.errorMessage || '');
+        if (/Credencial de API inv/i.test(msg)) continue;
+        if (!/503|429|demand|limite|limit|quota|timeout|tempo limite|network|fetch|conex|inst[áa]vel|overload|unavailable|transcrever a continua/i.test(msg)) continue;
+        const tries = c.autoRetryCount || 0;
+        if (tries >= 10) continue;
+        // espera cresce a cada tentativa: 2, 4, 6, 8 e no máximo 10 minutos
+        if (Date.now() - (c.updatedAt || 0) < 120000 * Math.min(5, tries + 1)) continue;
+        c.autoRetryCount = tries + 1;
+        c.status = 'queued';
+        c.errorMessage = '';
+        if (c.chunkCount > 0) {
+          if (c.previousRawTranscript && c.previousRawTranscript.length >= 50) {
+            c.previousEvolutionText = '';
+          }
+          c.rawTranscript = c.previousRawTranscript || '';
+        }
+        c.updatedAt = Date.now();
+        await window.ScribeDB.saveConsultation(c);
+        count++;
+      }
+      if (count > 0) {
+        await refreshQueueSidebar();
+        showToast(`🔄 Reenviando automaticamente ${count} consulta(s) que falharam por instabilidade do Google...`);
+        processQueueInBackground();
+      }
+    } catch (_) {}
+  }
+
+  async function testSavedApiKeysValidity() {
+    const out = document.getElementById('apiKeysTestResult');
+    if (!out) return;
+    const keys = getSavedApiKeysList();
+    if (keys.length === 0) {
+      out.innerHTML = '⚠️ Nenhuma chave detectada neste navegador. Cole a chave e salve.';
+      return;
+    }
+    out.innerHTML = '⏳ Testando cada chave no Google...';
+    const lines = [];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      const masked = `${k.slice(0, 6)}...${k.slice(-4)}`;
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(k)}`);
+        if (res.ok) {
+          const d = await res.json();
+          const n = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).length;
+          lines.push(`✅ Chave ${i + 1} (${masked}): válida — ${n} modelos disponíveis`);
+        } else {
+          const e = await res.json().catch(() => ({}));
+          lines.push(`❌ Chave ${i + 1} (${masked}): ${e?.error?.message || 'HTTP ' + res.status}`);
+        }
+      } catch (err) {
+        lines.push(`⚠️ Chave ${i + 1} (${masked}): falha de rede (${err.message})`);
+      }
+    }
+    lines.push(keys.length < 2 ? '⚠️ Só 1 chave detectada neste navegador.' : `ℹ️ ${keys.length} chaves detectadas. Chaves do mesmo projeto/conta Google dividem a mesma cota e o mesmo erro 503.`);
+    out.innerHTML = lines.map(l => escapeHtml(l)).join('<br>');
   }
 
   async function retryAllPendingConsultations() {
@@ -7066,7 +7144,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     if (keys.length > 0) {
       btn.innerHTML = keys.length > 1
         ? `🔒 ${keys.length} Chaves Ativas`
-        : `🔒 Credencial Ativa`;
+        : `🔒 1 Chave Ativa`;
       btn.classList.add('key-ok');
     } else {
       btn.innerHTML = `🔑 Credencial API`;
@@ -8087,6 +8165,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     document.getElementById('btnOpenApiKeyModal')?.addEventListener('click', openApiKeyModal);
     document.getElementById('btnOpenQuotaMonitor')?.addEventListener('click', openApiKeyModal);
     document.getElementById('btnProbeKeysQuota')?.addEventListener('click', probeAllKeysLiveQuota);
+    document.getElementById('btnTestApiKeysValidity')?.addEventListener('click', testSavedApiKeysValidity);
     document.getElementById('btnResetTodayQuotaStats')?.addEventListener('click', resetTodayQuotaStats);
     document.getElementById('btnCloseApiKeyModal')?.addEventListener('click', () => {
       document.getElementById('apiKeyModal').style.display = 'none';

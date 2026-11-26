@@ -1054,11 +1054,11 @@ body {
 html.dark-mode,
 body.dark-mode,
 .dark-mode {
-  --bg-page: #0b0f19;
-  --bg-card: #131b2c;
+  --bg-page: #1f2738;
+  --bg-card: #2b364b;
   --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --border: #27354a;
+  --text-muted: #d3dcea;
+  --border: #53637e;
   --primary: #6366f1;
   --primary-hover: #4f46e5;
   --primary-soft: rgba(99, 102, 241, 0.18);
@@ -1080,8 +1080,8 @@ body.dark-mode,
 
 /* Topbar & Navegação */
 .dark-mode .topbar {
-  background: #0f172a;
-  border-bottom-color: #1e293b;
+  background: #222c40;
+  border-bottom-color: #3a4760;
 }
 
 .dark-mode .brand-title {
@@ -1089,7 +1089,7 @@ body.dark-mode,
 }
 
 .dark-mode .btn-top {
-  background: #1e293b;
+  background: #3a4760;
   color: #e2e8f0;
   border-color: #334155;
 }
@@ -1101,16 +1101,16 @@ body.dark-mode,
 
 .dark-mode .quota-pill {
   background: #131d2e;
-  border-color: #27354a;
+  border-color: #53637e;
 }
 
 .dark-mode .nav-tab {
-  color: #94a3b8 !important;
+  color: #d3dcea !important;
   background: transparent !important;
 }
 
 .dark-mode .nav-tab:hover {
-  background: #1e293b !important;
+  background: #3a4760 !important;
   color: #f8fafc !important;
 }
 
@@ -1120,8 +1120,8 @@ body.dark-mode,
 }
 
 .dark-mode .tab-badge {
-  background: #1e293b !important;
-  color: #94a3b8 !important;
+  background: #3a4760 !important;
+  color: #d3dcea !important;
   border: 1px solid #334155;
 }
 
@@ -1142,12 +1142,12 @@ body.dark-mode,
 }
 
 .dark-mode .center-header p {
-  color: #94a3b8;
+  color: #d3dcea;
 }
 
 .dark-mode .template-card {
-  background: #131b2c;
-  border-color: #27354a;
+  background: #2b364b;
+  border-color: #53637e;
 }
 
 .dark-mode .template-card:hover {
@@ -1180,13 +1180,13 @@ body.dark-mode,
 }
 
 .dark-mode .tpl-sub {
-  color: #94a3b8;
+  color: #d3dcea;
 }
 
 .dark-mode .compact-tpl-bar,
 .dark-mode #selectedTemplateCompactBar {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
 }
 
 .dark-mode .compact-tpl-name,
@@ -1197,7 +1197,7 @@ body.dark-mode,
 
 .dark-mode .compact-tpl-sub,
 .dark-mode #compactTplSub {
-  color: #94a3b8 !important;
+  color: #d3dcea !important;
 }
 
 .dark-mode #compactTplIcon {
@@ -1212,8 +1212,8 @@ body.dark-mode,
 }
 
 .dark-mode .recorder-box {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
 }
 
 .dark-mode .rec-status-wrap {
@@ -1221,7 +1221,7 @@ body.dark-mode,
 }
 
 .dark-mode .rec-timer {
-  color: #cbd5e1 !important;
+  color: #e8eef6 !important;
 }
 
 .dark-mode .vu-meter-bar {
@@ -1232,14 +1232,14 @@ body.dark-mode,
 .dark-mode .input-text,
 .dark-mode .select-box,
 .dark-mode .textarea-box {
-  background: #0f172a !important;
+  background: #222c40 !important;
   color: #ffffff !important;
   border-color: #475569 !important;
 }
 
 .dark-mode .input-text::placeholder,
 .dark-mode .textarea-box::placeholder {
-  color: #94a3b8;
+  color: #d3dcea;
 }
 
 .dark-mode .input-text:focus,
@@ -1250,7 +1250,7 @@ body.dark-mode,
 }
 
 .dark-mode .btn-secondary {
-  background: #1e293b;
+  background: #3a4760;
   color: #e2e8f0;
   border-color: #334155;
 }
@@ -1261,8 +1261,8 @@ body.dark-mode,
 
 /* Tela 2: Histórico */
 .dark-mode .history-filters-grid {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
 }
 
 .dark-mode .history-header-bar h2 {
@@ -1270,14 +1270,14 @@ body.dark-mode,
 }
 
 .dark-mode #btnHistoryCloudSync {
-  background: #1e293b !important;
+  background: #3a4760 !important;
   color: #93c5fd !important;
   border-color: #334155 !important;
 }
 
 .dark-mode .history-card {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
   color: #f8fafc !important;
 }
 
@@ -1291,13 +1291,13 @@ body.dark-mode,
 }
 
 .dark-mode .h-tpl-tag {
-  background: #1e293b !important;
-  color: #cbd5e1 !important;
+  background: #3a4760 !important;
+  color: #e8eef6 !important;
   border: 1px solid #334155;
 }
 
 .dark-mode .h-snippet {
-  color: #94a3b8;
+  color: #d3dcea;
 }
 
 .dark-mode .h-doc-icon {
@@ -1309,8 +1309,8 @@ body.dark-mode,
 }
 
 .dark-mode .history-card span[style*="background:#f1f5f9"] {
-  background: #1e293b !important;
-  color: #cbd5e1 !important;
+  background: #3a4760 !important;
+  color: #e8eef6 !important;
   border: 1px solid #334155 !important;
 }
 
@@ -1333,8 +1333,8 @@ body.dark-mode,
 }
 
 .dark-mode .card {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
   color: #f8fafc !important;
 }
 
@@ -1343,34 +1343,34 @@ body.dark-mode,
 }
 
 .dark-mode .card small {
-  color: #94a3b8 !important;
+  color: #d3dcea !important;
 }
 
 .dark-mode .date-group-header {
-  color: #64748b;
+  color: #d3dcea;
 }
 
 .dark-mode .date-group-header::after {
-  background: #27354a;
+  background: #53637e;
 }
 
 /* Modais e Detalhe do Atendimento (Prontuário Aberto) */
 .dark-mode .patient-modal-sheet,
 .dark-mode .modal-card {
   background: #111827 !important;
-  border: 1px solid #27354a;
+  border: 1px solid #53637e;
   color: #f8fafc;
 }
 
 .dark-mode .sheet-top-bar,
 .dark-mode .modal-header {
   background: #111827 !important;
-  border-bottom-color: #27354a !important;
+  border-bottom-color: #53637e !important;
 }
 
 .dark-mode #modalTemplateControlBar {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
   color: #f8fafc !important;
 }
 
@@ -1379,14 +1379,14 @@ body.dark-mode,
 }
 
 .dark-mode #modalTemplateControlBar .select-box {
-  background: #090e17 !important;
+  background: #1b2434 !important;
   border-color: #334155 !important;
   color: #f8fafc !important;
 }
 
 .dark-mode #modalSoapSubtypeWrapper label,
 .dark-mode #modalInterconsultaSubtypeWrapper label {
-  color: #94a3b8 !important;
+  color: #d3dcea !important;
 }
 
 .dark-mode .btn-close-x {
@@ -1400,14 +1400,14 @@ body.dark-mode,
 }
 
 .dark-mode .evolution-editor {
-  background: #090e17 !important;
+  background: #1b2434 !important;
   color: #f8fafc !important;
-  border-color: #2d3b4f !important;
+  border-color: #5b6a85 !important;
 }
 
 .dark-mode .copy-toolbar .btn {
-  background: #1e293b;
-  color: #cbd5e1;
+  background: #3a4760;
+  color: #e8eef6;
   border-color: #334155;
 }
 
@@ -1443,7 +1443,7 @@ body.dark-mode,
 }
 
 .dark-mode .referral-editor {
-  background: #090e17 !important;
+  background: #1b2434 !important;
   color: #f8fafc !important;
   border-color: #6b21a8 !important;
 }
@@ -1451,8 +1451,8 @@ body.dark-mode,
 /* Caixas de Alerta, Passos e Notificações */
 .dark-mode .step-box {
   background: #0d1424;
-  border-color: #27354a;
-  color: #cbd5e1;
+  border-color: #53637e;
+  color: #e8eef6;
 }
 
 .dark-mode .audit-box {
@@ -1476,18 +1476,18 @@ body.dark-mode,
 /* Painéis de Puericultura e Pré-natal */
 .dark-mode #puericulturaZScorePanel,
 .dark-mode #prenatalCalcPanel {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
 }
 
 .dark-mode #puericulturaZScorePanel div[style*="background: #ffffff"],
 .dark-mode #prenatalCalcPanel div[style*="background: #ffffff"] {
-  background: #0f172a !important;
-  border-color: #27354a !important;
+  background: #222c40 !important;
+  border-color: #53637e !important;
 }
 
 .dark-mode .zscore-box {
-  background: #162032 !important;
+  background: #2f3b53 !important;
   border-color: #475569 !important;
   color: #f8fafc !important;
 }
@@ -1498,13 +1498,13 @@ body.dark-mode,
 }
 
 .dark-mode .zscore-preview {
-  background: #0f172a !important;
+  background: #222c40 !important;
   color: #e2e8f0 !important;
   border: 1px solid #475569 !important;
 }
 
 .dark-mode .prenatal-box {
-  background: #162032 !important;
+  background: #2f3b53 !important;
   border-color: #475569 !important;
   color: #f8fafc !important;
 }
@@ -1516,19 +1516,19 @@ body.dark-mode,
 }
 
 .dark-mode .prenatal-box > div > div {
-  background: #1e293b !important;
+  background: #3a4760 !important;
   border-color: #475569 !important;
   color: #f8fafc !important;
 }
 
 .dark-mode #pnCalcPreviewResult {
-  background: #0f172a !important;
+  background: #222c40 !important;
   border-color: #64748b !important;
   color: #f1f5f9 !important;
 }
 
 .dark-mode #vdSpecificBox {
-  background: #1e293b !important;
+  background: #3a4760 !important;
   border-color: #64748b !important;
   color: #f8fafc !important;
 }
@@ -1554,8 +1554,8 @@ body.dark-mode,
 /* Transcrição de Exames e Banners de Processamento */
 .dark-mode #geralSoapSubtypeBox,
 .dark-mode #interconsultaSubtypeBox {
-  background: #131b2c !important;
-  border-color: #27354a !important;
+  background: #2b364b !important;
+  border-color: #53637e !important;
   color: #f1f5f9 !important;
 }
 
@@ -1566,7 +1566,7 @@ body.dark-mode,
 
 .dark-mode .exam-attach-box {
   background: #0d1424 !important;
-  border-color: #27354a !important;
+  border-color: #53637e !important;
   color: #f1f5f9 !important;
 }
 
@@ -1576,20 +1576,20 @@ body.dark-mode,
 
 .dark-mode .drop-zone {
   background: #0d1424 !important;
-  border-color: #27354a !important;
-  color: #94a3b8 !important;
+  border-color: #53637e !important;
+  color: #d3dcea !important;
 }
 
 .dark-mode .input-text::placeholder,
 .dark-mode .textarea-box::placeholder {
-  color: #94a3b8 !important;
+  color: #d3dcea !important;
   opacity: 1 !important;
 }
 
 .dark-mode #rawTranscriptBox {
-  background: #090e17 !important;
-  border-color: #27354a !important;
-  color: #94a3b8 !important;
+  background: #1b2434 !important;
+  border-color: #53637e !important;
+  color: #d3dcea !important;
 }
 
 .dark-mode #pendingExternalAudioBox {
@@ -1605,19 +1605,19 @@ body.dark-mode,
 }
 
 .dark-mode #liveExamTranscriptionBox {
-  background: #0f172a !important;
-  border-color: #27354a !important;
+  background: #222c40 !important;
+  border-color: #53637e !important;
 }
 
 .dark-mode #liveExamCalculatedSummary {
-  background: #090e17 !important;
-  border-color: #27354a !important;
+  background: #1b2434 !important;
+  border-color: #53637e !important;
   color: #f8fafc !important;
 }
 
 .dark-mode #liveProcessingBanner {
-  background: #0f172a !important;
-  border-color: #27354a !important;
+  background: #222c40 !important;
+  border-color: #53637e !important;
   color: #f8fafc !important;
 }
 
@@ -1626,18 +1626,18 @@ body.dark-mode,
 }
 
 .dark-mode th {
-  background: #1e293b;
+  background: #3a4760;
   border-color: #334155;
   color: #e2e8f0;
 }
 
 .dark-mode td {
-  border-color: #1e293b;
+  border-color: #3a4760;
 }
 
 .dark-mode code,
 .dark-mode pre {
-  background: #090e17;
+  background: #1b2434;
   color: #38bdf8;
-  border: 1px solid #1e293b;
+  border: 1px solid #3a4760;
 }
