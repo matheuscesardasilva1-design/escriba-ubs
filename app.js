@@ -5746,8 +5746,26 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(k)}`);
         if (res.ok) {
           const d = await res.json();
-          const n = (d.models || []).filter(m => (m.supportedGenerationMethods || []).includes('generateContent')).length;
-          lines.push(`✅ Chave ${i + 1} (${masked}): válida — ${n} modelos disponíveis`);
+          const rawList = d.models || [];
+          const restAudioModels = rawList
+            .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+            .map(m => (m.name || '').replace(/^models\//, ''))
+            .filter(n => n && (n.includes('flash') || n.includes('hydrogen')) && !/tts|embedding|imagen|banana|image|veo|robotics|computer-use|1\.0|1\.5|2\.0|3\.7|live|native-audio-dialog/i.test(n));
+          const liveModels = rawList
+            .filter(m => (m.supportedGenerationMethods || []).includes('bidiGenerateContent'))
+            .map(m => (m.name || '').replace(/^models\//, ''))
+            .filter(n => n && !/tts|translate/i.test(n));
+          const gemma4Models = rawList
+            .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+            .map(m => (m.name || '').replace(/^models\//, ''))
+            .filter(n => n && n.includes('gemma-4'));
+
+          lines.push(`✅ Chave ${i + 1} (${masked}): válida!`);
+          lines.push(`   • Áudio + Evolução (Flash/Hydrogen): ${restAudioModels.length ? restAudioModels.join(', ') : 'nenhum encontrado'}`);
+          lines.push(`   • Emergência Live (áudio): ${liveModels.length ? liveModels.join(', ') : 'nenhum'}`);
+          if (gemma4Models.length) {
+            lines.push(`   • Emergência Texto (Etapa 2): ${gemma4Models.join(', ')}`);
+          }
         } else {
           const e = await res.json().catch(() => ({}));
           lines.push(`❌ Chave ${i + 1} (${masked}): ${e?.error?.message || 'HTTP ' + res.status}`);
