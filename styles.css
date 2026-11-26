@@ -1237,6 +1237,19 @@ body.dark-mode,
   border-color: #475569 !important;
 }
 
+.dark-mode #apiKeysTestResult {
+  color: #f1f5f9 !important;
+  background: #222c40 !important;
+  border: 1px solid #53637e;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.dark-mode #apiKeyModal label,
+.dark-mode #apiKeyModal small {
+  color: #e2e8f0 !important;
+}
+
 .dark-mode .input-text::placeholder,
 .dark-mode .textarea-box::placeholder {
   color: #d3dcea;
@@ -1578,6 +1591,19 @@ body.dark-mode,
   background: #0d1424 !important;
   border-color: #53637e !important;
   color: #d3dcea !important;
+}
+
+.dark-mode #apiKeysTestResult {
+  color: #f1f5f9 !important;
+  background: #222c40 !important;
+  border: 1px solid #53637e;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.dark-mode #apiKeyModal label,
+.dark-mode #apiKeyModal small {
+  color: #e2e8f0 !important;
 }
 
 .dark-mode .input-text::placeholder,

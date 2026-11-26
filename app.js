@@ -202,8 +202,8 @@
             if (name.includes('robotics') || name.includes('computer-use')) return false;
             if (name.includes('1.0') || name.includes('1.5')) return false;
             if (name.includes('2.0') || name.startsWith('gemini-2-flash')) return false;
-            // Bloqueia modelos experimentais que travam em respostas longas (ex: gemini-3.7-flash) ou não seguem schema JSON SOAP
-            if (name.includes('3.7') || name.includes('live') || name.includes('native-audio-dialog') || name.includes('gemma')) return false;
+            // Bloqueia modelos experimentais que travam em respostas longas (ex: gemini-3.7-flash), cota 0/0 (omni) ou não seguem schema JSON SOAP
+            if (name.includes('3.7') || name.includes('live') || name.includes('native-audio-dialog') || name.includes('gemma') || name.includes('omni')) return false;
 
             const isFlash = name.includes('flash');
             const isHydrogen = name.includes('hydrogen');
@@ -211,15 +211,15 @@
           });
 
         // Hierarquia de pontuação dos modelos clínicos estáveis (garante rapidez e fidelidade idêntica ao padrão em todos os atendimentos):
-        // 1) Gemini 4 Hydrogen, Gemini 2.5 Flash e Gemini 3 Flash (modelos clínicos principais mais fiéis): 260+ pontos
+        // 1) Gemini 4 Hydrogen, Gemini 3.5 Flash, Gemini 2.5 Flash e Gemini 3 Flash (modelos clínicos principais mais fiéis): 260+ pontos
         // 2) Gemini 3.5 Flash-Lite e 3.1 Flash-Lite (alta velocidade e 500 req/dia): 220 pontos
         // 3) Outros modelos Flash (3.8, 3.6, 2.5-lite): 180 pontos
         const scoreModel = (name) => {
           if (name.includes('hydrogen')) {
             return 268;
           }
-          if (name === 'gemini-2.5-flash' || name === 'gemini-3-flash' || name === 'gemini-3-flash-preview') {
-            return 260 + (name === 'gemini-2.5-flash' ? 5 : 2);
+          if (name === 'gemini-2.5-flash' || name === 'gemini-3.5-flash' || name === 'gemini-3-flash' || name === 'gemini-3-flash-preview') {
+            return 260 + (name === 'gemini-3.5-flash' ? 6 : name === 'gemini-2.5-flash' ? 5 : 2);
           }
           if (name === 'gemini-3.5-flash-lite' || name === 'gemini-3.1-flash-lite') {
             return 220 + (name.includes('3.5') ? 3 : 1);
@@ -5750,7 +5750,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           const restAudioModels = rawList
             .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
             .map(m => (m.name || '').replace(/^models\//, ''))
-            .filter(n => n && (n.includes('flash') || n.includes('hydrogen')) && !/tts|embedding|imagen|banana|image|veo|robotics|computer-use|1\.0|1\.5|2\.0|3\.7|live|native-audio-dialog/i.test(n));
+            .filter(n => n && (n.includes('flash') || n.includes('hydrogen')) && !/tts|embedding|imagen|banana|image|veo|robotics|computer-use|1\.0|1\.5|2\.0|3\.7|live|native-audio-dialog|omni/i.test(n));
           const liveModels = rawList
             .filter(m => (m.supportedGenerationMethods || []).includes('bidiGenerateContent'))
             .map(m => (m.name || '').replace(/^models\//, ''))
@@ -6616,17 +6616,18 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const domSecond = document.getElementById('secondApiKeyInput')?.value?.trim() || '';
     const domExtra = document.getElementById('extraApiKeysInput')?.value?.trim() || '';
     const combined = `${mainRaw}\n${secondRaw}\n${extraRaw}\n${domMain}\n${domSecond}\n${domExtra}`;
-    const aizaMatches = combined.match(/AIza[0-9A-Za-z_-]{20,}/g) || [];
+    // Aceita chaves padrão AIza... e novas chaves Google AQ.... (que contêm ponto ".")
+    const keyMatches = combined.match(/(?:AIza[0-9A-Za-z_-]{20,}|AQ\.[0-9A-Za-z._-]{20,})/g) || [];
     const tokenMatches = combined
       .split(/[\s,;]+/)
       .map(s => s.replace(/^['"]|['"]$/g, '').trim())
-      .filter(s => s.length >= 25 && /^[A-Za-z0-9_-]+$/.test(s));
-    let allKeys = [...new Set([...aizaMatches, ...tokenMatches])];
+      .filter(s => s.length >= 25 && /^[A-Za-z0-9._-]+$/.test(s));
+    let allKeys = [...new Set([...keyMatches, ...tokenMatches])];
     if (allKeys.length === 0 && mainRaw) {
       allKeys = [mainRaw];
     }
     if (preferredKey && typeof preferredKey === 'string') {
-      const prefMatches = preferredKey.match(/AIza[0-9A-Za-z_-]{20,}/g) || [preferredKey.trim()];
+      const prefMatches = preferredKey.match(/(?:AIza[0-9A-Za-z_-]{20,}|AQ\.[0-9A-Za-z._-]{20,})/g) || [preferredKey.trim()];
       for (const pk of prefMatches.reverse()) {
         if (pk) allKeys = [pk, ...allKeys.filter(k => k !== pk)];
       }
@@ -6645,7 +6646,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     try {
       if (navigator.credentials && navigator.credentials.get && window.PasswordCredential) {
         const cred = await navigator.credentials.get({ password: true, mediation: 'optional' });
-        if (cred && cred.password && cred.password.startsWith('AIza')) {
+        if (cred && cred.password && (cred.password.startsWith('AIza') || cred.password.startsWith('AQ.'))) {
           localStorage.setItem('ubs_gemini_api_key', cred.password);
           updateApiKeyStatusBadge();
           showToast('🔑 Chave Gemini recuperada automaticamente do Gerenciador de Senhas do Chrome!');
