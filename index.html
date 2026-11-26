@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261125_61" />
+  <link rel="stylesheet" href="styles.css?v=20261126_62" />
   <script>
     (function() {
       try {
@@ -54,7 +54,7 @@
     <div class="brand" id="brandHomeBtn" style="cursor: pointer;" title="Ir para a primeira página">
       <div class="brand-icon">⚕</div>
       <span class="brand-title">Prontuário APS</span>
-      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.25-61</span>
+      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.26-62</span>
     </div>
 
     <nav class="nav-tabs">
@@ -232,11 +232,11 @@
             👶 Antropometria e Alimentação:
           </div>
           <label style="font-size: 11.5px; font-weight: 700; color: #166534; display: flex; align-items: center; gap: 5px; cursor: pointer;">
-            <input type="checkbox" id="chkIncludeZScoreInEvolution" />
+            <input type="checkbox" id="chkIncludeZScoreInEvolution" checked />
             Incluir Z-Score no Objetivo
           </label>
         </div>
-        <div class="zscore-grid" style="grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));">
+        <div class="zscore-grid" style="grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));">
           <div>
             <label>Sexo</label>
             <select id="zSex" class="select-box" style="padding: 6px;">
@@ -245,12 +245,16 @@
             </select>
           </div>
           <div>
-            <label>Idade (meses)</label>
-            <input type="number" id="zMonths" class="input-text" style="padding: 6px;" placeholder="Ex: 6" step="0.5" autocomplete="off" />
+            <label>Idade (anos)</label>
+            <input type="number" id="zYears" class="input-text" style="padding: 6px;" placeholder="Ex: 2" min="0" max="18" step="1" autocomplete="off" />
           </div>
           <div>
-            <label>IG Parto (sem)</label>
-            <input type="number" id="zBirthGA" class="input-text" style="padding: 6px;" placeholder="Ex: 39" step="0.5" autocomplete="off" />
+            <label>Idade (meses)</label>
+            <input type="number" id="zMonths" class="input-text" style="padding: 6px;" placeholder="Ex: 6" min="0" step="0.5" autocomplete="off" />
+          </div>
+          <div>
+            <label title="Se < 37 semanas e até 24 meses, calcula automaticamente a Idade Corrigida pela OMS">IG Parto (sem+d)</label>
+            <input type="text" id="zBirthGA" class="input-text" style="padding: 6px;" placeholder="Ex: 34+2 ou 39" autocomplete="off" />
           </div>
           <div>
             <label>Peso (kg ou g)</label>
@@ -1154,9 +1158,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261125_61"></script>
-  <script src="zscore.js?v=20261125_61"></script>
-  <script src="db.js?v=20261125_61"></script>
-  <script src="app.js?v=20261125_61"></script>
+  <script src="templates.js?v=20261126_62"></script>
+  <script src="zscore.js?v=20261126_62"></script>
+  <script src="db.js?v=20261126_62"></script>
+  <script src="app.js?v=20261126_62"></script>
 </body>
 </html>

@@ -556,9 +556,9 @@ window.parsePreviousConsultationData = function(prevRawText) {
         processedLine = '# Tabagista: Nega';
       } else if (/^#\s*(?:Nega\s+tabagismo|N[ãa]o\s+tabagista|Sem\s+tabagismo)\s*$/i.test(processedLine)) {
         processedLine = '# Tabagista: Nega';
-      } else if (/^#\s*Ex-?tabagista\b(.*)$/i.test(processedLine)) {
-        const restEx = processedLine.replace(/^#\s*Ex-?tabagista\s*:?\s*/i, '').trim();
-        processedLine = restEx ? `# Tabagista: Ex-tabagista (${restEx.replace(/^\(|\)$/g, '')})` : '# Tabagista: Ex-tabagista';
+      } else if (/^#\s*(?:Tabagis(?:ta|to|mo)\s*:\s*)?Ex-?tabagista\b(.*)$/i.test(processedLine)) {
+        const restEx = processedLine.replace(/^#\s*(?:Tabagis(?:ta|to|mo)\s*:\s*)?Ex-?tabagista\s*:?\s*/i, '').trim();
+        processedLine = restEx ? `# Ex-tabagista (${restEx.replace(/^\(|\)$/g, '')})` : '# Ex-tabagista';
       } else if (/^#\s*Tabagista\s+passiv([oa])\b(.*)$/i.test(processedLine)) {
         const mPass = processedLine.match(/^#\s*Tabagista\s+passiv([oa])\s*:?\s*(.*)$/i);
         const genderChar = mPass ? mPass[1].toLowerCase() : 'o';
@@ -825,6 +825,14 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
   } else if (templateObj.id === 'interconsulta' && soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader)) {
     effectiveTemplateText = `## INTERCONSULTA COM A ENFERMAGEM ##\n\n[Texto corrido direto e objetivo relatando a interconsulta com a enfermagem, quadro clínico, exame direcionado se houver, avaliação e condutas pactuadas, sem cabeçalho #, sem MUC, sem Alergias e sem subdivisões SUBJETIVO, OBJETIVO, AVALIAÇÃO ou CONDUTA.]`;
   }
+  const isInterconsultaShort = templateObj.id === 'interconsulta' && soapSubtypeHeader && /resumid/i.test(soapSubtypeHeader);
+  if (!isTelessaudeTemplate && !isInterconsultaShort && !/\nPLANO\b/.test(effectiveTemplateText)) {
+    if (effectiveTemplateText.includes('>> PENDÊNCIAS')) {
+      effectiveTemplateText = effectiveTemplateText.replace(/(\n*>>\s*PENDÊNCIAS)/, '\n\nPLANO\n[Apenas se o médico citou ações/exames/seguimentos futuros para a próxima consulta; caso contrário omita]\n$1');
+    } else {
+      effectiveTemplateText = `${effectiveTemplateText.trimEnd()}\n\nPLANO\n[Apenas se o médico citou ações/exames/seguimentos futuros para a próxima consulta; caso contrário omita]`;
+    }
+  }
 
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
 Sua missão é produzir uma evolução médica COMPLETA, DETALHADA e IMPECÁVEL, pronta para inserção direta no Prontuário Eletrônico do Cidadão (PEC e-SUS / APS).
@@ -906,7 +914,7 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
    - CAPTAÇÃO OBRIGATÓRIA DE TABAGISMO (ATIVO, EX-TABAGISTA, TABAGISTA PASSIVO OU NEGA) E ALERGIAS A PARTIR DA TRANSCRIÇÃO E DA EVOLUÇÃO ANTERIOR:
      * Verifique atentamente tanto a evolução anterior quanto a transcrição da consulta de hoje para preencher "# Tabagista:" e "# Alergias:".
      * Se o paciente negar tabagismo na consulta ou na evolução anterior (ex.: "# Nega tabagismo"), preencha: "# Tabagista: Nega" (e NUNCA deixe "# Nega tabagismo" duplicado com "# Tabagista:" em branco!).
-     * Se o paciente for EX-TABAGISTA (relatar que já fumou e parou), NUNCA o classifique como tabagista ativo! Preencha claramente: "# Tabagista: Ex-tabagista" (acrescentando há quanto tempo parou se informado, ex.: "# Tabagista: Ex-tabagista (cessou há 10 anos)").
+     * Se o paciente for EX-TABAGISTA (relatar que já fumou e parou), NUNCA escreva "# Tabagista: Ex-tabagista" nem "# Tabagismo: Ex-tabagista" e NUNCA deixe "# Tabagista:" duplicado! Escreva EXCLUSIVAMENTE uma única linha limpa: "# Ex-tabagista" (ou "# Ex-tabagista (cessou há X anos)").
      * Se o paciente for TABAGISTA PASSIVO (relatar que não fuma, mas esposo/familiar fuma em casa), preencha claramente: "# Tabagista: Tabagista passivo(a)" (ex.: "# Tabagista: Tabagista passiva (esposo tabagista)").
      * Se o paciente negar alergias na consulta ou na evolução anterior (ex.: "# Nega alergias"), preencha: "# Alergias: Nega" (e se tiver alergia, especifique qual medicação/substância: "# Alergias: Dipirona").
    - PRESERVAÇÃO FIEL DAS "#" ANTERIORES + PROMOÇÃO DE PATOLOGIAS CRÔNICAS/IMPORTANTES DA AVALIAÇÃO ANTERIOR (BLOQUEANDO QUEIXAS AGUDAS!):
@@ -1022,9 +1030,10 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
        Ciente, concordante e sem dúvidas.
    - É TERMINANTEMENTE PROIBIDO gerar condutas em bloco corrido contínuo (tudo na mesma linha ou sem quebras de linha)!
    - NÃO COLOQUE NUMERAÇÃO ("1.", "2.", "3."): escreva cada conduta em sua própria linha separada.
-   - PRESCRIÇÕES MÉDICAS FIÉIS (PROIBIDO INVENTAR DOSAGEM NÃO FALADA):
-     * Toda medicação prescrita, ajustada ou renovada deve estar na CONDUTA com o nome oficial brasileiro e as informações de dose/posologia/duração que o médico EFETIVAMENTE FALOU ou anotou. Se o médico não falou a miligramagem/dosagem, NÃO invente e NÃO suponha uma dosagem!
-     * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer de registrar as medicações que o médico prescreveu no consultório!
+   - PRESCRIÇÕES MÉDICAS FIÉIS (CAPTURAR 100% DAS DOSES FALADAS + PROIBIDO INVENTAR DOSAGEM NÃO FALADA):
+     * SEMPRE QUE O MÉDICO FALAR A DOSE/POSOLOGIA NO ÁUDIO OU NAS NOTAS (ex.: "2,5 ml 1x ao dia", "5 gotas de 6/6h", "500mg 8/8h por 5 dias"), É ESTRITAMENTE OBRIGATÓRIO transcrever a dose, posologia e duração EXATAS faladas! É TERMINANTEMENTE PROIBIDO substituir uma dose falada por frases vagas como "administrar conforme peso" ou "administrar conforme orientação"!
+     * Somente omita a miligramagem/dose se o médico realmente NÃO tiver dito nenhum valor numérico no áudio nem nas notas (nesse caso, escreva apenas o nome do medicamento sem inventar mg/ml).
+     * É ERRO MÉDICO GRAVÍSSIMO deixar o bloco CONDUTA vazio ou esquecer qualquer conduta, orientação, encaminhamento ou medicação falada pelo médico no consultório!
    - Se o médico renovou receitas de uso contínuo, escreva na CONDUTA: "Renovo medicações de uso contínuo" (ou "Renovo receitas de medicações de uso contínuo"). É TERMINANTEMENTE PROIBIDO escrever "#MUC", "# MUC" ou "(conforme # MUC)" dentro da CONDUTA!
    - Use sempre a grafia oficial brasileira ("Sinvastatina" com N, "Anlodipino" com N, "Hidroclorotiazida" com I, "Levotiroxina", "Ácido Acetilsalicílico", etc.).
 
@@ -1055,6 +1064,9 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * Se o médico disse que há vacinas pendentes/em atraso, registre assim: "- Em atraso: [quais vacinas/idades, se citadas]" e na CONDUTA registre o plano de atualização (ex.: "Posterg(o) aplicação ..." conforme dito).
      * Se o médico não falou nada sobre vacinas, deixe "# Vacinas:" SEM conteúdo (nunca preencha por conta própria, nunca escreva "Pendente" ou "Atualizadas" por suposição).
      * Jamais escreva linhas como "- atualizadas: Pendente".
+   - Na PUERICULTURA — IDADE NO TÍTULO E IMPORTAÇÃO OBRIGATÓRIA DA ANTROPOMETRIA:
+     * Coloque SEMPRE a idade da criança no título (ex.: "## CONSULTA DE PUERICULTURA - 2 ANOS E 4 MESES ##" ou "## CONSULTA DE PUERICULTURA - 6 MESES (IC: 4,5 MESES) ##" se prematuro com idade corrigida OMS).
+     * TODOS os dados fornecidos em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===" (Peso, Altura/Comprimento, PC, IMC, Z-Score OMS, Idade Corrigida e Alimentação) e em "=== DADOS EXTRAS / NOTAS RÁPIDAS ===" são de IMPORTAÇÃO 100% OBRIGATÓRIA no OBJETIVO e SUBJETIVO!
    - Na PUERICULTURA: É TERMINANTEMENTE PROIBIDO calcular ou inventar Z-Score por conta própria! Só escreva Z-Score se o médico verbalizou no áudio ou se vier calculado em "=== DADOS OBJETIVOS / ANTROPOMETRIA / Z-SCORE ===".
    - Na PUERICULTURA — EXAME FÍSICO (OBJETIVO): Siga fielmente a estrutura pediátrica do modelo (BEG, MUC, ativo, eupneico em ar ambiente, anictérico e acianótico; Peso; Altura; PC; Marcos do desenvolvimento; AP; AC; ABD; Extremidades/TEC; Hidratação; Fontanelas; Ortolani; Barlow; Oroscopia; Otoscopia; e observações sobre teste do olho vermelho/coraçãozinho), atualizando qualquer item conforme o exame físico falado no áudio ou a faixa etária.
    - Na VISITA DOMICILIAR:

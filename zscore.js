@@ -109,36 +109,96 @@ window.ZScoreCalculator = (function() {
     }
   }
 
-  function calculate({ sex = 'M', months = null, birthGAWeeks = null, weightKg = null, heightCm = null, hcCm = null }) {
-    // TRAVA DE SEGURANÇA: Se a idade em meses NÃO foi preenchida explicitamente na calculadora, NUNCA calcula Z-Score!
-    if (months === null || months === undefined || String(months).trim() === '') {
-      return null;
+  function parseBirthGAWeeks(raw) {
+    if (raw === null || raw === undefined) return NaN;
+    const s = String(raw).trim().replace(',', '.');
+    if (!s) return NaN;
+    const plusMatch = s.match(/^(\d+(?:\.\d+)?)\s*\+\s*(\d+)$/);
+    if (plusMatch) {
+      const w = parseFloat(plusMatch[1]);
+      const d = parseInt(plusMatch[2], 10);
+      if (!isNaN(w) && !isNaN(d) && d >= 0 && d <= 6) {
+        return w + (d / 7);
+      }
     }
+    return parseFloat(s);
+  }
+
+  function formatAgePT(totalMonths) {
+    const m = Math.max(0, Number(totalMonths) || 0);
+    const rounded = Math.round(m * 10) / 10;
+    const yrs = Math.floor(rounded / 12);
+    const remM = Math.round((rounded - yrs * 12) * 10) / 10;
+    const remStr = Number.isInteger(remM) ? String(remM) : remM.toFixed(1).replace('.', ',');
+    if (yrs > 0 && remM > 0) {
+      return `${yrs} ${yrs === 1 ? 'ano' : 'anos'} e ${remStr} ${remM === 1 ? 'mês' : 'meses'}`;
+    }
+    if (yrs > 0) {
+      return `${yrs} ${yrs === 1 ? 'ano' : 'anos'}`;
+    }
+    return `${remStr} ${rounded === 1 ? 'mês' : 'meses'}`;
+  }
+
+  function computeAgeInfo({ years = null, months = null, birthGAWeeks = null }) {
+    const hasY = years !== null && years !== undefined && String(years).trim() !== '';
+    const hasM = months !== null && months !== undefined && String(months).trim() !== '';
+    if (!hasY && !hasM) return null;
+    const yNum = hasY ? parseFloat(String(years).replace(',', '.').trim()) : 0;
+    const mNum = hasM ? parseFloat(String(months).replace(',', '.').trim()) : 0;
+    if (isNaN(yNum) || isNaN(mNum) || yNum < 0 || mNum < 0) return null;
+    const chronologicalMonths = (yNum * 12) + mNum;
+    const ga = parseBirthGAWeeks(birthGAWeeks);
+    const gaRaw = birthGAWeeks !== null && birthGAWeeks !== undefined ? String(birthGAWeeks).trim() : '';
+    const isPremature = !isNaN(ga) && ga > 20 && ga < 37;
+    let correctedMonths = chronologicalMonths;
+    let needsCorrection = false;
+    let isPretermIntergrowth = false;
+    if (isPremature && chronologicalMonths <= 24) {
+      needsCorrection = true;
+      const weeksPremature = 40 - ga;
+      const monthsDiscount = (weeksPremature * 7) / 30.4375;
+      correctedMonths = chronologicalMonths - monthsDiscount;
+      if (correctedMonths < 0) {
+        isPretermIntergrowth = true;
+      }
+    }
+    return {
+      chronologicalMonths,
+      chronologicalLabel: formatAgePT(chronologicalMonths),
+      gaWeeks: ga,
+      gaRaw: gaRaw || (!isNaN(ga) ? String(ga) : ''),
+      isPremature,
+      needsCorrection,
+      isPretermIntergrowth,
+      correctedMonths: Math.max(0, correctedMonths),
+      rawCorrectedMonths: correctedMonths,
+      correctedLabel: isPretermIntergrowth ? 'Abaixo de 40 sem (Intergrowth-21st)' : formatAgePT(correctedMonths)
+    };
+  }
+
+  function calculate({ sex = 'M', years = null, months = null, birthGAWeeks = null, weightKg = null, heightCm = null, hcCm = null }) {
+    const ageInfo = computeAgeInfo({ years, months, birthGAWeeks });
+    if (!ageInfo) return null;
 
     const toNum = (v) => (v === null || v === undefined || String(v).trim() === '') ? NaN : parseFloat(String(v).replace(',', '.').trim());
-    const mChronological = toNum(months);
-    if (isNaN(mChronological) || mChronological < 0) return null;
-
-    const ga = toNum(birthGAWeeks);
+    const mChronological = ageInfo.chronologicalMonths;
+    const ga = ageInfo.gaWeeks;
     let mEffective = mChronological;
     let prematurityNote = '';
 
-    // Se nasceu prematuro (IG < 37 semanas) e tem até 24 meses, corrige a idade para 40 semanas!
-    if (!isNaN(ga) && ga > 20 && ga < 37 && mChronological <= 24) {
-      const weeksPremature = 40 - ga;
-      const monthsDiscount = (weeksPremature * 7) / 30.4375;
-      mEffective = mChronological - monthsDiscount;
-
-      if (mEffective < 0) {
-        // Ainda não atingiu 40 semanas de Idade Pós-Menstrual -> Curva Intergrowth-21st (não aplicar OMS 0-5 anos!)
+    // Se nasceu prematuro (IG < 37 semanas) e tem até 24 meses, corrige a idade para 40 semanas (padrão OMS)!
+    if (ageInfo.needsCorrection) {
+      if (ageInfo.isPretermIntergrowth) {
         return {
           months: mChronological,
-          correctedMonths: mEffective,
+          correctedMonths: ageInfo.rawCorrectedMonths,
+          ageInfo,
           isPretermIntergrowth: true,
-          summaryText: `Prematuro (IG ao nascer: ${ga} sem | Idade cronológica: ${mChronological} meses) — Ainda abaixo de 40 semanas de Idade Pós-Menstrual (avaliar pela curva Intergrowth-21st; não aplicar Z-Score OMS de termo).`
+          summaryText: `Prematuro (IG ao nascer: ${ageInfo.gaRaw} sem | Idade cronológica: ${ageInfo.chronologicalLabel}) — Ainda abaixo de 40 semanas de Idade Pós-Menstrual (avaliar pela curva Intergrowth-21st; não aplicar Z-Score OMS de termo).`
         };
       }
-      prematurityNote = ` [ Calculado pela Idade Corrigida de ${mEffective.toFixed(1)} meses (Prematuro de ${ga} sem) ]`;
+      mEffective = ageInfo.correctedMonths;
+      prematurityNote = ` [ Z-Score OMS pela Idade Corrigida: ${ageInfo.correctedLabel} (Prematuro de ${ageInfo.gaRaw} sem) ]`;
     }
 
     const ref = WHO_DATA[sex === 'F' ? 'F' : 'M'];
@@ -153,6 +213,7 @@ window.ZScoreCalculator = (function() {
     const result = {
       months: mChronological,
       correctedMonths: mEffective,
+      ageInfo,
       sex: sex === 'F' ? 'Feminino' : 'Masculino',
       weight: null,
       height: null,
@@ -162,8 +223,8 @@ window.ZScoreCalculator = (function() {
     };
 
     const lines = [];
-    if (prematurityNote) {
-      lines.push(`Idade Cronológica: ${mChronological} meses | Idade Corrigida p/ Prematuridade (${ga} sem): ${mEffective.toFixed(1)} meses`);
+    if (ageInfo.needsCorrection) {
+      lines.push(`Idade Cronológica: ${ageInfo.chronologicalLabel} | Idade Corrigida OMS (Prematuro ${ageInfo.gaRaw} sem): ${ageInfo.correctedLabel}`);
     }
 
     if (!isNaN(w) && w > 0) {
@@ -221,5 +282,5 @@ window.ZScoreCalculator = (function() {
     return result;
   }
 
-  return { calculate };
+  return { calculate, computeAgeInfo, formatAgePT, parseBirthGAWeeks };
 })();

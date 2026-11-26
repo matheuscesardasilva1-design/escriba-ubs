@@ -231,11 +231,17 @@
           return (isFullFlash ? 190 : 160) + ver + stableBonus;
         };
 
-        allCapable.sort((a, b) => scoreModel(b) - scoreModel(a));
+        const filteredCapable = allCapable.filter((n, _, arr) => {
+          if (n.endsWith('-latest')) return false;
+          if (n.endsWith('-preview') && arr.includes(n.replace(/-preview$/, ''))) return false;
+          return true;
+        });
+        const finalCapable = (filteredCapable.length > 0 ? filteredCapable : allCapable);
+        finalCapable.sort((a, b) => scoreModel(b) - scoreModel(a));
 
-        if (allCapable.length > 0) {
-          cachedDiscoveredModelsByKey[keyHash] = allCapable;
-          const ordered = filterAndOrder(allCapable);
+        if (finalCapable.length > 0) {
+          cachedDiscoveredModelsByKey[keyHash] = finalCapable.slice(0, 6);
+          const ordered = filterAndOrder(cachedDiscoveredModelsByKey[keyHash]);
           if (ordered.length > 0) return ordered;
         }
       }
@@ -2400,7 +2406,7 @@
           if (onProgressMilestone) {
             onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
           }
-        }, { allowLiveFallback: true, maxRounds: 1 });
+        }, { allowLiveFallback: true, maxRounds: 1, disableThinking: true });
         const stage1Text = (stage1Res.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
         totalTokensUsed += stage1Res.responseJson?.usageMetadata?.totalTokenCount || 0;
         lastModelUsed = stage1Res.modelUsed || lastModelUsed;
@@ -2454,13 +2460,8 @@
     );
 
     const parts = [];
-    if (hasPreTranscribedDialogue) {
-      parts.push({
-        text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE (LEIA DO INÍCIO AO FIM E INCLUA 100% DAS QUEIXAS, INTERROGATÓRIO, HISTÓRIA, EXAME FÍSICO E CONDUTAS NA EVOLUÇÃO!) ===\n${verbatimTranscript}`
-      });
-    } else if (hasAudioAttached && audioParts.length > 0) {
-      parts.push(...audioParts);
-    }
+    // 1. Instruções clínicas e máscara
+    parts.push({ text: promptText });
 
     // 2. Inclui PDFs / Imagens de Exames (se já não tiverem sido transcritos na hora durante a consulta)
     if (!preExams) {
@@ -2481,8 +2482,18 @@
       }
     }
 
-    // 3. Inclui as instruções clínicas e a máscara exata
-    parts.push({ text: promptText });
+    // 3. Por último (máxima atenção do modelo!), entrega a transcrição integral + reforço obrigatório de dados digitados pelo médico
+    if (hasPreTranscribedDialogue) {
+      const typedReinforcement = [
+        consultation.zScoreSummary ? `DADOS ANTROPOMÉTRICOS / Z-SCORE / CÁLCULO OBSTÉTRICO DIGITADOS PELO MÉDICO (INCLUIR 100% NO TÍTULO/OBJETIVO/SUBJETIVO!):\n${consultation.zScoreSummary}` : '',
+        consultation.quickNotes && consultation.quickNotes.trim() ? `ANOTAÇÕES RÁPIDAS DIGITADAS PELO MÉDICO (INCLUIR 100% NA EVOLUÇÃO!):\n${consultation.quickNotes.trim()}` : ''
+      ].filter(Boolean).join('\n\n');
+      parts.push({
+        text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE ===\n${verbatimTranscript}\n${typedReinforcement ? `\n=== REFORÇO FINAL OBRIGATÓRIO — DADOS DIGITADOS PELO MÉDICO HOJE ===\n${typedReinforcement}\n` : ''}\nLEMBRETE FINAL OBRIGATÓRIO: Inclua 100% das queixas, exame físico, dados digitados acima, TODAS as condutas com as DOSES EXATAS faladas (ml, gotas, mg, posologia — proibido trocar por "conforme peso/orientação") e crie a seção PLANO ao final sempre que houver ação/seguimento/exame para próximas consultas!`
+      });
+    } else if (hasAudioAttached && audioParts.length > 0) {
+      parts.push(...audioParts);
+    }
 
     const medicalSystemInstruction = {
       parts: [{
@@ -2648,7 +2659,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       consultPatientSex,
       transcriptCandidate,
       consultVdVisitDate,
-      consultation.quickNotes || ''
+      consultation.quickNotes || '',
+      consultation.zScoreSummary || ''
     );
 
     // Filtra alertas falsos gerados pela IA sobre alergia/tabagismo e faz auditoria determinística real sobre o texto final limpo
@@ -3495,8 +3507,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       extractedTabagismoFromHeader = val;
       return `# Tabagista: ${val}`;
     });
-    // Se a IA escreveu "# Tabagista: Ex-tabagista...", converte para "# Ex-tabagista..." (nunca ao lado de Tabagista!)
-    headerPart = headerPart.replace(/^#\s*Tabagist[ao]\s*:\s*(Ex-?tabagista[^\n]*)$/gim, (_, val) => {
+    // Se a IA escreveu "# Tabagista: Ex-tabagista..." ou "# Tabagismo: Ex-tabagista...", converte para "# Ex-tabagista..." (nunca ao lado de Tabagista/Tabagismo!)
+    headerPart = headerPart.replace(/^#\s*Tabagis(?:ta|to|mo)\s*:\s*(Ex-?tabagista[^\n]*)$/gim, (_, val) => {
       const cleanedVal = val.replace(/^Ex-?tabagista\s*:\s*/i, 'Ex-tabagista ').trim();
       extractedTabagismoFromHeader = cleanedVal;
       return `# ${cleanedVal}`;
@@ -3506,6 +3518,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       extractedTabagismoFromHeader = cleanedVal;
       return `# ${cleanedVal}`;
     });
+    headerPart = headerPart.replace(/^#\s*Tabagismo\s*:\s*(.+)$/gim, (_, val) => {
+      const v = val.trim();
+      if (/^ex-?tabagista/i.test(v)) return `# ${v.replace(/^ex-?tabagista/i, 'Ex-tabagista')}`;
+      return `# Tabagista: ${v}`;
+    });
     headerPart = headerPart.replace(/^#\s*Nega\s+tabagismo(?:\s*(?:\/|e)\s*etilismo)?\s*$/gim, (full) => {
       extractedTabagismoFromHeader = 'Nega';
       if (/etilismo/i.test(full) && !/#\s*(?:Nega\s+etilismo|Etilismo)/i.test(headerPart)) {
@@ -3514,11 +3531,24 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       return `# Tabagista: Nega`;
     });
 
-    // Se havia tanto uma linha "# Tabagista:" vazia quanto uma convertida acima, remove a duplicada vazia
-    const tabMatches = headerPart.match(/^#\s*Tabagist[ao]\s*:.*$/gim) || [];
+    // Se já existe "# Ex-tabagista", remove QUALQUER outra linha "# Tabagista:" / "# Tabagismo:" e desduplica "# Ex-tabagista" repetido!
+    if (/^#\s*Ex-?tabagista\b/im.test(headerPart)) {
+      headerPart = headerPart.replace(/^#\s*Tabagis(?:ta|to|mo)\s*:.*\n?/gim, '');
+      let keptEx = false;
+      headerPart = headerPart.replace(/^#\s*Ex-?tabagista[^\n]*\n?/gim, (full) => {
+        if (!keptEx) {
+          keptEx = true;
+          return full;
+        }
+        return '';
+      });
+    }
+
+    // Se havia tanto uma linha "# Tabagista:" vazia quanto uma preenchida, remove duplicadas
+    const tabMatches = headerPart.match(/^#\s*Tabagis(?:ta|to|mo)\s*:.*$/gim) || [];
     if (tabMatches.length > 1) {
       let keptFilled = false;
-      headerPart = headerPart.replace(/^#\s*Tabagist[ao]\s*:\s*(.*)\n?/gim, (full, val) => {
+      headerPart = headerPart.replace(/^#\s*Tabagis(?:ta|to|mo)\s*:\s*(.*)\n?/gim, (full, val) => {
         if (val && val.trim()) {
           if (!keptFilled) {
             keptFilled = true;
@@ -3561,7 +3591,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const currentTabMatch = headerPart.match(/^#\s*Tabagist[ao]\s*:\s*(.*)$/im);
     const currentTabVal = currentTabMatch ? currentTabMatch[1].trim() : '';
 
-    // Se o paciente é EX-TABAGISTA (parou de fumar), usa linha própria "# Ex-tabagista..." e NUNCA coloca dentro de "# Tabagista:"!
+    // Se o paciente é EX-TABAGISTA (parou de fumar), usa linha própria "# Ex-tabagista..." e NUNCA coloca dentro de "# Tabagista:" / "# Tabagismo:"!
     const hasExTabagistaHeader = /^#\s*Ex-?tabagista\b/im.test(headerPart);
     if (exSmokerMatch && !hasExTabagistaHeader && (!currentTabVal || /^(?:sim|ativ[oa]|tabagista|nega)$/i.test(currentTabVal))) {
       const rawEx = exSmokerMatch[0].trim();
@@ -3569,10 +3599,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         ? rawEx.replace(/^ex-?tabagista/i, 'Ex-tabagista')
         : `Ex-tabagista (${rawEx})`;
       if (currentTabMatch) {
-        headerPart = headerPart.replace(/^#\s*Tabagist[ao]\s*:\s*.*$/im, `# ${formattedEx}`);
+        headerPart = headerPart.replace(/^#\s*Tabagis(?:ta|to|mo)\s*:\s*.*$/im, `# ${formattedEx}`);
       } else {
         headerPart = `${headerPart.trimEnd()}\n# ${formattedEx}\n`;
       }
+      headerPart = headerPart.replace(/^#\s*Tabagis(?:ta|to|mo)\s*:.*\n?/gim, '');
     } else if (!currentTabVal && !hasExTabagistaHeader) {
       let inferredTab = '';
       if (extractedTabagismoFromHeader) {
@@ -3619,7 +3650,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
   // Garante deterministicamente via código que NENHUMA condição de saúde anterior ("#"), NENHUMA sub-linha ("- "),
   // NENHUMA informação de Ecografia na IG, NENHUM exame anterior e NENHUMA formatação de Vacinas/Sorologias/Paridade sejam perdidos!
-  function enforcePreviousHeaderAndExams(evolutionText, previousConsultationText, templateId, soapSubtypeHeader, patientAge = '', patientSex = '', rawTranscript = '', vdVisitDate = '', quickNotes = '') {
+  function enforcePreviousHeaderAndExams(evolutionText, previousConsultationText, templateId, soapSubtypeHeader, patientAge = '', patientSex = '', rawTranscript = '', vdVisitDate = '', quickNotes = '', zScoreSummary = '') {
     let text = String(evolutionText || '');
     if (!text || /Áudio sem conteúdo de consulta médica/i.test(text)) return text;
 
@@ -3949,9 +3980,46 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         });
       }
 
-      cleanHeader = normalizeAndDeduplicatePrenatalVaccines(cleanHeader);
-      cleanHeader = normalizeAndSortPrenatalSorologias(cleanHeader);
+      if (templateId === 'prenatal' || /CONSULTA DE PRÉ-NATAL/i.test(text)) {
+        cleanHeader = normalizeAndDeduplicatePrenatalVaccines(cleanHeader);
+        cleanHeader = normalizeAndSortPrenatalSorologias(cleanHeader);
+      } else if (templateId === 'puericultura' || /CONSULTA DE PUERICULTURA/i.test(text)) {
+        // Na Puericultura, NUNCA roda o normalizador de vacinas do Pré-Natal (que criava "- atualizado: Pendente"!)
+        cleanHeader = cleanHeader.replace(/^\s*-\s*atualizad[oa]s?\s*:\s*pendente\s*\n?/gim, '');
+      }
       text = `${cleanHeader}${restBody}`;
+    }
+
+    // Na PUERICULTURA: garante deterministicamente a idade da criança no cabeçalho "## CONSULTA DE PUERICULTURA - ... ##"
+    // e garante que Peso, Altura, PC, IMC e Z-Score preenchidos na calculadora SEMPRE apareçam no OBJETIVO!
+    if ((templateId === 'puericultura' || /CONSULTA DE PUERICULTURA/i.test(text)) && zScoreSummary) {
+      const ageLabelMatch = zScoreSummary.match(/^Idade da crian[çc]a:\s*([^\n(]+)/im);
+      const icMatch = zScoreSummary.match(/Idade Corrigida OMS[^:]*:\s*([^\n]+)/im);
+      const headerAgeText = ageLabelMatch ? ageLabelMatch[1].trim() : (patientAge ? String(patientAge).trim() : '');
+      if (headerAgeText && /^\s*##\s*CONSULTA DE PUERICULTURA(?:\s*-\s*X\s*MESES)?\s*##/im.test(text)) {
+        const icSuffix = icMatch ? ` (IC: ${icMatch[1].trim()})` : '';
+        text = text.replace(
+          /^\s*##\s*CONSULTA DE PUERICULTURA(?:\s*-\s*X\s*MESES)?\s*##/im,
+          `## CONSULTA DE PUERICULTURA - ${headerAgeText.toUpperCase()}${icSuffix.toUpperCase()} ##`
+        );
+      }
+      const anthroLines = zScoreSummary
+        .split('\n')
+        .map(l => l.trim())
+        .filter(l => /^(?:Idade Cronol[óo]gica|Peso|Altura\/Comprimento|PC|IMC)\s*:/i.test(l));
+      if (anthroLines.length > 0 && /\nOBJETIVO\b/i.test(text)) {
+        const objMatch = text.match(/(\nOBJETIVO\s*\n[^\n]*\n)([\s\S]*?)(\n\s*(?:EXAMES|AVALIAÇÃO|CONDUTA)\b|$)/i);
+        if (objMatch) {
+          const existingObjBody = objMatch[2] || '';
+          const missingAnthro = anthroLines.filter(al => {
+            const prefix = al.split(':')[0].trim().replace(/\/.*/, '');
+            return !(new RegExp(`\\b${prefix}\\s*:`, 'i').test(existingObjBody));
+          });
+          if (missingAnthro.length > 0) {
+            text = text.replace(objMatch[0], `${objMatch[1]}${missingAnthro.join('\n')}\n${existingObjBody}${objMatch[3]}`);
+          }
+        }
+      }
     }
 
     text = normalizeAndExtractSmokingAndAllergies(text, rawTranscript, previousConsultationText);
@@ -4198,7 +4266,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     return beforeSubj + subjContent + '\n' + afterSubj;
   }
 
-  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId, previousConsultationText = '', soapSubtypeHeader = '', patientAge = '', patientSex = '', rawTranscript = '', vdVisitDate = '', quickNotes = '') {
+  function cleanAndExtractCidFromEvolution(evolutionText, existingCodes, templateId, previousConsultationText = '', soapSubtypeHeader = '', patientAge = '', patientSex = '', rawTranscript = '', vdVisitDate = '', quickNotes = '', zScoreSummary = '') {
     let text = fixBrazilianMedicationSpelling(evolutionText || '');
 
     // 1. Limpeza de linguagem informal / gírias no Subjetivo para adequação à semiologia médica formal
@@ -4249,7 +4317,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    text = enforcePreviousHeaderAndExams(text, previousConsultationText, templateId, soapSubtypeHeader, patientAge, patientSex, rawTranscript, vdVisitDate, quickNotes);
+    text = enforcePreviousHeaderAndExams(text, previousConsultationText, templateId, soapSubtypeHeader, patientAge, patientSex, rawTranscript, vdVisitDate, quickNotes, zScoreSummary);
     const extractedCodes = Array.isArray(existingCodes) ? [...existingCodes] : [];
 
     // Na Puericultura, garante que nunca apareça "# Alimentação:" ou "# Aleitamento:" no cabeçalho "#" inicial
@@ -4351,12 +4419,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     let spacedText = cleanedLines.join('\n').trim();
 
-    // Remove boilerplate genérico ou clichê da seção PLANO (somente quando "PLANO" está sozinho em sua própria linha)
+    // Remove boilerplate genérico, placeholder de prompt ou clichê da seção PLANO (somente quando "PLANO" está sozinho em sua própria linha)
     spacedText = spacedText
-      .replace(/\n+^[ \t]*PLANO[ \t]*\n+[ \t]*(?:Seguimento ambulatorial na APS(?: conforme necessidade cl[íi]nica)?\.?|Sem pend[êe]ncias(?: futuras)?\.?|Nenhuma a[çc][ãa]o futura espec[íi]fica\.?)[ \t]*$/gm, '')
+      .replace(/\n+^[ \t]*PLANO[ \t]*\n+[ \t]*(?:\[Apenas se o m[ée]dico citou[^\]]*\]|Seguimento ambulatorial na APS(?: conforme necessidade cl[íi]nica)?\.?|Sem pend[êe]ncias(?: futuras)?\.?|Nenhuma a[çc][ãa]o futura espec[íi]fica\.?)[ \t]*$/gm, '')
       .replace(/\n+^[ \t]*PLANO[ \t]*$(?=\s*$)/gm, '');
 
-    // Se a IA colocou ações da próxima consulta dentro de CONDUTA sem criar a seção PLANO, promove-as para PLANO automaticamente
+    // Se a IA colocou ações da próxima consulta / seguimento futuro dentro de CONDUTA sem criar a seção PLANO, promove-as para PLANO automaticamente
     if (!/^[ \t]*PLANO[ \t]*$/m.test(spacedText) && /^[ \t]*CONDUTA[ \t]*$/m.test(spacedText)) {
       const condutaBlockMatch = spacedText.match(/(^[ \t]*CONDUTA[ \t]*\n)([\s\S]*?)(\n+[ \t]*>>\s*PENDÊNCIAS[\s\S]*)?$/m);
       if (condutaBlockMatch) {
@@ -4369,10 +4437,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         const isFuturePlanLine = (ln) => {
           const t = ln.trim();
           if (!t) return false;
-          if (/^(?:Agendo|Oriento)\s+retorno\b/i.test(t) && !/\b(?:na\s+pr[óo]xima|para\s+(?:solicitar|pedir|encaminhar|avaliar|reavaliar|checar|repetir|coletar))/i.test(t)) {
+          if (/^(?:Agendo|Oriento)\s+retorno\b/i.test(t) && !/\b(?:na\s+pr[óo]xima|para\s+(?:solicitar|pedir|encaminhar|avaliar|reavaliar|checar|repetir|coletar|definir))/i.test(t)) {
             return false;
           }
-          return /\b(?:na\s+pr[óo]xima\s+consulta|em\s+pr[óo]xima\s+consulta|na\s+pr[óo]xima\s+avalia[çc][ãa]o|na\s+pr[óo]xima\s+visita|no\s+pr[óo]ximo\s+atendimento|na\s+consulta\s+seguinte|na\s+consulta\s+subsequente|no\s+pr[óo]ximo\s+retorno|no\s+pr[óo]ximo\s+acompanhamento|para\s+a\s+pr[óo]xima\s+consulta)\b/i.test(t)
+          return /\b(?:na\s+pr[óo]xima\s+consulta|em\s+pr[óo]xima\s+consulta|na\s+pr[óo]xima\s+avalia[çc][ãa]o|na\s+pr[óo]xima\s+visita|no\s+pr[óo]ximo\s+atendimento|na\s+consulta\s+seguinte|na\s+consulta\s+subsequente|no\s+pr[óo]ximo\s+retorno|no\s+pr[óo]ximo\s+acompanhamento|para\s+a\s+pr[óo]xima\s+consulta|segunda\s+etapa\s+da\s+triagem|M-CHAT-R\/F|para\s+definir\s+necessidade\s+de\s+(?:investiga|encaminh))\b/i.test(t)
             || /\b(?:no\s+retorno|em\s+retorno|ap[óo]s\s+retorno)\b[^.\n]{0,60}\b(?:solicitar|solicitarei|pedir|pedirei|encaminhar|encaminharei|avaliar|avaliarei|reavaliar|considerar|iniciar|trocar|ajustar|titular|repetir|checar|verificar|definir|decidir|coletar|dosar|exame)\b/i.test(t)
             || /^(?:Planejo|Programo|Fica\s+planejad[oa]|Fica\s+programad[oa]|Plano\s*:|Aguardar\s+resultado[^.\n]*para\s+(?:definir|avaliar|encaminhar|solicitar))\b/i.test(t)
             || /\b(?:se\s+mantiver|se\s+persistir|caso\s+persista|caso\s+mantenha|se\s+n[ãa]o\s+houver\s+melhora)\b[^.\n]{0,60}\b(?:encaminh|solicit|pedir|iniciar|trocar|associar)\b/i.test(t);
@@ -4644,14 +4712,14 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
                 maxOutputTokens: Math.min(requestBody.generationConfig?.maxOutputTokens || 65536, maxSupported)
               }
             };
-            if (!disableThinkingForThisModel && !model.includes('lite') && !model.includes('live') && !model.includes('transcribe') && !model.includes('gemma') && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
+            if (!options.disableThinking && !disableThinkingForThisModel && !model.includes('lite') && !model.includes('live') && !model.includes('transcribe') && !model.includes('gemma') && (model.startsWith('gemini-2.5') || model.startsWith('gemini-3')) && !bodyForModel.generationConfig.thinkingConfig) {
               bodyForModel.generationConfig.thinkingConfig = { thinkingBudget: 512 };
             }
 
             const abortCtrl = new AbortController();
             const serializedBody = JSON.stringify(bodyForModel);
-            // Consultas longas (>1h ou payload >3.5MB) recebem timeout de 180s (3 min) para nunca abortar no meio da transcrição!
-            const timeoutMs = serializedBody.length > 3500000 ? 180000 : 75000;
+            // Consultas longas (>1h ou payload >3.5MB) recebem timeout de 180s (3 min); chamadas rápidas usam fastTimeoutMs
+            const timeoutMs = options.fastTimeoutMs || (serializedBody.length > 3500000 ? 180000 : 75000);
             const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), timeoutMs);
             let res;
             try {
@@ -5136,12 +5204,13 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         try {
           if (state.mediaRecorder.state === 'recording') {
             state.mediaRecorder.requestData();
+            await sleep(350);
           }
           if (state.lastChunkSavePromise) {
             await state.lastChunkSavePromise;
           }
           const partialBlob = await window.ScribeDB.assembleAudioBlob(state.recordingConsultationId);
-          if (partialBlob && partialBlob.size > 0 && partialBlob.size <= 19 * 1024 * 1024) {
+          if (partialBlob && partialBlob.size > 0 && partialBlob.size <= 15 * 1024 * 1024) {
             const cleanMime = normalizeAudioMimeType(partialBlob, '');
             const b64 = await blobToBase64(partialBlob);
             liveAudioPart = { inlineData: { mimeType: cleanMime, data: b64 } };
@@ -5185,10 +5254,28 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
       const requestBody = {
         contents: [{ role: 'user', parts: userParts }],
-        generationConfig: { temperature: 0.15, maxOutputTokens: 65536 }
+        generationConfig: { temperature: 0.15, maxOutputTokens: 8192 }
       };
 
-      const { responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey);
+      const onLiveRefStatus = (msg) => {
+        if (btn) btn.textContent = `⏳ ${msg}`;
+      };
+
+      let responseJson;
+      try {
+        ({ responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey, onLiveRefStatus, { maxRounds: 1, fastTimeoutMs: 45000, disableThinking: true }));
+      } catch (audioRefErr) {
+        if (liveAudioPart) {
+          // Fallback imediato só com texto (Evolução Anterior + Notas + Motivo + Exames) se o WebM ainda em gravação falhar
+          const textOnlyBody = {
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.15, maxOutputTokens: 8192 }
+          };
+          ({ responseJson } = await callGeminiWithFallbackAndRetry(textOnlyBody, apiKey, onLiveRefStatus, { maxRounds: 1, fastTimeoutMs: 35000, disableThinking: true }));
+        } else {
+          throw audioRefErr;
+        }
+      }
       const refText = cleanReferralOutputText(responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '');
       if (editor) editor.value = refText;
       addDailyTokenUsage(responseJson?.usageMetadata?.totalTokenCount || 800);
@@ -6306,6 +6393,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
   function getCalculatedZScoreText(forcePreview = false) {
     if (state.selectedTemplateId === 'puericultura') {
       const sex = document.getElementById('zSex')?.value || 'M';
+      const years = document.getElementById('zYears')?.value;
       const months = document.getElementById('zMonths')?.value;
       const birthGA = document.getElementById('zBirthGA')?.value;
       const weight = document.getElementById('zWeight')?.value;
@@ -6315,21 +6403,27 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const feedingType = document.getElementById('pueriFeedingType')?.value || '';
       const formulaDetails = document.getElementById('pueriFormulaDetails')?.value.trim() || '';
 
+      const ageInfo = window.ZScoreCalculator?.computeAgeInfo
+        ? window.ZScoreCalculator.computeAgeInfo({ years, months, birthGAWeeks: birthGA })
+        : null;
+
       const lines = [];
-      if (months !== undefined && months !== null && String(months).trim() !== '') {
-        lines.push(`Idade da criança: ${months} meses${birthGA ? ` (IG ao nascer: ${birthGA} semanas)` : ''}`);
+      if (ageInfo) {
+        const gaNote = ageInfo.gaRaw ? ` (IG ao nascer: ${ageInfo.gaRaw} sem)` : '';
+        lines.push(`Idade da criança: ${ageInfo.chronologicalLabel}${gaNote}`);
+        if (ageInfo.needsCorrection) {
+          lines.push(`Idade Corrigida OMS (Prematuro ${ageInfo.gaRaw} sem): ${ageInfo.correctedLabel}`);
+        }
       }
       if (feedingType || formulaDetails) {
         lines.push(`Alimentação Infantil (incluir apenas no SUBJETIVO): ${feedingType}${formulaDetails ? ' — Detalhes (fórmula/volume/frequência): ' + formulaDetails : ''}`);
       }
 
       const hasAnyMeasure = Boolean(weight || height || hc);
-      const hasMonths = months !== undefined && months !== null && String(months).trim() !== '';
-
-      // Se o médico marcou "Incluir Z-Score desta calculadora no Objetivo" (ou no preview visual) E informou a idade + medidas:
-      if (hasMonths && hasAnyMeasure && (includeZ || forcePreview)) {
+      if (ageInfo && hasAnyMeasure && (includeZ || forcePreview)) {
         const calc = window.ZScoreCalculator.calculate({
           sex,
+          years,
           months,
           birthGAWeeks: birthGA,
           weightKg: weight,
@@ -6340,10 +6434,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           lines.push(calc.summaryText);
         }
       } else if (hasAnyMeasure) {
-        // Caso não queira Z-Score automático, envia apenas as medidas brutas sem Z-Score!
-        if (weight) lines.push(`Peso informado: ${weight}`);
-        if (height) lines.push(`Altura/Comprimento informado: ${height} cm`);
-        if (hc) lines.push(`PC informado: ${hc} cm`);
+        if (weight) lines.push(`Peso: ${weight}`);
+        if (height) lines.push(`Altura/Comprimento: ${height} cm`);
+        if (hc) lines.push(`PC: ${hc} cm`);
       }
       return lines.join('\n');
     }
@@ -6591,7 +6684,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
   }
 
   function clearZScoreInputs() {
-    ['zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails', 'pnDUM', 'pnUsgDate', 'pnUsgWeeks', 'pnUsgDays', 'pnIG', 'pnPA', 'pnWeight', 'pnAU', 'pnBCF'].forEach(id => {
+    ['zYears', 'zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'pueriFeedingType', 'pueriFormulaDetails', 'pnDUM', 'pnUsgDate', 'pnUsgWeeks', 'pnUsgDays', 'pnIG', 'pnPA', 'pnWeight', 'pnAU', 'pnBCF'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -6602,7 +6695,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const cycleEl = document.getElementById('pnCycleDays');
     if (cycleEl) cycleEl.value = '28';
     const chkZ = document.getElementById('chkIncludeZScoreInEvolution');
-    if (chkZ) chkZ.checked = false;
+    if (chkZ) chkZ.checked = true;
     updateZScoreLivePreview();
     updatePrenatalLivePreview();
     updateQuickNotesExamBadge();
@@ -7826,7 +7919,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       if (prevInput) prevInput.value = '';
     });
 
-    ['zSex', 'zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'chkIncludeZScoreInEvolution', 'pueriFeedingType', 'pueriFormulaDetails'].forEach(id => {
+    ['zSex', 'zYears', 'zMonths', 'zBirthGA', 'zWeight', 'zHeight', 'zHC', 'chkIncludeZScoreInEvolution', 'pueriFeedingType', 'pueriFormulaDetails'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', updateZScoreLivePreview);
       document.getElementById(id)?.addEventListener('change', updateZScoreLivePreview);
     });
