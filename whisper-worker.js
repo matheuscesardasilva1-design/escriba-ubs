@@ -67,17 +67,18 @@ function getDtypeForProfile(profileKey, device, hasF16) {
     if (device === 'webgpu') {
       return hasF16
         ? { encoder_model: 'fp16', decoder_model_merged: 'q4' }
-        : { encoder_model: 'q4', decoder_model_merged: 'q4' };
+        : { encoder_model: 'fp32', decoder_model_merged: 'q4' };
     }
     return { encoder_model: 'q8', decoder_model_merged: 'q8' };
   }
-  // Padrão: whisper-large-v3-turbo (excelência em português médico)
+  // Padrão: whisper-large-v3-turbo — mantém encoder em fp16 no WebGPU para evitar
+  // qualquer distorção/alucinação de quantização 4-bit no encoder, com decoder q4f16 rápido!
   if (device === 'webgpu') {
     return hasF16
-      ? { encoder_model: 'q4f16', decoder_model_merged: 'q4f16' }
+      ? { encoder_model: 'fp16', decoder_model_merged: 'q4f16' }
       : { encoder_model: 'q4', decoder_model_merged: 'q4' };
   }
-  return { encoder_model: 'q4', decoder_model_merged: 'q4' };
+  return { encoder_model: 'q8', decoder_model_merged: 'q8' };
 }
 
 function cleanWhisperPortugueseArtifacts(rawText) {
@@ -167,17 +168,20 @@ async function ensureWhisperPipeline(profileKey, requestId) {
     }
   };
 
-  // Tenta WebGPU primeiro (se disponível) e cai automaticamente para WASM (CPU) em caso de falha
+  // Tenta WebGPU (encoder fp16 + decoder q4f16 p/ máxima fidelidade médica) com fallback progressivo até WASM (CPU)
   const attempts = [];
   if (gpu.hasWebGpu) {
     attempts.push({ device: 'webgpu', dtype: getDtypeForProfile(safeKey, 'webgpu', gpu.hasF16) });
     if (gpu.hasF16 && safeKey === 'turbo') {
+      attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4f16', decoder_model_merged: 'q4f16' } });
+      attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
+    } else if (safeKey === 'small') {
       attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
     }
   }
   attempts.push({ device: 'wasm', dtype: getDtypeForProfile(safeKey, 'wasm', false) });
   if (safeKey === 'turbo') {
-    attempts.push({ device: 'wasm', dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' } });
+    attempts.push({ device: 'wasm', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
   }
 
   let lastErr = null;
@@ -255,7 +259,7 @@ self.addEventListener('message', async (event) => {
           task: 'transcribe',
           chunk_length_s: 28,
           stride_length_s: 5,
-          return_timestamps: false,
+          return_timestamps: true,
           no_repeat_ngram_size: 4,
           repetition_penalty: 1.1
         });
@@ -265,11 +269,14 @@ self.addEventListener('message', async (event) => {
           language: 'portuguese',
           task: 'transcribe',
           chunk_length_s: 28,
-          stride_length_s: 5
+          stride_length_s: 5,
+          return_timestamps: true
         });
       }
 
-      const rawText = (out && typeof out.text === 'string') ? out.text : '';
+      const rawText = (out && typeof out.text === 'string' && out.text.trim())
+        ? out.text
+        : (out && Array.isArray(out.chunks) ? out.chunks.map(c => c?.text || '').join(' ') : '');
       const cleaned = cleanWhisperPortugueseArtifacts(rawText);
 
       self.postMessage({

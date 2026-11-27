@@ -2283,7 +2283,13 @@
             document.getElementById('btnBannerRetryNow')?.addEventListener('click', async () => {
               nextItem.status = 'queued';
               nextItem.errorMessage = '';
-              if (nextItem.chunkCount > 0) {
+              // Preserva a transcrição já concluída da Etapa 1 (Whisper ou Gemini) para não re-transcrever 40 min de áudio à toa em erro temporário da Etapa 2!
+              const hasFreshStage1Transcript = Boolean(
+                nextItem.rawTranscript
+                && nextItem.rawTranscript.trim().length >= 30
+                && nextItem.rawTranscript.trim() !== String(nextItem.previousRawTranscript || '').trim()
+              );
+              if (nextItem.chunkCount > 0 && !hasFreshStage1Transcript) {
                 if (nextItem.previousRawTranscript && nextItem.previousRawTranscript.length >= 50) {
                   nextItem.previousEvolutionText = '';
                 }
@@ -2366,7 +2372,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_66', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261126_68', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -2739,6 +2745,22 @@
     let verbatimTranscript = '';
     let activeTranscriptionSource = consultation.transcriptionEngine || 'gemini-cloud';
 
+    // Se a Etapa 1 já foi concluída anteriormente para este áudio (ex.: Etapa 1 ok, Etapa 2 deu 503 temporário e está retentando),
+    // reaproveita a transcrição salva e pula direto para a Etapa 2 — economiza tempo e cota!
+    const existingSavedRaw = String(consultation.rawTranscript || '').trim();
+    const existingPrevRaw = String(consultation.previousRawTranscript || '').trim();
+    const hasAlreadyCompletedStage1 = Boolean(
+      !consultation.forceCloudAudioTranscription
+      && existingSavedRaw.length >= 30
+      && (!existingPrevRaw || existingSavedRaw.length > existingPrevRaw.length + 20)
+    );
+    if (hasAlreadyCompletedStage1) {
+      verbatimTranscript = existingSavedRaw;
+      if (onProgressMilestone) {
+        onProgressMilestone(58, '⚡ Transcrição já pronta! Pulando direto para organização clínica (Etapa 2/2)...');
+      }
+    }
+
     // =========================================================================
     // ETAPA 1 DE 2 (DEDICADA EXCLUSIVAMENTE À TRANSCRIÇÃO LITERAL DE 100% DO ÁUDIO):
     // - Se Whisper Local estiver ativado neste PC (e não for re-transcrição forçada no Gemini):
@@ -2746,7 +2768,8 @@
     // - Se falhar no PC do posto (ou se o médico clicou em "Re-transcrever no Gemini"),
     //   sobe o áudio direto ao Gemini automaticamente sem perder nada!
     // =========================================================================
-    const shouldTryLocalWhisper = hasAudioAttached
+    const shouldTryLocalWhisper = !verbatimTranscript
+      && hasAudioAttached
       && localAudioBlobs.length > 0
       && isLocalWhisperEnabled()
       && !consultation.forceCloudAudioTranscription;
@@ -2946,7 +2969,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       if (onProgressMilestone) {
         onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
       }
-    }, { allowGemmaFallback: hasPreTranscribedDialogue && examFiles.length === 0 });
+    }, { allowGemmaFallback: hasPreTranscribedDialogue && (Boolean(preExams) || examFiles.length === 0) });
 
     if (onProgressMilestone) {
       onProgressMilestone(95, '🏷️ Validando cabeçalho #, exames e CIAP-2 / CID-10...', '');
@@ -2979,10 +3002,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         consultation.previousConsultationText || '',
         preExams,
         soapSubtypeHeader,
-        false,
+        true,
         consultPatientAge,
         consultPatientSex,
-        consultVdVisitDate
+        consultVdVisitDate,
+        activeTranscriptionSource
       );
       const rescueBody = {
         systemInstruction: medicalSystemInstruction,
@@ -2999,7 +3023,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         }
       };
       try {
-        const rescueRes = await callGeminiWithFallbackAndRetry(rescueBody, apiKey);
+        const rescueRes = await callGeminiWithFallbackAndRetry(rescueBody, apiKey, null, { allowGemmaFallback: true });
         const rescueRaw = rescueRes.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const rescueParsed = parseGeminiEvolutionResponse(rescueRaw);
         if (rescueParsed.evolucao_completa) {
@@ -7623,6 +7647,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           evolutionText: c.evolutionText || '',
           cidCiapCodes: c.cidCiapCodes || [],
           rawTranscript: c.rawTranscript || '',
+          vdVisitDate: c.vdVisitDate || '',
+          patientAge: c.patientAge || '',
+          patientSex: c.patientSex || '',
+          transcriptionEngine: c.transcriptionEngine || '',
+          whisperModelUsed: c.whisperModelUsed || '',
           referrals: c.referrals || c.savedReferrals || [],
           savedReferrals: c.referrals || c.savedReferrals || [],
           referralText: c.referralText || '',
@@ -8506,12 +8535,19 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       e.target.value = '';
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
       if (!c) return;
+      if (c.evolutionText && c.evolutionText.trim().length > 20) {
+        const prevBackups = Array.isArray(c.evolutionBackups) ? c.evolutionBackups : [];
+        c.evolutionBackups = [{ at: Date.now(), text: c.evolutionText }, ...prevBackups].slice(0, 3);
+      }
       c.previousEvolutionText = c.evolutionText || c.previousEvolutionText || '';
       c.previousRawTranscript = c.rawTranscript || c.previousRawTranscript || '';
+      c.rawTranscript = c.previousRawTranscript || '';
       await window.ScribeDB.deleteAudioChunksOnly(c.id);
       c.chunkCount = 0;
       c.audioBytes = 0;
       c.audioDeleted = false;
+      c.mimeType = normalizeAudioMimeType(files[0], files[0].name);
+      c.fileName = files.map(f => f.name).join(' + ');
       c.isMultiFileExternalAudio = files.length > 1;
       c.audioFilesCount = files.length;
       c.status = 'queued';
