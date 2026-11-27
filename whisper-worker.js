@@ -11,9 +11,13 @@ let activeDeviceUsed = '';
 let activeModelIdUsed = '';
 
 const WHISPER_PROFILES = {
+  turbo_compact: {
+    modelId: 'onnx-community/whisper-large-v3-turbo',
+    label: 'Whisper Turbo Intermediário'
+  },
   turbo: {
     modelId: 'onnx-community/whisper-large-v3-turbo',
-    label: 'Whisper Large V3 Turbo'
+    label: 'Whisper Turbo FP16'
   },
   small: {
     modelId: 'onnx-community/whisper-small',
@@ -71,8 +75,16 @@ function getDtypeForProfile(profileKey, device, hasF16) {
     }
     return { encoder_model: 'q8', decoder_model_merged: 'q8' };
   }
-  // Padrão: whisper-large-v3-turbo — mantém encoder em fp16 no WebGPU para evitar
-  // qualquer distorção/alucinação de quantização 4-bit no encoder, com decoder q4f16 rápido!
+  if (profileKey === 'turbo_compact') {
+    // Intermediário (~540 MB no WebGPU q4f16): excelente português médico e quase 3x menor que o FP16!
+    if (device === 'webgpu') {
+      return hasF16
+        ? { encoder_model: 'q4f16', decoder_model_merged: 'q4f16' }
+        : { encoder_model: 'q4', decoder_model_merged: 'q4' };
+    }
+    return { encoder_model: 'q4', decoder_model_merged: 'q4' };
+  }
+  // Máxima precisão (~1,4 GB no WebGPU): encoder fp16 + decoder q4f16
   if (device === 'webgpu') {
     return hasF16
       ? { encoder_model: 'fp16', decoder_model_merged: 'q4f16' }
@@ -103,7 +115,7 @@ function cleanWhisperPortugueseArtifacts(rawText) {
 }
 
 async function ensureWhisperPipeline(profileKey, requestId) {
-  const safeKey = WHISPER_PROFILES[profileKey] ? profileKey : 'turbo';
+  const safeKey = WHISPER_PROFILES[profileKey] ? profileKey : 'turbo_compact';
   const profile = WHISPER_PROFILES[safeKey];
 
   if (activePipeline && activeProfileKey === safeKey) {
@@ -168,20 +180,22 @@ async function ensureWhisperPipeline(profileKey, requestId) {
     }
   };
 
-  // Tenta WebGPU (encoder fp16 + decoder q4f16 p/ máxima fidelidade médica) com fallback progressivo até WASM (CPU)
+  // Tenta WebGPU primeiro com fallback progressivo até WASM (CPU)
   const attempts = [];
   if (gpu.hasWebGpu) {
     attempts.push({ device: 'webgpu', dtype: getDtypeForProfile(safeKey, 'webgpu', gpu.hasF16) });
     if (gpu.hasF16 && safeKey === 'turbo') {
       attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4f16', decoder_model_merged: 'q4f16' } });
       attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
+    } else if (gpu.hasF16 && safeKey === 'turbo_compact') {
+      attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
     } else if (safeKey === 'small') {
       attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
     }
   }
   attempts.push({ device: 'wasm', dtype: getDtypeForProfile(safeKey, 'wasm', false) });
-  if (safeKey === 'turbo') {
-    attempts.push({ device: 'wasm', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
+  if (safeKey === 'turbo' || safeKey === 'turbo_compact') {
+    attempts.push({ device: 'wasm', dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' } });
   }
 
   let lastErr = null;

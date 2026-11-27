@@ -2336,17 +2336,19 @@
 
   function getLocalWhisperProfile() {
     const p = localStorage.getItem('ubs_whisper_profile');
-    return (p === 'small' || p === 'turbo') ? p : 'turbo';
+    return (p === 'small' || p === 'turbo' || p === 'turbo_compact') ? p : 'turbo_compact';
   }
 
   function setLocalWhisperProfile(profile) {
-    const safe = (profile === 'small') ? 'small' : 'turbo';
+    const safe = (profile === 'small' || profile === 'turbo' || profile === 'turbo_compact') ? profile : 'turbo_compact';
     localStorage.setItem('ubs_whisper_profile', safe);
     updateWhisperModeUI();
   }
 
   function formatWhisperProfileLabel(profileKey) {
-    return profileKey === 'small' ? 'Whisper Small' : 'Whisper Large V3 Turbo';
+    if (profileKey === 'small') return 'Whisper Small';
+    if (profileKey === 'turbo') return 'Whisper Turbo FP16';
+    return 'Whisper Turbo Intermediário';
   }
 
   function updateWhisperModeUI() {
@@ -2372,7 +2374,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_69', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261126_70', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -2449,10 +2451,44 @@
     }
   }
 
+  let whisperDownloadCancelled = false;
+
+  function cancelLocalWhisperDownload() {
+    whisperDownloadCancelled = true;
+    if (whisperWorkerInstance) {
+      try { whisperWorkerInstance.terminate(); } catch (_) {}
+      whisperWorkerInstance = null;
+    }
+    for (const [, entry] of whisperPendingRequests.entries()) {
+      entry.reject(new Error('CANCELLED_BY_USER'));
+    }
+    whisperPendingRequests.clear();
+
+    const btn = document.getElementById('btnPreloadWhisper');
+    const btnCancel = document.getElementById('btnCancelWhisperDownload');
+    const progWrap = document.getElementById('whisperDownloadProgressWrap');
+    const progLabel = document.getElementById('whisperProgressLabel');
+    const statusText = document.getElementById('whisperConfigStatusText');
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '⬇️ Baixar / Testar Whisper Agora';
+    }
+    if (btnCancel) btnCancel.style.display = 'none';
+    if (progWrap) progWrap.style.display = 'none';
+    if (progLabel) progLabel.textContent = '';
+    if (statusText) {
+      statusText.innerHTML = '⏹️ <strong>Download interrompido.</strong> Você pode escolher outro perfil acima (ex.: <strong>Intermediário ~540 MB</strong> ou <strong>Leve ~240 MB</strong>) ou continuar usando o Gemini normalmente.';
+    }
+    showToast('⏹️ Download do Whisper cancelado!');
+  }
+
   async function preloadLocalWhisperModel() {
+    whisperDownloadCancelled = false;
     const profile = getLocalWhisperProfile();
     const label = formatWhisperProfileLabel(profile);
     const btn = document.getElementById('btnPreloadWhisper');
+    const btnCancel = document.getElementById('btnCancelWhisperDownload');
     const progWrap = document.getElementById('whisperDownloadProgressWrap');
     const progLabel = document.getElementById('whisperProgressLabel');
     const progPct = document.getElementById('whisperProgressPct');
@@ -2463,6 +2499,7 @@
       btn.disabled = true;
       btn.textContent = '⏳ Carregando...';
     }
+    if (btnCancel) btnCancel.style.display = 'inline-flex';
     if (progWrap) progWrap.style.display = 'block';
     if (progLabel) progLabel.textContent = `Preparando ${label}...`;
     if (progPct) progPct.textContent = '0%';
@@ -2470,6 +2507,7 @@
 
     try {
       const res = await sendWhisperWorkerRequest({ type: 'preload', profile }, [], (ev) => {
+        if (whisperDownloadCancelled) return;
         if (ev.type === 'download_progress') {
           const pct = Math.max(1, Math.min(99, ev.percent || 0));
           const mbInfo = ev.totalMB > 0 ? ` (${ev.loadedMB}/${ev.totalMB} MB)` : '';
@@ -2480,6 +2518,7 @@
           if (progLabel) progLabel.textContent = ev.message;
         }
       });
+      if (whisperDownloadCancelled) return;
       if (progPct) progPct.textContent = '100%';
       if (progFill) progFill.style.width = '100%';
       const devLabel = res.device === 'webgpu' ? 'WebGPU (Acelerado)' : 'CPU / WASM';
@@ -2490,6 +2529,7 @@
       setLocalWhisperEnabled(true);
       showToast(`✅ ${res.label || label} pronto neste computador (${devLabel})!`);
     } catch (err) {
+      if (whisperDownloadCancelled || err?.message === 'CANCELLED_BY_USER') return;
       if (progLabel) progLabel.textContent = `⚠️ Não foi possível carregar: ${err.message}`;
       if (statusText) {
         statusText.innerHTML = `⚠️ <strong>Falha ao carregar o Whisper neste PC:</strong> ${escapeHtml(err.message)}. (Pode ser bloqueio de rede ao Hugging Face na UBS — o sistema continuará usando o Gemini normalmente.)`;
@@ -2500,6 +2540,7 @@
         btn.disabled = false;
         btn.textContent = '⬇️ Baixar / Testar Whisper Agora';
       }
+      if (btnCancel) btnCancel.style.display = 'none';
     }
   }
 
@@ -8961,6 +9002,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     });
 
     document.getElementById('btnPreloadWhisper')?.addEventListener('click', preloadLocalWhisperModel);
+    document.getElementById('btnCancelWhisperDownload')?.addEventListener('click', cancelLocalWhisperDownload);
     document.getElementById('btnUnloadWhisper')?.addEventListener('click', async () => {
       await unloadWhisperWorker();
       showToast('🧹 Whisper descarregado da memória RAM (o cache salvo no navegador foi mantido).');
