@@ -1718,6 +1718,19 @@ body.dark-mode,
   border-color: #2dd4bf !important;
 }
 
+#btnToggleWhisperMode.auto-active {
+  background: #e0e7ff !important;
+  color: #3730a3 !important;
+  border-color: #818cf8 !important;
+  font-weight: 800;
+}
+
+.dark-mode #btnToggleWhisperMode.auto-active {
+  background: #312e81 !important;
+  color: #e0e7ff !important;
+  border-color: #818cf8 !important;
+}
+
 .dark-mode #whisperLocalConfigSection {
   background: #132a2e !important;
   border-color: #0f766e !important;

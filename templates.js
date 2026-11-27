@@ -857,6 +857,7 @@ ${hasPreTranscribedAudio
 
 ATENÇÃO ESPECIAL — TRANSCRIÇÃO GERADA POR WHISPER LOCAL (SEM RÓTULOS [MÉDICO]/[PACIENTE]):
 - A transcrição literal abaixo veio do motor local Whisper (português contínuo, sem etiquetas "[MÉDICO]:" ou "[PACIENTE]:").
+- FILTRO OBRIGATÓRIO DE INTERFERÊNCIAS EXTERNAS: Como o Whisper transcreve qualquer voz próxima ao microfone sem distinguir timbre, IGNORE COMPLETAMENTE interrupções que não pertencem ao paciente atual — como alguém batendo na porta, recados de enfermeira/ACS/recepção, telefonemas, conversas paralelas de corredor ou comentários sobre outros pacientes/receitas de terceiros! Use a Evolução Anterior, as "#" e o contexto clínico do paciente atual para descartar qualquer assunto estranho ao atendimento; se houver interferência externa grave/longa que gere dúvida clínica, registre uma nota curta em "alertas_auditoria".
 - Use seu raciocínio clínico apurado para distinguir perfeitamente:
   1) O que são queixas, sintomas, história, controle domiciliar de PA/HGT, respostas negativas e relatos do PACIENTE/FAMILIAR -> coloque exclusivamente no SUBJETIVO.
   2) O que são sinais vitais e achados do EXAME FÍSICO ditados pelo médico -> coloque exclusivamente no OBJETIVO (sem inventar sistemas não avaliados!).

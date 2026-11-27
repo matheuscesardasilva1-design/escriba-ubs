@@ -2336,14 +2336,36 @@
   let whisperReqSeq = 0;
   const whisperPendingRequests = new Map();
   let whisperCachedCaps = null;
+  let lastGeminiAudioOverloadAt = 0;
+
+  // Modos de transcrição de áudio salvos por computador:
+  // 'cloud'   -> Somente Gemini (Nuvem)
+  // 'auto'    -> Automático Inteligente (usa Gemini e alterna sozinho p/ Whisper se 503/limite/consulta >50 min)
+  // 'whisper' -> Sempre Whisper Local primeiro (com fallback automático p/ Gemini se falhar)
+  function getAudioEngineMode() {
+    const saved = localStorage.getItem('ubs_audio_engine_mode');
+    if (saved === 'cloud' || saved === 'auto' || saved === 'whisper') return saved;
+    if (localStorage.getItem('ubs_whisper_enabled') === 'true') return 'whisper';
+    return 'cloud';
+  }
+
+  function setAudioEngineMode(mode) {
+    const safe = (mode === 'auto' || mode === 'whisper') ? mode : 'cloud';
+    localStorage.setItem('ubs_audio_engine_mode', safe);
+    localStorage.setItem('ubs_whisper_enabled', safe === 'whisper' ? 'true' : 'false');
+    updateWhisperModeUI();
+  }
 
   function isLocalWhisperEnabled() {
-    return localStorage.getItem('ubs_whisper_enabled') === 'true';
+    return getAudioEngineMode() === 'whisper';
+  }
+
+  function isAutoAudioFallbackEnabled() {
+    return getAudioEngineMode() === 'auto';
   }
 
   function setLocalWhisperEnabled(enabled) {
-    localStorage.setItem('ubs_whisper_enabled', enabled ? 'true' : 'false');
-    updateWhisperModeUI();
+    setAudioEngineMode(enabled ? 'whisper' : 'cloud');
   }
 
   function getLocalWhisperProfileSetting() {
@@ -2387,30 +2409,34 @@
   }
 
   function updateWhisperModeUI() {
-    const enabled = isLocalWhisperEnabled();
+    const mode = getAudioEngineMode();
     const setting = getLocalWhisperProfileSetting();
     const effective = getLocalWhisperProfile();
     const topBtn = document.getElementById('btnToggleWhisperMode');
     if (topBtn) {
-      if (enabled) {
+      topBtn.classList.remove('whisper-active', 'auto-active');
+      if (mode === 'whisper') {
         topBtn.textContent = '🎙️ Whisper';
         topBtn.classList.add('whisper-active');
-        topBtn.title = `${formatWhisperProfileLabel(effective)} ATIVADO neste computador (clique para voltar ao Gemini na nuvem)`;
+        topBtn.title = `Sempre Whisper Local (${formatWhisperProfileLabel(effective)}) — fallback automático p/ Gemini se falhar. Clique para trocar.`;
+      } else if (mode === 'auto') {
+        topBtn.textContent = '🔄 Auto';
+        topBtn.classList.add('auto-active');
+        topBtn.title = `Automático Inteligente: usa Gemini e alterna sozinho p/ ${formatWhisperProfileLabel(effective)} se der erro 503, limite ou consulta >50 min. Clique para trocar.`;
       } else {
         topBtn.textContent = '☁️ Gemini';
-        topBtn.classList.remove('whisper-active');
-        topBtn.title = 'Áudio no Gemini na nuvem (clique para ativar Whisper Local neste computador)';
+        topBtn.title = 'Somente Gemini na nuvem — clique para alternar para 🔄 Automático Inteligente ou 🎙️ Whisper Local.';
       }
     }
-    const chk = document.getElementById('chkEnableLocalWhisper');
-    if (chk) chk.checked = enabled;
+    const modeSel = document.getElementById('audioEngineModeSelect');
+    if (modeSel) modeSel.value = mode;
     const sel = document.getElementById('whisperProfileSelect');
     if (sel) sel.value = setting;
   }
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_73', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261126_74', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -2580,7 +2606,9 @@
       if (statusText) {
         statusText.innerHTML = `✅ <strong>${res.label || label} carregado e salvo no cache deste navegador (${devLabel})!</strong> Nas próximas consultas não precisará baixar novamente.`;
       }
-      setLocalWhisperEnabled(true);
+      if (getAudioEngineMode() === 'cloud') {
+        setAudioEngineMode('auto');
+      }
       showToast(`✅ ${res.label || label} pronto neste computador (${devLabel})!`);
     } catch (err) {
       if (whisperDownloadCancelled || err?.message === 'CANCELLED_BY_USER') return;
@@ -2861,31 +2889,50 @@
 
     // =========================================================================
     // ETAPA 1 DE 2 (DEDICADA EXCLUSIVAMENTE À TRANSCRIÇÃO LITERAL DE 100% DO ÁUDIO):
-    // - Se Whisper Local estiver ativado neste PC (e não for re-transcrição forçada no Gemini):
-    //   transcreve 100% no navegador via Whisper Large V3 Turbo / Small sem enviar áudio p/ nuvem!
-    // - Se falhar no PC do posto (ou se o médico clicou em "Re-transcrever no Gemini"),
-    //   sobe o áudio direto ao Gemini automaticamente sem perder nada!
+    // - Modo 'whisper': tenta Whisper Local primeiro (economiza ~85% cota) -> fallback automático p/ Gemini se falhar.
+    // - Modo 'auto' (Automático Inteligente): usa Gemini normalmente; se consulta >=50min ou Gemini deu 503/limite
+    //   recentemente (ou falhar agora), alterna AUTOMATICAMENTE para o Whisper Local sem travar o plantão!
+    // - Modo 'cloud' (ou botão "Re-transcrever no Gemini"): envia áudio direto ao Gemini.
     // =========================================================================
-    const shouldTryLocalWhisper = !verbatimTranscript
+    const audioEngineMode = getAudioEngineMode();
+    const isLongConsultForAuto = (consultation.durationSeconds || 0) >= 50 * 60;
+    const geminiRecentlyOverloaded = (Date.now() - lastGeminiAudioOverloadAt) < 10 * 60 * 1000;
+    let triedWhisperThisRun = false;
+
+    const runLocalWhisperStage1 = async (reasonMsg) => {
+      if (triedWhisperThisRun || localAudioBlobs.length === 0) return false;
+      triedWhisperThisRun = true;
+      if (reasonMsg) showToast(reasonMsg);
+      const whisperRes = await transcribeAudioBlobsWithLocalWhisper(localAudioBlobs, onProgressMilestone);
+      if (whisperRes && whisperRes.transcript && whisperRes.transcript.length >= 15) {
+        verbatimTranscript = consultation.previousRawTranscript
+          ? `${consultation.previousRawTranscript}\n\n--- CONTINUAÇÃO DO ATENDIMENTO ---\n${whisperRes.transcript}`
+          : whisperRes.transcript;
+        activeTranscriptionSource = 'whisper-local';
+        consultation.transcriptionEngine = 'whisper-local';
+        consultation.whisperModelUsed = whisperRes.modelLabel;
+        consultation.forceCloudAudioTranscription = false;
+        consultation.rawTranscript = fixBrazilianMedicationSpelling(verbatimTranscript);
+        await window.ScribeDB.saveConsultation(consultation);
+        return true;
+      }
+      return false;
+    };
+
+    const shouldTryLocalWhisperFirst = !verbatimTranscript
       && hasAudioAttached
       && localAudioBlobs.length > 0
-      && isLocalWhisperEnabled()
-      && !consultation.forceCloudAudioTranscription;
+      && !consultation.forceCloudAudioTranscription
+      && (audioEngineMode === 'whisper' || (audioEngineMode === 'auto' && (isLongConsultForAuto || geminiRecentlyOverloaded)));
 
-    if (shouldTryLocalWhisper) {
+    if (shouldTryLocalWhisperFirst) {
       try {
-        const whisperRes = await transcribeAudioBlobsWithLocalWhisper(localAudioBlobs, onProgressMilestone);
-        if (whisperRes && whisperRes.transcript && whisperRes.transcript.length >= 15) {
-          verbatimTranscript = consultation.previousRawTranscript
-            ? `${consultation.previousRawTranscript}\n\n--- CONTINUAÇÃO DO ATENDIMENTO ---\n${whisperRes.transcript}`
-            : whisperRes.transcript;
-          activeTranscriptionSource = 'whisper-local';
-          consultation.transcriptionEngine = 'whisper-local';
-          consultation.whisperModelUsed = whisperRes.modelLabel;
-          consultation.forceCloudAudioTranscription = false;
-          consultation.rawTranscript = fixBrazilianMedicationSpelling(verbatimTranscript);
-          await window.ScribeDB.saveConsultation(consultation);
-        }
+        const autoNote = (audioEngineMode === 'auto')
+          ? (isLongConsultForAuto
+              ? '🔄 Modo Auto: consulta longa (>50 min) — usando Whisper Local para não falhar!'
+              : '🔄 Modo Auto: Google instável recentemente — usando Whisper Local!')
+          : '';
+        await runLocalWhisperStage1(autoNote);
       } catch (whisperErr) {
         console.warn('Whisper Local falhou, fazendo fallback automático para Gemini (nuvem):', whisperErr);
         showToast('⚠️ Whisper Local indisponível neste áudio — enviando automaticamente ao Gemini...');
@@ -2951,10 +2998,26 @@
             await window.ScribeDB.saveConsultation(consultation);
           }
         } catch (stage1Err) {
-          console.warn('Etapa 1 (transcrição dedicada) falhou, seguindo com envio multimodal direto na Etapa 2:', stage1Err);
-          // Atendimento continuado: sem a transcrição da continuação NÃO seguimos (evita gerar evolução só com o áudio final
-          // e perder as partes anteriores). A evolução atual permanece intacta e o médico pode tentar de novo.
-          if (consultation.previousRawTranscript || consultation.previousEvolutionText) {
+          console.warn('Etapa 1 (Gemini) falhou:', stage1Err);
+          const errStr = String(stage1Err?.message || '');
+          if (/503|429|high\s+demand|overloaded|quota|limite|timeout|rede|network/i.test(errStr)) {
+            lastGeminiAudioOverloadAt = Date.now();
+          }
+
+          // MODO AUTOMÁTICO INTELIGENTE: Gemini falhou (503 / limite / sobrecarga) -> alterna automaticamente para o Whisper Local!
+          if (audioEngineMode === 'auto' && !consultation.forceCloudAudioTranscription && !triedWhisperThisRun && localAudioBlobs.length > 0) {
+            try {
+              if (onProgressMilestone) {
+                onProgressMilestone(20, '🔄 Modo Auto: Gemini ocupado (503/limite) — alternando para Whisper Local...');
+              }
+              await runLocalWhisperStage1('🔄 Modo Auto: Gemini ocupado (503/limite) — alternando sozinho para o Whisper Local!');
+            } catch (autoWhisperErr) {
+              console.warn('Fallback automático p/ Whisper também falhou:', autoWhisperErr);
+            }
+          }
+
+          // Atendimento continuado: se ainda ficou sem transcrição, preserva a evolução anterior intacta
+          if (!verbatimTranscript && (consultation.previousRawTranscript || consultation.previousEvolutionText)) {
             throw new Error('Não foi possível transcrever a continuação agora. A evolução anterior foi preservada — clique em "Atualizar" para tentar novamente.');
           }
         }
@@ -6023,8 +6086,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           }
           const partialBlob = await window.ScribeDB.assembleAudioBlob(state.recordingConsultationId);
           if (partialBlob && partialBlob.size > 0) {
-            // Se o Whisper Local estiver ativo neste computador, transcreve o áudio parcial localmente (rápido e sem gastar cota de áudio!)
-            if (isLocalWhisperEnabled()) {
+            // Se o modo for 'whisper', OU 'auto' com áudio grande (>15MB) / Gemini instável, transcreve o áudio parcial localmente
+            const liveMode = getAudioEngineMode();
+            const useWhisperLive = (liveMode === 'whisper')
+              || (liveMode === 'auto' && (partialBlob.size > 15 * 1024 * 1024 || (Date.now() - lastGeminiAudioOverloadAt) < 10 * 60 * 1000));
+            if (useWhisperLive) {
               try {
                 const wRes = await transcribeAudioBlobsWithLocalWhisper([partialBlob], (pct, stageMsg) => {
                   if (btn && stageMsg) btn.textContent = `⏳ ${stageMsg}`;
@@ -9063,25 +9129,29 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       showToast(`☁️ Enviando áudio de "${c.patientLabel}" direto para o Gemini na nuvem...`);
     });
 
-    // Botão rápido da barra superior para ligar/desligar Whisper Local neste computador
-    document.getElementById('btnToggleWhisperMode')?.addEventListener('click', () => {
-      const nextEnabled = !isLocalWhisperEnabled();
-      setLocalWhisperEnabled(nextEnabled);
+    // Botão rápido da barra superior cicla os 3 modos neste computador: ☁️ Gemini → 🔄 Auto → 🎙️ Whisper
+    const describeAudioModeToast = (mode) => {
       const profLabel = formatWhisperProfileLabel(getLocalWhisperProfile());
-      if (nextEnabled) {
-        showToast(`🎙️ Whisper Local (${profLabel}) ATIVADO neste computador! Na 1ª consulta o navegador baixa o cache automaticamente.`);
-      } else {
-        showToast('☁️ Transcrição na Nuvem (Gemini) ativada neste computador.');
+      if (mode === 'auto') {
+        return `🔄 Modo Automático Inteligente ATIVADO: usa Gemini e alterna sozinho p/ ${profLabel} se der 503, cota cheia ou consulta >50 min!`;
       }
+      if (mode === 'whisper') {
+        return `🎙️ Sempre Whisper Local (${profLabel}) ATIVADO: economiza ~85% da cota e cai p/ Gemini se falhar.`;
+      }
+      return '☁️ Somente Gemini (Nuvem) ativado neste computador.';
+    };
+
+    document.getElementById('btnToggleWhisperMode')?.addEventListener('click', () => {
+      const cur = getAudioEngineMode();
+      const nextMode = cur === 'cloud' ? 'auto' : (cur === 'auto' ? 'whisper' : 'cloud');
+      setAudioEngineMode(nextMode);
+      showToast(describeAudioModeToast(nextMode));
     });
 
-    document.getElementById('chkEnableLocalWhisper')?.addEventListener('change', (e) => {
-      const nextEnabled = Boolean(e.target.checked);
-      setLocalWhisperEnabled(nextEnabled);
-      const profLabel = formatWhisperProfileLabel(getLocalWhisperProfile());
-      showToast(nextEnabled
-        ? `🎙️ Whisper Local (${profLabel}) ativado neste computador!`
-        : '☁️ Transcrição na Nuvem (Gemini) ativada neste computador.');
+    document.getElementById('audioEngineModeSelect')?.addEventListener('change', (e) => {
+      const nextMode = e.target.value;
+      setAudioEngineMode(nextMode);
+      showToast(describeAudioModeToast(nextMode));
     });
 
     document.getElementById('whisperProfileSelect')?.addEventListener('change', (e) => {
