@@ -2355,13 +2355,13 @@
     const topBtn = document.getElementById('btnToggleWhisperMode');
     if (topBtn) {
       if (enabled) {
-        topBtn.textContent = profile === 'small' ? '🎙️ Áudio: Whisper Small' : '🎙️ Áudio: Whisper Turbo';
+        topBtn.textContent = '🎙️ Whisper';
         topBtn.classList.add('whisper-active');
-        topBtn.title = 'Whisper Local ATIVADO neste computador (clique para voltar ao Gemini na nuvem)';
+        topBtn.title = `${formatWhisperProfileLabel(profile)} ATIVADO neste computador (clique para voltar ao Gemini na nuvem)`;
       } else {
-        topBtn.textContent = '☁️ Áudio: Gemini';
+        topBtn.textContent = '☁️ Gemini';
         topBtn.classList.remove('whisper-active');
-        topBtn.title = 'Usando Gemini na nuvem (clique para ativar Whisper Local neste computador)';
+        topBtn.title = 'Áudio no Gemini na nuvem (clique para ativar Whisper Local neste computador)';
       }
     }
     const chk = document.getElementById('chkEnableLocalWhisper');
@@ -2372,7 +2372,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_68', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261126_69', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
