@@ -406,19 +406,33 @@ Ciente, concordante e sem dúvidas`
 window.detectExamsInText = function(rawText) {
   const txt = String(rawText || '').trim();
   if (!txt) {
-    return { hasLab: false, hasImaging: false, hasAny: false };
+    return { hasLab: false, hasImaging: false, hasAny: false, hasHgtControl: false, hasPaControl: false };
   }
+
+  // Detecta Controle de HGT (glicemia capilar / perfil glicêmico / dextro domiciliar) e Controle de PA (MRPA / PA domiciliar)
+  const hasHgtControl = /\b(?:controle\s+(?:de\s+|domiciliar\s+de\s+)?(?:hgt|glic[êe]mico|de\s+glicemia(?:\s+capilar)?)|perfil\s+glic[êe]mico|hgt\s+domiciliar|hgts|glicemias?\s+capilar(?:es)?|dextro(?:s)?)\b/i.test(txt)
+    || /\bhgt\b[^\n]*(?:jejum|p[óo]s|pr[ée]|almo[çc]o|caf[ée]|jantar|deitar|madrugada|manh[ãa]|tarde|noite|\d{2,3}\s*[,;/\-–]\s*\d{2,3})/i.test(txt);
+  const hasPaControl = /\b(?:controle\s+(?:de\s+|domiciliar\s+de\s+)?(?:pa|press[ãa]o(?:\s+arterial)?|press[óo]rico)|mrpa|pa\s+domiciliar|press[ãa]o\s+domiciliar|m[ée]dias?\s+domiciliar(?:es)?\s+de\s+pa)\b/i.test(txt)
+    || /\bpa\b[^\n]*\d{2,3}\s*[\/x×]\s*\d{2,3}[^\n]*\d{2,3}\s*[\/x×]\s*\d{2,3}/i.test(txt);
+
+  // Remove linhas puramente de controle domiciliar de HGT/PA antes de testar labRegex (evita falso positivo por "mg/dL" em linhas de HGT)
+  const txtWithoutHomeControls = txt
+    .split(/\r?\n/)
+    .filter(line => !/^\s*(?:[-•*]\s*)?(?:controle\s+(?:de\s+|domiciliar\s+de\s+)?(?:hgt|glic[êe]mico|pa|press)|perfil\s+glic[êe]mico|hgt\b|hgts\b|glicemia[s]?\s+capilar|dextro|mrpa|pa\s+domiciliar)/i.test(line))
+    .join('\n');
 
   const labRegex = /\b(?:hb|ht|hemoglobina|hemat[oó]crito|hemacias|hem[aá]cias|eritr[oó]citos|vcm|hcm|rdw|leuc[oó]citos|leuco|plaquetas|plaq|glicose|glicemia\s+de\s+jejum|gj|hba1c|hemoglobina\s+glicada|glicada|creatinina|creat|ureia|tfg|ckd-epi|s[oó]dio|pot[aá]ssio|c[aá]lcio|magn[eé]sio|f[oó]sforo|[aá]cido\s+[uú]rico|tgo|tgp|ast|alt|ggt|gama\s*gt|fosfatase\s+alcalina|bilirrubina|colesterol|ct\s+\d|hdl|ldl|vldl|triglicer[ií]deos|triglic[eé]rides|tag\s+\d|tsh|t4\s*l|t4\s+livre|t3|vitamina\s+[bd]|vit\.?\s*b12|vit\.?\s*d|ferritina|ferro\s+s[eé]rico|transferrina|psa|pcr|vhs|equ|eas|urina\s+tipo|urocultura|parasitol[oó]gico|epf|sangue\s+oculto|vdrl|fta-abs|hiv|hbsag|anti-hbs|anti-hcv|toxoplasmose|rub[eé]ola|cmv|beta-hcg|hemograma|lipidograma|coagulograma|tap|inr|ttpa|labs)\b|(?:mg\/dl|g\/dl|meq\/l|uui\/ml|mui\/ml|ng\/ml|pg\/ml|\/mm3|\/ul)/i;
 
   const imagingRegex = /\b(?:usg|ultrassom|ultrassonografia|ecografia|eco\s+(?:abdominal|abdome|obst[eé]trica|mam[aá]ria|tireoide|pelvica|p[eé]lvica|transvaginal|pr[oó]stata|vias\s+urin[aá]rias|rins|partes\s+moles|ombro|joelho|punho|cotovelo|tornozelo|cervical)|ecocardio|ecocardiograma|raio-x|raio\s+x|rx\s+(?:de\s+)?(?:t[oó]rax|coluna|seios|abdome|joelho|ombro|bacia|m[aã]o|punho|p[eé])|radiografia|tomografia|tc\s+(?:de\s+)?(?:cr[aâ]nio|t[oó]rax|abdome|coluna|seios)|angiotc|resson[aâ]ncia|rm\s+(?:de\s+)?(?:cr[aâ]nio|coluna|joelho|ombro|pelve|abdome)|rmn|mamografia|mmg|bi-?rads|ti-?rads|densitometria|dmo|endoscopia|eda|colonoscopia|retossigmoidoscopia|doppler|duplex|ecg|eletrocardiograma|holter|teste\s+ergom[eé]trico|ergometria|espirometria|eletroneuromiografia|enmg|eletroencefalograma|eeg|cintilografia|pet-ct|colposcopia|citopatol[oó]gico|papanicolau|anatomopatol[oó]gico|bi[oó]psia)\b/i;
 
-  const hasLab = labRegex.test(txt);
+  const hasLab = labRegex.test(txtWithoutHomeControls);
   const hasImaging = imagingRegex.test(txt);
   return {
     hasLab,
     hasImaging,
-    hasAny: hasLab || hasImaging
+    hasAny: hasLab || hasImaging,
+    hasHgtControl,
+    hasPaControl
   };
 };
 
@@ -776,7 +790,7 @@ LEI SUPREMA: PROIBIÇÃO ABSOLUTA DE ABREVIAR, RESUMIR, INVENTAR NOMES/DOSAGENS 
    - Transcreva todas as perguntas feitas pelo médico e todas as confirmações ou negativas do paciente (ex.: se o médico perguntar sobre febre, sangramento, perda de líquido, disúria, cefaleia, escotomas, movimentos fetais, etc., transcreva a pergunta e a resposta!).
    - Transcreva integralmente qualquer relato de passagem por Emergência / Pronto Atendimento / Hospital / Maternidade / UPA, incluindo o que sentiu, quando foi, quais exames ou medicações fez lá.
    - Transcreva todos os nomes de medicamentos citados, dosagens (mg, mcg, UI, gotas), posologias, adesão ou efeitos colaterais.
-   - Transcreva todos os valores ditados de pressão arterial (PA), glicemia capilar (HGT), peso, estatura, altura uterina (AU), batimentos cardiofetais (BCF), perímetro cefálico e qualquer achado de exame físico falado pelo médico.
+   - Transcreva integralmente TODOS os valores ditados/lidos de controle de glicemia capilar (HGT / dextro — incluindo jejum, pré/pós-café, pré/pós-almoço, pré/pós-jantar, madrugada, horários, datas, picos e hipoglicemias) e controle de pressão arterial (PA domiciliar / MRPA — todos os valores e datas/horários lidos), além de PA e HGT aferidos na hora, peso, estatura, altura uterina (AU), batimentos cardiofetais (BCF), perímetro cefálico e qualquer achado de exame físico falado pelo médico. NUNCA resuma nem omita os números lidos de cadernetas/planilhas de HGT ou PA!
    - Transcreva todos os resultados de exames laboratoriais ou ultrassonografias lidos em voz alta durante a consulta.
    - Transcreva todas as orientações finais, receitas/prescrições, exames solicitados, encaminhamentos, atestados, sinais de alarme e prazo de retorno falados pelo médico até o último segundo do áudio.
 4. CAPTAÇÃO OBRIGATÓRIA E INFALÍVEL DO FINAL DA GRAVAÇÃO (RECEITAS, PRESCRIÇÕES E CONDUTAS):
@@ -966,8 +980,12 @@ Você está redigindo o prontuário como o PRÓPRIO MÉDICO ASSISTENTE. O prontu
      * TRADUÇÃO OBRIGATÓRIA PARA TERMINOLOGIA MÉDICA TÉCNICA (SEM OMITIR NENHUM SINTOMA): Converta 100% das expressões leigas/coloquiais do diálogo para termos semiológicos técnicos de prontuário (ex.: "falta de ar" → dispneia; "batedeira/coração acelerado" → palpitações; "ardência ao urinar" → disúria; "urinar toda hora" → polaciúria; "dor de cabeça" → cefaleia; "enjoo" → náuseas; "azia/queimação" → pirose; "barriga estufada" → distensão abdominal; "dor nas juntas" → artralgia; "formigamento/dormência" → parestesia; "fraqueza/cansaço" → astenia/fadiga; "inchaço nas pernas" → edema de membros inferiores; "catarro" → expectoração; "sangue nas fezes" → hematoquezia).
      * COBERTURA INTEGRAL DE TUDO O QUE FOI FALADO, AVALIADO E ORIENTADO: 100% das queixas, perguntas negativas/positivas, achados examinados, hipóteses avaliadas e orientações/prescrições do médico devem constar na evolução final na primeira geração, sem resumir nem cortar conteúdo.
      * É TERMINANTEMENTE PROIBIDO escrever gírias, onomatopeias ou coloquialismos chulos no SUBJETIVO!
-   - CONTROLE DE HGT E CONTROLE DE PA DOMICILIAR SEMPRE NO SUBJETIVO (NUNCA NO OBJETIVO!):
-     * Sempre que forem relatados ou lidos valores de Glicemia Capilar (HGT) ou de Pressão Arterial aferidos em domicílio, registre dentro do "SUBJETIVO" ("Controle de HGT: ..." / "Controle de PA: ..."). NUNCA coloque médias domiciliares de PA dentro do "OBJETIVO"!
+   - IMPORTAÇÃO OBRIGATÓRIA DO CONTROLE DE HGT E CONTROLE DE PA (SEMPRE NO SUBJETIVO — PROIBIDO OMITIR OU JOGAR EM OBJETIVO/EXAMES!):
+     * Sempre que o médico descrever, ler no áudio, digitar nas Anotações Rápidas ou anexar foto/PDF de Controle de HGT (glicemia capilar / dextro / perfil glicêmico domiciliar) ou Controle de PA (MRPA / aferições domiciliares de pressão arterial), É ESTRITAMENTE OBRIGATÓRIO importar 100% dos valores, horários, datas, faixas, picos e hipoglicemias descritos para o final do "SUBJETIVO" no formato limpo:
+       - "Controle de HGT: [valores/horários/faixas exatos descritos — ex.: Jejum 102–134 mg/dL, pós-almoço 155–188 mg/dL, pós-jantar 140–172 mg/dL]"
+       - "Controle de PA: [valores/faixas/médias exatos descritos — ex.: 120/80 a 140/90 mmHg, médias domiciliares em torno de 130/85 mmHg]"
+     * É TERMINANTEMENTE PROIBIDO omitir os valores descritos ou substituí-los por frases genéricas sem números (como "trouxe controle adequado/irregular")!
+     * NUNCA coloque Controle de HGT domiciliar nem Controle de PA domiciliar dentro do "OBJETIVO" nem em "EXAMES COMPLEMENTARES" (no OBJETIVO ficam apenas a PA e/ou o HGT pontual aferidos NA CONSULTA DE HOJE na UBS, ex.: "PA: 130/80 mmHg | HGT: 142 mg/dL").
 
 3. REGRA ESTRITA DO EXAME FÍSICO (OBJETIVO) — PADRÃO FIXO + PROIBIÇÃO ABSOLUTA DE INVENTAR SISTEMAS NÃO EXAMINADOS:
    - É TERMINANTEMENTE PROIBIDO escrever frases metalinguísticas como "Exame físico não detalhado na transcrição", "além da avaliação dos exames laboratoriais", "Exame físico não realizado" ou "Não mencionado no áudio"!
@@ -1114,7 +1132,7 @@ DIRETRIZES OBRIGATÓRIAS PARA A CONTINUAÇÃO:
 4. NA CONDUTA (MÁXIMA PRIORIDADE): Todas as condutas, prescrições, receitas e encaminhamentos da 1ª parte DEVEM SER MANTIDOS na íntegra e na mesma numeração! Adicione as novas orientações, receitas ou recomendações decididas na continuação como NOVOS ITENS NUMERADOS subsequentes ao final da lista (ex: itens 4., 5., etc.). NUNCA substitua ou resuma a conduta da 1ª parte!
 5. CABEÇALHO (# MUC, Alergias, etc.): Conserve exatamente os mesmos blocos já aprovados na 1ª parte.
 ` : ''}${preTranscribedExamsText ? `\n=== EXAMES COMPLEMENTARES NOVOS JÁ TRANSCRITOS HOJE (INCLUA EM ORDEM CRONOLÓGICA SEPARANDO LABS E ULTRASSONOGRAFIA) ===\n${preTranscribedExamsText}\n` : ''}
-=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO HOJE ${notesExamDetection.hasAny ? `(ATENÇÃO: FORAM DETECTADOS EXAMES ${notesExamDetection.hasLab && notesExamDetection.hasImaging ? 'LABORATORIAIS E DE IMAGEM' : (notesExamDetection.hasLab ? 'LABORATORIAIS' : 'DE IMAGEM')} ABAIXO -> FORMATE-OS OBRIGATORIAMENTE EM "EXAMES COMPLEMENTARES" PARA LABS E "ULTRASSONOGRAFIA" PARA ECO/IMAGEM)` : ''} ===
+=== DADOS EXTRAS / NOTAS RÁPIDAS DO MÉDICO HOJE ${notesExamDetection.hasAny ? `(ATENÇÃO: FORAM DETECTADOS EXAMES ${notesExamDetection.hasLab && notesExamDetection.hasImaging ? 'LABORATORIAIS E DE IMAGEM' : (notesExamDetection.hasLab ? 'LABORATORIAIS' : 'DE IMAGEM')} ABAIXO -> FORMATE-OS OBRIGATORIAMENTE EM "EXAMES COMPLEMENTARES" PARA LABS E "ULTRASSONOGRAFIA" PARA ECO/IMAGEM)` : ''}${notesExamDetection.hasHgtControl || notesExamDetection.hasPaControl ? ` (ATENÇÃO: CONTROLE DE ${[notesExamDetection.hasHgtControl ? 'HGT' : '', notesExamDetection.hasPaControl ? 'PA' : ''].filter(Boolean).join(' E ')} DETECTADO NAS ANOTAÇÕES -> IMPORTE 100% DOS VALORES INTEGRALMENTE PARA O FINAL DO "SUBJETIVO" EM "Controle de HGT:" / "Controle de PA:"!)` : ''} ===
 ${quickNotes ? quickNotes : 'Nenhuma nota rápida digitada.'}
 ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / CÁLCULO OBSTÉTRICO DE HOJE ===\n' + zScoreSummary : ''}
 
@@ -1130,7 +1148,8 @@ ${zScoreSummary ? '\n=== DADOS OBJETIVOS / ANTROPOMETRIA / CÁLCULO OBSTÉTRICO 
 SUBJETIVO
 Paciente comparece por demanda espontânea referindo dor abdominal epigástrica em queimação há 3 dias, associada a pirose e náuseas pós-prandiais. Relata piora dos sintomas após ingestão de café e alimentos gordurosos. Nega vômitos, febre ou alteração do hábito intestinal. Nega perda ponderal.
 Refere boa adesão às medicações contínuas habituais para HAS e DM. Nega queixas cardiovasculares ou respiratórias.
-Controle de PA: Refere médias domiciliares de 125/80 mmHg.
+Controle de PA: Refere médias domiciliares de 125/80 mmHg (variando de 120/80 a 135/85 mmHg).
+Controle de HGT: Jejum 104–118 mg/dL, pós-almoço 142–158 mg/dL, sem hipoglicemias.
 
 OBJETIVO
 BEG, LOC, MUC
@@ -1181,7 +1200,7 @@ Analise TODOS os exames complementares fornecidos (sejam arquivos PDF/imagens an
 ${notesText ? `\n=== TEXTO COLADO / ESCRITO NAS ANOTAÇÕES RÁPIDAS ===\n${notesText}\n` : ''}
 ${patientAge || patientSex ? `\n=== DADOS DO PACIENTE INFORMADOS PELO MÉDICO ===\nIdade: ${patientAge || 'verificar no PDF/laudo'} | Sexo: ${patientSex || 'verificar no PDF/laudo'}\n` : ''}
 REGRAS OBRIGATÓRIAS:
-1. TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF OU NO TEXTO COLADO: Inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma, perfil lipídico, tireoide, hormônios, vitaminas, ferro/ferritina/transferrina/TIBC, sorologias, urina/EQU, urocultura, parasitológico EPF, sangue oculto nas fezes SOF, exames de imagem, etc.). Ignore valores de referência do laboratório e cabeçalhos burocráticos.
+1. TRANSCREVA 100% DE TODOS OS EXAMES REALIZADOS PRESENTES NO LAUDO/PDF OU NO TEXTO COLADO: Inclua TODOS os exames que tiverem resultado (hemograma completo, bioquímica, função renal, eletrólitos, hepatograma, perfil lipídico, tireoide, hormônios, vitaminas, ferro/ferritina/transferrina/TIBC, sorologias, urina/EQU, urocultura, parasitológico EPF, sangue oculto nas fezes SOF, exames de imagem, etc.). Se houver foto/PDF de caderneta ou planilha de Controle de HGT (glicemia capilar) ou Controle de PA (MRPA), transcreva também todos os valores em linha limpa ("Controle de HGT: ..." / "Controle de PA: ..."). Ignore valores de referência do laboratório e cabeçalhos burocráticos.
 2. PROIBIDO ESCREVER "N/R" OU "Não realizado": Só inclua exames que efetivamente possuem resultado informado.
 3. FORMATO EXATO (DIFERENCIANDO EXAME LABORATORIAL DE EXAME DE IMAGEM):
    - SE FOR EXAME LABORATORIAL (todos os exames da mesma data em UMA ÚNICA LINHA, iniciando com "- LABS [DD/MM/AAAA]: " ou "- LABS: " se não houver data, separados por " | ", usando siglas médicas curtas + valor numérico, SEM unidades de medida como mg/dL, g/dL, U/L, fL, pg):

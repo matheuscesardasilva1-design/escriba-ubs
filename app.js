@@ -954,32 +954,42 @@
     const badge = document.getElementById('quickNotesExamBadge');
     const btnFormat = document.getElementById('btnFormatNotesExamNow');
     const raw = quickNotesInput ? quickNotesInput.value : '';
-    const detected = window.detectExamsInText ? window.detectExamsInText(raw) : { hasLab: false, hasImaging: false, hasAny: false };
+    const detected = window.detectExamsInText ? window.detectExamsInText(raw) : { hasLab: false, hasImaging: false, hasAny: false, hasHgtControl: false, hasPaControl: false };
 
     if (!badge || !btnFormat) return;
-    if (!detected.hasAny) {
+    if (!detected.hasAny && !detected.hasHgtControl && !detected.hasPaControl) {
       badge.style.display = 'none';
       btnFormat.style.display = 'none';
       return;
     }
 
     badge.style.display = 'inline-flex';
-    btnFormat.style.display = 'inline-flex';
+    btnFormat.style.display = detected.hasAny ? 'inline-flex' : 'none';
+    const homeControlsLabel = [
+      detected.hasHgtControl ? 'HGT' : '',
+      detected.hasPaControl ? 'PA' : ''
+    ].filter(Boolean).join(' + ');
+
     if (detected.hasLab && detected.hasImaging) {
-      badge.textContent = '🧪🖥️ Exames Laboratorial + Imagem detectados (irão formatados p/ EXAMES COMPLEMENTARES)';
+      badge.textContent = `🧪🖥️ Exames Laboratorial + Imagem${homeControlsLabel ? ` + Controle de ${homeControlsLabel}` : ''} detectados`;
       badge.style.background = '#f0fdf4';
       badge.style.color = '#166534';
       badge.style.borderColor = '#86efac';
     } else if (detected.hasLab) {
-      badge.textContent = '🧪 Exame Laboratorial detectado -> formato: - LABS DD/MM/AAAA: ... | ...';
+      badge.textContent = `🧪 Exame Laboratorial${homeControlsLabel ? ` + Controle de ${homeControlsLabel}` : ''} detectado`;
       badge.style.background = '#e0f2fe';
       badge.style.color = '#0369a1';
       badge.style.borderColor = '#7dd3fc';
-    } else {
-      badge.textContent = '🖥️ Exame de Imagem detectado -> formato: - EXAME DD/MM/AAAA: texto corrido';
+    } else if (detected.hasImaging) {
+      badge.textContent = `🖥️ Exame de Imagem${homeControlsLabel ? ` + Controle de ${homeControlsLabel}` : ''} detectado`;
       badge.style.background = '#f3e8ff';
       badge.style.color = '#6b21a8';
       badge.style.borderColor = '#d8b4fe';
+    } else {
+      badge.textContent = `📊 Controle de ${homeControlsLabel} detectado (será importado p/ SUBJETIVO)`;
+      badge.style.background = '#fefce8';
+      badge.style.color = '#854d0e';
+      badge.style.borderColor = '#fde047';
     }
   }
 
@@ -2489,7 +2499,7 @@
         consultation.quickNotes && consultation.quickNotes.trim() ? `ANOTAÇÕES RÁPIDAS DIGITADAS PELO MÉDICO (INCLUIR 100% NA EVOLUÇÃO!):\n${consultation.quickNotes.trim()}` : ''
       ].filter(Boolean).join('\n\n');
       parts.push({
-        text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE ===\n${verbatimTranscript}\n${typedReinforcement ? `\n=== REFORÇO FINAL OBRIGATÓRIO — DADOS DIGITADOS PELO MÉDICO HOJE ===\n${typedReinforcement}\n` : ''}\nLEMBRETE FINAL OBRIGATÓRIO: Inclua 100% das queixas, exame físico, dados digitados acima, TODAS as condutas com as DOSES EXATAS faladas (ml, gotas, mg, posologia — proibido trocar por "conforme peso/orientação") e crie a seção PLANO ao final sempre que houver ação/seguimento/exame para próximas consultas!`
+        text: `=== TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE ===\n${verbatimTranscript}\n${typedReinforcement ? `\n=== REFORÇO FINAL OBRIGATÓRIO — DADOS DIGITADOS PELO MÉDICO HOJE ===\n${typedReinforcement}\n` : ''}\nLEMBRETE FINAL OBRIGATÓRIO: Inclua 100% das queixas, Controle de HGT e Controle de PA (sempre no SUBJETIVO com TODOS os valores descritos!), exame físico (somente o que foi avaliado, respeitando alterações de estado geral como REG/MEG se houver), dados digitados acima, TODAS as condutas com as DOSES EXATAS faladas (ml, gotas, mg, posologia — proibido trocar por "conforme peso/orientação") e crie a seção PLANO ao final sempre que houver ação/seguimento/exame para próximas consultas!`
       });
     } else if (hasAudioAttached && audioParts.length > 0) {
       parts.push(...audioParts);
@@ -4336,6 +4346,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           .replace(/^Membros\s+inferiores\s*:\s*/i, 'MMII: ')
           .replace(/^Sistema\s+nervoso\s*:\s*/i, 'SN: ')
           .replace(/^Press[ãa]o\s+arterial\s*:\s*/i, 'PA: ')
+          .replace(/^Glicemia\s+capilar\s*:\s*/i, 'HGT: ')
           .replace(/^Frequ[êe]ncia\s+card[íi]aca\s*:\s*/i, 'FC: ')
           .replace(/^Frequ[êe]ncia\s+respirat[óo]ria\s*:\s*/i, 'FR: ')
           .replace(/^Temperatura(?:\s+axilar)?\s*:\s*/i, 'Tax: ')
@@ -4366,18 +4377,202 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    // 3. Se média domiciliar de PA ou HGT foi parar no Objetivo, move automaticamente para o final do Subjetivo
-    const homePaInObjMatch = text.match(/\nOBJETIVO\s*\n([\s\S]*?)(\n\s*(?:EXAMES|ULTRASSONOGRAFIA|AVALIAÇÃO)\b)/i);
-    if (homePaInObjMatch) {
-      const objBody = homePaInObjMatch[1];
-      const paDomMatch = objBody.match(/^.*Controle\s+de\s+(?:PA|HGT)\s*:\s*Refere[^\n]*$/im);
-      if (paDomMatch) {
-        text = text.replace(paDomMatch[0], '');
-        text = text.replace(/(\n\s*OBJETIVO\b)/i, `\n${paDomMatch[0].trim()}\n$1`);
+    // 3. Resgata qualquer Controle de HGT / Controle de PA domiciliar que tenha ido parar em OBJETIVO ou EXAMES COMPLEMENTARES
+    // e move para o final do SUBJETIVO (antes do normalizador de exames para nunca ser alterado/descartado)
+    const isHomeHgtLineRe = /^(?:[-•*]\s*)?(?:Controle\s+(?:de\s+|domiciliar\s+de\s+)?(?:HGT|glic[êe]mico|de\s+glicemia(?:\s+capilar)?)|Perfil\s+glic[êe]mico|HGT\s+domiciliar|HGTs|Glicemias?\s+capilar(?:es)?\s+domiciliar(?:es)?|Dextro(?:s)?\s+domiciliar(?:es)?)\s*[:\-]\s*(.+)$/i;
+    const isHomePaLineRe = /^(?:[-•*]\s*)?(?:Controle\s+(?:de\s+|domiciliar\s+de\s+)?(?:PA|press[ãa]o(?:\s+arterial)?|press[óo]rico)|MRPA|PA\s+domiciliar|Press[ãa]o(?:\s+arterial)?\s+domiciliar|PAs\s+domiciliar(?:es)?)\s*[:\-]\s*(.+)$/i;
+    const isHomeSummaryLineRe = /(?:m[ée]dias?\s+domiciliar(?:es)?|aferi[çc][õo]es?\s+domiciliar(?:es)?|caderneta\s+de|em\s+domic[íi]lio).*\b(?:PA|press[ãa]o|HGT|glicemia|mmHg|mg\/dL)\b|\b(?:PA|press[ãa]o|HGT|glicemia)\b.*(?:m[ée]dias?\s+domiciliar(?:es)?|aferi[çc][õo]es?\s+domiciliar(?:es)?|em\s+domic[íi]lio)/i;
+
+    const appendLineToSubjetivo = (evoText, lineToInsert) => {
+      if (!lineToInsert || !/\n\s*(?:\d+\.\s*)?SUBJETIVO\b/i.test(evoText)) return evoText;
+      const objBoundary = evoText.match(/(\n\s*(?:\d+\.\s*)?OBJETIVO\b)/i);
+      if (objBoundary) {
+        const beforeObj = evoText.slice(0, objBoundary.index).trimEnd();
+        const fromObj = evoText.slice(objBoundary.index);
+        return `${beforeObj}\n${lineToInsert.trim()}${fromObj}`;
+      }
+      return evoText;
+    };
+
+    const formatRescuedControlLine = (rawLine) => {
+      const cleaned = rawLine.trim().replace(/^[-•*]\s*/, '');
+      const hm = cleaned.match(isHomeHgtLineRe);
+      if (hm) return `Controle de HGT: ${hm[1].trim()}`;
+      const pm = cleaned.match(isHomePaLineRe);
+      if (pm) return `Controle de PA: ${pm[1].trim()}`;
+      return cleaned;
+    };
+
+    const rescuedFromObjOrExams = [];
+    if (/\n\s*(?:\d+\.\s*)?SUBJETIVO\b/i.test(text)) {
+      // 3a. Verifica no bloco OBJETIVO
+      const objBlockMatch = text.match(/(\nOBJETIVO\s*\n)([\s\S]*?)(\n\s*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA|AVALIAÇÃO|CONDUTA|PLANO)\b|$)/i);
+      if (objBlockMatch) {
+        const keptObj = [];
+        for (const l of (objBlockMatch[2] || '').split('\n')) {
+          const tr = l.trim();
+          if (tr && (isHomeHgtLineRe.test(tr) || isHomePaLineRe.test(tr) || isHomeSummaryLineRe.test(tr))) {
+            rescuedFromObjOrExams.push(formatRescuedControlLine(tr));
+          } else {
+            keptObj.push(l);
+          }
+        }
+        if (rescuedFromObjOrExams.length > 0) {
+          text = text.replace(objBlockMatch[0], `${objBlockMatch[1]}${keptObj.join('\n').trim()}${objBlockMatch[3]}`);
+        }
+      }
+
+      // 3b. Verifica no bloco EXAMES COMPLEMENTARES (caso a IA tenha jogado Controle de HGT/PA lá)
+      const examsBlockMatch = text.match(/(\nEXAMES\s+COMPLEMENTARES\s*\n)([\s\S]*?)(\n\s*(?:ULTRASSONOGRAFIA|AVALIAÇÃO|CONDUTA|PLANO)\b|$)/i);
+      if (examsBlockMatch) {
+        const keptExams = [];
+        let movedAnyExamLine = false;
+        for (const l of (examsBlockMatch[2] || '').split('\n')) {
+          const tr = l.trim();
+          if (tr && (isHomeHgtLineRe.test(tr) || isHomePaLineRe.test(tr))) {
+            rescuedFromObjOrExams.push(formatRescuedControlLine(tr));
+            movedAnyExamLine = true;
+          } else {
+            keptExams.push(l);
+          }
+        }
+        if (movedAnyExamLine) {
+          const remainingExams = keptExams.join('\n').trim();
+          if (remainingExams) {
+            text = text.replace(examsBlockMatch[0], `${examsBlockMatch[1]}${remainingExams}${examsBlockMatch[3]}`);
+          } else {
+            text = text.replace(examsBlockMatch[0], `${examsBlockMatch[3]}`);
+          }
+        }
+      }
+
+      for (const rescuedLine of rescuedFromObjOrExams) {
+        if (!text.toLowerCase().includes(rescuedLine.toLowerCase())) {
+          text = appendLineToSubjetivo(text, rescuedLine);
+        }
       }
     }
 
     text = enforcePreviousHeaderAndExams(text, previousConsultationText, templateId, soapSubtypeHeader, patientAge, patientSex, rawTranscript, vdVisitDate, quickNotes, zScoreSummary);
+
+    // 3.1 Garantia determinística de importação do Controle de HGT e Controle de PA descritos nas Anotações Rápidas
+    if (quickNotes && quickNotes.trim() && /\n\s*(?:\d+\.\s*)?SUBJETIVO\b/i.test(text)) {
+      const extractTypedHomeControls = (notesRaw) => {
+        const noteLines = String(notesRaw || '').split(/\r?\n/);
+        const hgtItems = [];
+        const paItems = [];
+        let activeMode = null; // 'hgt' | 'pa' | null
+        let activeBuffer = [];
+
+        const flushActive = () => {
+          if (!activeMode || activeBuffer.length === 0) {
+            activeMode = null;
+            activeBuffer = [];
+            return;
+          }
+          const joined = activeBuffer.map(s => s.trim()).filter(Boolean).join(' | ');
+          if (joined) {
+            if (activeMode === 'hgt') hgtItems.push(joined);
+            else if (activeMode === 'pa') paItems.push(joined);
+          }
+          activeMode = null;
+          activeBuffer = [];
+        };
+
+        const isUnrelatedNewHeader = (s) => /^(?:[-•*]\s*)?(?:LABS\b|EXAMES\b|US\b|USG\b|TC\b|RX\b|RM\b|ECG\b|ECO\b|OBJETIVO\b|AVALIA[ÇC][ÃA]O\b|CONDUTA\b|PLANO\b|AP\s*:|AC\s*:|ABD\s*:|MMII\s*:|FC\s*:|FR\s*:|SpO2\s*:|Tax\s*:|Peso\s*:|Altura\s*:|IMC\s*:|PC\s*:|AU\s*:|BCF\s*:|#|PA\s*:\s*\d{2,3}\s*[\/x×]\s*\d{2,3}\s*(?:mmhg)?\s*$)/i.test(s);
+        const hgtHeaderRe = /^(?:[-•*]\s*)?(?:Controle\s+(?:de\s+|domiciliar\s+de\s+)?(?:HGT|glic[êe]mico|de\s+glicemia(?:\s+capilar)?)|Perfil\s+glic[êe]mico|HGT\s+domiciliar|HGTs|Glicemias?\s+capilar(?:es)?|Dextro(?:s)?)\s*[:\-]?\s*(.*)$/i;
+        const paHeaderRe = /^(?:[-•*]\s*)?(?:Controle\s+(?:de\s+|domiciliar\s+de\s+)?(?:PA|press[ãa]o(?:\s+arterial)?|press[óo]rico)|MRPA|PA\s+domiciliar|Press[ãa]o(?:\s+arterial)?\s+domiciliar|PAs)\s*[:\-]?\s*(.*)$/i;
+
+        for (const rawLine of noteLines) {
+          const ln = rawLine.trim();
+          if (!ln) {
+            flushActive();
+            continue;
+          }
+
+          const hgtExplicit = ln.match(hgtHeaderRe);
+          const hgtInlineMulti = !hgtExplicit && ln.match(/^(?:[-•*]\s*)?HGT\s*[:\-]?\s*(.+)$/i);
+          const isHgtInlineControl = Boolean(
+            hgtInlineMulti && (
+              /\b(?:jejum|p[óo]s|pr[ée]|almo[çc]o|caf[ée]|jantar|deitar|madrugada|manh[ãa]|tarde|noite|domiciliar|m[ée]dia)\b/i.test(hgtInlineMulti[1])
+              || ((hgtInlineMulti[1].match(/\b\d{2,3}\b/g) || []).length >= 2)
+            )
+          );
+
+          const paExplicit = ln.match(paHeaderRe);
+          const paInlineMulti = !paExplicit && ln.match(/^(?:[-•*]\s*)?PA\s*[:\-]?\s*(.+)$/i);
+          const isPaInlineControl = Boolean(
+            paInlineMulti && (
+              /\b(?:domiciliar|m[ée]dia|mrpa|manh[ãa]|noite|tarde|caderneta)\b/i.test(paInlineMulti[1])
+              || ((paInlineMulti[1].match(/\b\d{2,3}\s*[\/x×]\s*\d{2,3}\b/g) || []).length >= 2)
+            )
+          );
+
+          if (hgtExplicit || isHgtInlineControl) {
+            flushActive();
+            activeMode = 'hgt';
+            const content = (hgtExplicit ? hgtExplicit[1] : hgtInlineMulti[1] || '').trim();
+            if (content) activeBuffer.push(content);
+            continue;
+          }
+          if (paExplicit || isPaInlineControl) {
+            flushActive();
+            activeMode = 'pa';
+            const content = (paExplicit ? paExplicit[1] : paInlineMulti[1] || '').trim();
+            if (content) activeBuffer.push(content);
+            continue;
+          }
+
+          if (activeMode) {
+            if (isUnrelatedNewHeader(ln)) {
+              flushActive();
+              continue;
+            }
+            const looksLikeHgtContinuation = activeMode === 'hgt' && (/\d{2,3}/.test(ln) || /\b(?:jejum|p[óo]s|pr[ée]|almo[çc]o|caf[ée]|jantar|deitar|madrugada|hipo|hiper|sem\s+hipo)/i.test(ln));
+            const looksLikePaContinuation = activeMode === 'pa' && (/\d{2,3}\s*[\/x×]\s*\d{2,3}/.test(ln) || /\b(?:manh[ãa]|tarde|noite|m[ée]dia|pico|mmhg)\b/i.test(ln));
+            if (looksLikeHgtContinuation || looksLikePaContinuation) {
+              activeBuffer.push(ln.replace(/^[-•*]\s*/, ''));
+            } else {
+              flushActive();
+            }
+          }
+        }
+        flushActive();
+
+        return {
+          hgt: hgtItems.join(' | ').trim(),
+          pa: paItems.join(' | ').trim()
+        };
+      };
+
+      const typedControls = extractTypedHomeControls(quickNotes);
+      const subjBlock = text.match(/\n\s*(?:\d+\.\s*)?SUBJETIVO\s*\n([\s\S]*?)(?=\n\s*(?:\d+\.\s*)?(?:OBJETIVO|EXAMES|ULTRASSONOGRAFIA|AVALIAÇÃO|CONDUTA)\b|$)/i);
+      const subjBodyNow = subjBlock ? subjBlock[1] : '';
+
+      const hasValuesRepresented = (sourceVal, targetText) => {
+        const nums = Array.from(new Set((sourceVal.match(/\b\d{2,3}\b/g) || [])));
+        if (nums.length === 0) return false;
+        const foundCount = nums.filter(n => new RegExp(`\\b${n}\\b`).test(targetText)).length;
+        return foundCount >= Math.ceil(nums.length * 0.5);
+      };
+
+      if (typedControls.hgt) {
+        const alreadyHasHgt = /\b(?:controle\s+de\s+hgt|hgt|glicemia[s]?\s+capilar|perfil\s+glic[êe]mico)\b/i.test(subjBodyNow)
+          && (hasValuesRepresented(typedControls.hgt, subjBodyNow) || !/\d{2,3}/.test(typedControls.hgt));
+        if (!alreadyHasHgt) {
+          text = appendLineToSubjetivo(text, `Controle de HGT: ${typedControls.hgt}`);
+        }
+      }
+
+      if (typedControls.pa) {
+        const alreadyHasPa = /\b(?:controle\s+de\s+pa|controle\s+press[óo]rico|mrpa|pa\s+domiciliar|m[ée]dias?\s+domiciliar(?:es)?)\b/i.test(subjBodyNow)
+          && (hasValuesRepresented(typedControls.pa, subjBodyNow) || !/\d{2,3}/.test(typedControls.pa));
+        if (!alreadyHasPa) {
+          text = appendLineToSubjetivo(text, `Controle de PA: ${typedControls.pa}`);
+        }
+      }
+    }
+
     const extractedCodes = Array.isArray(existingCodes) ? [...existingCodes] : [];
 
     // Na Puericultura, garante que nunca apareça "# Alimentação:" ou "# Aleitamento:" no cabeçalho "#" inicial
