@@ -270,6 +270,7 @@
     await checkCrashRecoveryAndLoadHistory();
     bindUIEvents();
     updateApiKeyStatusBadge();
+    updateWhisperModeUI();
     updateStorageStatsUI();
     renderPendingExamFilesUI();
     updateDocumentTitle();
@@ -2310,6 +2311,353 @@
     }
   }
 
+  // =========================================================================
+  // WHISPER LOCAL NO NAVEGADOR (WEBGPU / WASM — INDEPENDENTE POR COMPUTADOR)
+  // =========================================================================
+  let whisperWorkerInstance = null;
+  let whisperReqSeq = 0;
+  const whisperPendingRequests = new Map();
+  let whisperCachedCaps = null;
+
+  function isLocalWhisperEnabled() {
+    return localStorage.getItem('ubs_whisper_enabled') === 'true';
+  }
+
+  function setLocalWhisperEnabled(enabled) {
+    localStorage.setItem('ubs_whisper_enabled', enabled ? 'true' : 'false');
+    updateWhisperModeUI();
+  }
+
+  function getLocalWhisperProfile() {
+    const p = localStorage.getItem('ubs_whisper_profile');
+    return (p === 'small' || p === 'turbo') ? p : 'turbo';
+  }
+
+  function setLocalWhisperProfile(profile) {
+    const safe = (profile === 'small') ? 'small' : 'turbo';
+    localStorage.setItem('ubs_whisper_profile', safe);
+    updateWhisperModeUI();
+  }
+
+  function formatWhisperProfileLabel(profileKey) {
+    return profileKey === 'small' ? 'Whisper Small' : 'Whisper Large V3 Turbo';
+  }
+
+  function updateWhisperModeUI() {
+    const enabled = isLocalWhisperEnabled();
+    const profile = getLocalWhisperProfile();
+    const topBtn = document.getElementById('btnToggleWhisperMode');
+    if (topBtn) {
+      if (enabled) {
+        topBtn.textContent = profile === 'small' ? '🎙️ Áudio: Whisper Small' : '🎙️ Áudio: Whisper Turbo';
+        topBtn.classList.add('whisper-active');
+        topBtn.title = 'Whisper Local ATIVADO neste computador (clique para voltar ao Gemini na nuvem)';
+      } else {
+        topBtn.textContent = '☁️ Áudio: Gemini';
+        topBtn.classList.remove('whisper-active');
+        topBtn.title = 'Usando Gemini na nuvem (clique para ativar Whisper Local neste computador)';
+      }
+    }
+    const chk = document.getElementById('chkEnableLocalWhisper');
+    if (chk) chk.checked = enabled;
+    const sel = document.getElementById('whisperProfileSelect');
+    if (sel) sel.value = profile;
+  }
+
+  function getOrCreateWhisperWorker() {
+    if (whisperWorkerInstance) return whisperWorkerInstance;
+    const worker = new Worker('whisper-worker.js?v=20261126_66', { type: 'module' });
+    worker.onmessage = (event) => {
+      const msg = event.data || {};
+      const entry = whisperPendingRequests.get(msg.requestId);
+      if (!entry) return;
+      if (msg.type === 'download_progress' || msg.type === 'status') {
+        if (typeof entry.onProgress === 'function') entry.onProgress(msg);
+        return;
+      }
+      whisperPendingRequests.delete(msg.requestId);
+      if (msg.type === 'error') {
+        entry.reject(new Error(msg.message || 'Erro no Whisper Local'));
+      } else {
+        entry.resolve(msg);
+      }
+    };
+    worker.onerror = (err) => {
+      const message = err?.message || 'Erro ao executar o Web Worker do Whisper Local';
+      for (const [, entry] of whisperPendingRequests.entries()) {
+        entry.reject(new Error(message));
+      }
+      whisperPendingRequests.clear();
+      try { worker.terminate(); } catch (_) {}
+      if (whisperWorkerInstance === worker) whisperWorkerInstance = null;
+    };
+    whisperWorkerInstance = worker;
+    return worker;
+  }
+
+  function sendWhisperWorkerRequest(payload, transferables = [], onProgress = null) {
+    return new Promise((resolve, reject) => {
+      try {
+        const worker = getOrCreateWhisperWorker();
+        const requestId = ++whisperReqSeq;
+        whisperPendingRequests.set(requestId, { resolve, reject, onProgress });
+        worker.postMessage({ ...payload, requestId }, transferables);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  async function unloadWhisperWorker() {
+    if (!whisperWorkerInstance) return;
+    try {
+      await sendWhisperWorkerRequest({ type: 'unload' });
+    } catch (_) {}
+    try { whisperWorkerInstance.terminate(); } catch (_) {}
+    whisperWorkerInstance = null;
+    whisperPendingRequests.clear();
+  }
+
+  async function checkWhisperCapabilitiesUI() {
+    const badge = document.getElementById('whisperHardwareBadge');
+    try {
+      let hasWebGpu = false;
+      let hasF16 = false;
+      if (navigator.gpu) {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) {
+          hasWebGpu = true;
+          hasF16 = Boolean(adapter.features && adapter.features.has('shader-f16'));
+        }
+      }
+      whisperCachedCaps = { hasWebGpu, hasF16 };
+      if (badge) {
+        if (hasWebGpu) {
+          badge.textContent = hasF16 ? '⚡ WebGPU FP16 ativo (Velocidade Máxima!)' : '⚡ WebGPU ativo (Acelerado)';
+        } else {
+          badge.textContent = '💻 Modo CPU/WASM (Sem WebGPU — use Small se ficar lento)';
+        }
+      }
+    } catch (_) {
+      if (badge) badge.textContent = '💻 Modo CPU/WASM disponível';
+    }
+  }
+
+  async function preloadLocalWhisperModel() {
+    const profile = getLocalWhisperProfile();
+    const label = formatWhisperProfileLabel(profile);
+    const btn = document.getElementById('btnPreloadWhisper');
+    const progWrap = document.getElementById('whisperDownloadProgressWrap');
+    const progLabel = document.getElementById('whisperProgressLabel');
+    const progPct = document.getElementById('whisperProgressPct');
+    const progFill = document.getElementById('whisperProgressBarFill');
+    const statusText = document.getElementById('whisperConfigStatusText');
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Carregando...';
+    }
+    if (progWrap) progWrap.style.display = 'block';
+    if (progLabel) progLabel.textContent = `Preparando ${label}...`;
+    if (progPct) progPct.textContent = '0%';
+    if (progFill) progFill.style.width = '5%';
+
+    try {
+      const res = await sendWhisperWorkerRequest({ type: 'preload', profile }, [], (ev) => {
+        if (ev.type === 'download_progress') {
+          const pct = Math.max(1, Math.min(99, ev.percent || 0));
+          const mbInfo = ev.totalMB > 0 ? ` (${ev.loadedMB}/${ev.totalMB} MB)` : '';
+          if (progLabel) progLabel.textContent = `Baixando ${label} p/ cache do navegador${mbInfo}...`;
+          if (progPct) progPct.textContent = `${pct}%`;
+          if (progFill) progFill.style.width = `${pct}%`;
+        } else if (ev.type === 'status' && ev.message) {
+          if (progLabel) progLabel.textContent = ev.message;
+        }
+      });
+      if (progPct) progPct.textContent = '100%';
+      if (progFill) progFill.style.width = '100%';
+      const devLabel = res.device === 'webgpu' ? 'WebGPU (Acelerado)' : 'CPU / WASM';
+      if (progLabel) progLabel.textContent = `✅ ${res.label || label} pronto na memória (${devLabel})!`;
+      if (statusText) {
+        statusText.innerHTML = `✅ <strong>${res.label || label} carregado e salvo no cache deste navegador (${devLabel})!</strong> Nas próximas consultas não precisará baixar novamente.`;
+      }
+      setLocalWhisperEnabled(true);
+      showToast(`✅ ${res.label || label} pronto neste computador (${devLabel})!`);
+    } catch (err) {
+      if (progLabel) progLabel.textContent = `⚠️ Não foi possível carregar: ${err.message}`;
+      if (statusText) {
+        statusText.innerHTML = `⚠️ <strong>Falha ao carregar o Whisper neste PC:</strong> ${escapeHtml(err.message)}. (Pode ser bloqueio de rede ao Hugging Face na UBS — o sistema continuará usando o Gemini normalmente.)`;
+      }
+      showToast(`⚠️ Whisper indisponível neste PC: ${err.message}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '⬇️ Baixar / Testar Whisper Agora';
+      }
+    }
+  }
+
+  async function decodeAudioBlobTo16kMono(blob) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) {
+      throw new Error('Navegador sem suporte a Web Audio API para decodificar áudio.');
+    }
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioCtx = new AudioCtx({ sampleRate: 16000 });
+    try {
+      const decoded = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      const targetSampleRate = 16000;
+
+      // Mistura canais para mono se já estiver em 16 kHz, ou reamostra com OfflineAudioContext (anti-aliasing)
+      if (decoded.sampleRate === targetSampleRate) {
+        const len = decoded.length;
+        if (decoded.numberOfChannels === 1) {
+          return new Float32Array(decoded.getChannelData(0));
+        }
+        const mono = new Float32Array(len);
+        const chCount = decoded.numberOfChannels;
+        for (let c = 0; c < chCount; c++) {
+          const chData = decoded.getChannelData(c);
+          for (let i = 0; i < len; i++) mono[i] += chData[i] / chCount;
+        }
+        return mono;
+      }
+
+      const targetLength = Math.max(1, Math.ceil(decoded.duration * targetSampleRate));
+      const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (OfflineCtx) {
+        const offline = new OfflineCtx(1, targetLength, targetSampleRate);
+        const src = offline.createBufferSource();
+        src.buffer = decoded;
+        src.connect(offline.destination);
+        src.start(0);
+        const rendered = await offline.startRendering();
+        return new Float32Array(rendered.getChannelData(0));
+      }
+
+      // Fallback linear simples caso OfflineAudioContext não exista
+      const monoSrc = decoded.getChannelData(0);
+      const ratio = decoded.sampleRate / targetSampleRate;
+      const out = new Float32Array(targetLength);
+      for (let i = 0; i < targetLength; i++) {
+        const idx = Math.min(monoSrc.length - 1, Math.floor(i * ratio));
+        out[i] = monoSrc[idx];
+      }
+      return out;
+    } finally {
+      try { await audioCtx.close(); } catch (_) {}
+    }
+  }
+
+  function computePcmRms(float32Arr) {
+    if (!float32Arr || float32Arr.length === 0) return 0;
+    let sumSq = 0;
+    const step = Math.max(1, Math.floor(float32Arr.length / 8000));
+    let count = 0;
+    for (let i = 0; i < float32Arr.length; i += step) {
+      const v = float32Arr[i];
+      sumSq += v * v;
+      count++;
+    }
+    return count > 0 ? Math.sqrt(sumSq / count) : 0;
+  }
+
+  async function transcribeAudioBlobsWithLocalWhisper(blobsArray, onProgressMilestone) {
+    const profile = getLocalWhisperProfile();
+    const profileLabel = formatWhisperProfileLabel(profile);
+
+    if (onProgressMilestone) {
+      onProgressMilestone(12, `🎙️ Preparando ${profileLabel} local no navegador...`);
+    }
+
+    // 1. Garante o modelo carregado no Web Worker (com barra de progresso real se for o 1º download)
+    const preloadInfo = await sendWhisperWorkerRequest({ type: 'preload', profile }, [], (ev) => {
+      if (!onProgressMilestone) return;
+      if (ev.type === 'download_progress') {
+        const mbInfo = ev.totalMB > 0 ? ` (${ev.loadedMB}/${ev.totalMB} MB)` : '';
+        const mappedPct = 12 + Math.round(((ev.percent || 0) / 100) * 14);
+        onProgressMilestone(mappedPct, `⬇️ Baixando ${profileLabel} (1ª vez — fica em cache)${mbInfo}...`);
+      } else if (ev.type === 'status' && ev.message) {
+        onProgressMilestone(null, `🎙️ ${ev.message}`);
+      }
+    });
+
+    const devTag = preloadInfo.device === 'webgpu' ? 'WebGPU' : 'CPU';
+    const fileTranscripts = [];
+    const SAMPLE_RATE = 16000;
+    const SEGMENT_SAMPLES = 120 * SAMPLE_RATE; // blocos de 2 minutos (evita estouro de memória em consultas >1h e dá progresso suave!)
+    const OVERLAP_SAMPLES = 2 * SAMPLE_RATE;   // sobreposição de 2 segundos entre macro-blocos
+
+    for (let fIdx = 0; fIdx < blobsArray.length; fIdx++) {
+      const blob = blobsArray[fIdx];
+      if (!blob || blob.size === 0) continue;
+
+      if (onProgressMilestone) {
+        onProgressMilestone(27, blobsArray.length > 1
+          ? `🔊 Decodificando áudio ${fIdx + 1}/${blobsArray.length} para 16 kHz...`
+          : '🔊 Decodificando áudio gravado para 16 kHz...');
+      }
+
+      const pcm = await decodeAudioBlobTo16kMono(blob);
+      if (!pcm || pcm.length < SAMPLE_RATE * 0.5) continue;
+
+      // Divide em macro-segmentos de 2 minutos para progresso contínuo e estabilidade de GPU
+      const segments = [];
+      if (pcm.length <= SEGMENT_SAMPLES + OVERLAP_SAMPLES) {
+        segments.push(pcm);
+      } else {
+        let offset = 0;
+        while (offset < pcm.length) {
+          const end = Math.min(pcm.length, offset + SEGMENT_SAMPLES);
+          segments.push(pcm.slice(offset, end));
+          if (end >= pcm.length) break;
+          offset = end - OVERLAP_SAMPLES;
+        }
+      }
+
+      const segTexts = [];
+      for (let sIdx = 0; sIdx < segments.length; sIdx++) {
+        const segPcm = segments[sIdx];
+        const segPct = 28 + Math.round(((fIdx + (sIdx / Math.max(1, segments.length))) / Math.max(1, blobsArray.length)) * 32);
+        if (onProgressMilestone) {
+          const blockInfo = segments.length > 1 ? ` — bloco ${sIdx + 1}/${segments.length}` : '';
+          const fileInfo = blobsArray.length > 1 ? ` (áudio ${fIdx + 1}/${blobsArray.length})` : '';
+          onProgressMilestone(segPct, `🎙️ Etapa 1/2 (${profileLabel} • ${devTag})${fileInfo}${blockInfo}...`);
+        }
+
+        // Pula segmentos de silêncio absoluto (evita alucinação em pausas longas)
+        if (computePcmRms(segPcm) < 0.0012) {
+          continue;
+        }
+
+        const segCopy = new Float32Array(segPcm);
+        const segRes = await sendWhisperWorkerRequest(
+          { type: 'transcribe_segment', profile, segmentIndex: sIdx, audio: segCopy },
+          [segCopy.buffer]
+        );
+        if (segRes && segRes.text && segRes.text.trim()) {
+          segTexts.push(segRes.text.trim());
+        }
+      }
+
+      const joinedFile = segTexts.join(' ').replace(/\s{2,}/g, ' ').trim();
+      if (joinedFile) {
+        fileTranscripts.push(blobsArray.length > 1 ? `--- ÁUDIO ${fIdx + 1} ---\n${joinedFile}` : joinedFile);
+      }
+    }
+
+    const fullTranscript = fileTranscripts.join('\n\n').trim();
+    if (!fullTranscript || fullTranscript.length < 10) {
+      throw new Error('Whisper Local não detectou fala compreensível neste áudio.');
+    }
+
+    return {
+      transcript: fullTranscript,
+      modelLabel: `${profileLabel} (${devTag})`,
+      device: preloadInfo.device
+    };
+  }
+
   // --- Envio Multimodal (Áudio + PDFs de Exames + Notas) para o Gemini ---
   async function processSingleConsultationWithGemini(consultation, apiKey, onProgressMilestone) {
     const tpl = state.templates[consultation.templateId] || window.DEFAULT_TEMPLATES.geral;
@@ -2325,9 +2673,34 @@
     const isPrenatalConsult = consultation.templateId === 'prenatal';
     const hasNotesExams = window.detectExamsInText ? window.detectExamsInText(consultation.quickNotes).hasAny : false;
 
-    // 1. Prepara o(s) Áudio(s) da consulta (local, múltiplos áudios de VD/WhatsApp, na nuvem via remoteFileUri, ou transcrição literal salva)
-    let hasAudioAttached = false;
+    // 1. Prepara o(s) Áudio(s) da consulta (primeiro coleta Blobs locais; só sobe/converte p/ Gemini se NÃO usar Whisper Local ou se Whisper falhar!)
+    const localAudioBlobs = [];
     const audioParts = [];
+    let hasAudioAttached = false;
+    let audioPartsPrepared = false;
+
+    if (consultation.chunkCount > 0 && !consultation.audioDeleted) {
+      if (consultation.isMultiFileExternalAudio && window.ScribeDB.getAudioChunks) {
+        const chunkRecords = await window.ScribeDB.getAudioChunks(consultation.id);
+        for (let cIdx = 0; cIdx < chunkRecords.length; cIdx++) {
+          const rec = chunkRecords[cIdx];
+          if (rec && rec.blob && rec.blob.size > 0) {
+            localAudioBlobs.push(rec.blob);
+          }
+        }
+        hasAudioAttached = localAudioBlobs.length > 0;
+      } else {
+        const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
+        if (audioBlob && audioBlob.size > 0) {
+          localAudioBlobs.push(audioBlob);
+          hasAudioAttached = true;
+        }
+      }
+    }
+    if (!hasAudioAttached && consultation.remoteFileUri) {
+      hasAudioAttached = true;
+    }
+
     const blobToGeminiAudioPart = async (blobItem, fName) => {
       const cleanMime = normalizeAudioMimeType(blobItem, fName || '');
       if (blobItem.size > 19 * 1024 * 1024) {
@@ -2343,104 +2716,138 @@
       return { inlineData: { mimeType: cleanMime, data: base64Audio } };
     };
 
-    if (consultation.chunkCount > 0 && !consultation.audioDeleted) {
-      if (consultation.isMultiFileExternalAudio && window.ScribeDB.getAudioChunks) {
-        const chunkRecords = await window.ScribeDB.getAudioChunks(consultation.id);
-        for (let cIdx = 0; cIdx < chunkRecords.length; cIdx++) {
-          const rec = chunkRecords[cIdx];
-          if (rec && rec.blob && rec.blob.size > 0) {
-            const p = await blobToGeminiAudioPart(rec.blob, consultation.fileName || '');
-            audioParts.push(p);
-          }
-        }
-        hasAudioAttached = audioParts.length > 0;
-      } else {
-        const audioBlob = await window.ScribeDB.assembleAudioBlob(consultation.id, consultation.mimeType);
-        if (audioBlob && audioBlob.size > 0) {
-          const p = await blobToGeminiAudioPart(audioBlob, consultation.fileName || '');
-          audioParts.push(p);
-          hasAudioAttached = true;
-        }
+    const ensureGeminiAudioPartsPrepared = async () => {
+      if (audioPartsPrepared) return audioParts;
+      audioPartsPrepared = true;
+      for (let i = 0; i < localAudioBlobs.length; i++) {
+        const p = await blobToGeminiAudioPart(localAudioBlobs[i], consultation.fileName || '');
+        audioParts.push(p);
       }
-    }
-    if (!hasAudioAttached && consultation.remoteFileUri) {
-      hasAudioAttached = true;
-      audioParts.push({
-        fileData: {
-          mimeType: consultation.mimeType || 'audio/webm',
-          fileUri: consultation.remoteFileUri
-        }
-      });
-    }
+      if (audioParts.length === 0 && consultation.remoteFileUri) {
+        audioParts.push({
+          fileData: {
+            mimeType: consultation.mimeType || 'audio/webm',
+            fileUri: consultation.remoteFileUri
+          }
+        });
+      }
+      return audioParts;
+    };
 
     let totalTokensUsed = 0;
     let lastModelUsed = '';
     let verbatimTranscript = '';
+    let activeTranscriptionSource = consultation.transcriptionEngine || 'gemini-cloud';
 
     // =========================================================================
     // ETAPA 1 DE 2 (DEDICADA EXCLUSIVAMENTE À TRANSCRIÇÃO LITERAL DE 100% DO ÁUDIO):
+    // - Se Whisper Local estiver ativado neste PC (e não for re-transcrição forçada no Gemini):
+    //   transcreve 100% no navegador via Whisper Large V3 Turbo / Small sem enviar áudio p/ nuvem!
+    // - Se falhar no PC do posto (ou se o médico clicou em "Re-transcrever no Gemini"),
+    //   sobe o áudio direto ao Gemini automaticamente sem perder nada!
     // =========================================================================
-    if (hasAudioAttached && audioParts.length > 0 && window.buildVerbatimAudioTranscriptionPrompt) {
-      if (onProgressMilestone) {
-        onProgressMilestone(22, audioParts.length > 1
-          ? `🎙️ Etapa 1/2: Juntando e transcrevendo os ${audioParts.length} arquivos de áudio...`
-          : '🎙️ Etapa 1/2: Transcrevendo 100% do áudio palavra por palavra...');
-      }
-      try {
-        const prevHeaderLines = (consultation.previousConsultationText || '')
-          .split('\n')
-          .map(l => l.trim())
-          .filter(l => l.startsWith('#'))
-          .slice(0, 12)
-          .join('\n');
-        const verbatimPrompt = window.buildVerbatimAudioTranscriptionPrompt(consultation.durationSeconds, {
-          templateName: tpl.name,
-          quickNotes: consultation.quickNotes || '',
-          previousHeaderSummary: prevHeaderLines,
-          audioFilesCount: audioParts.length
-        });
-        const stage1Body = {
-          contents: [{
-            role: 'user',
-            parts: [
-              ...audioParts,
-              { text: verbatimPrompt }
-            ]
-          }],
-          generationConfig: {
-            temperature: 0.0,
-            maxOutputTokens: 65536
-          }
-        };
-        const stage1Res = await callGeminiWithFallbackAndRetry(stage1Body, apiKey, (statusMsg) => {
-          if (onProgressMilestone) {
-            onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
-          }
-        }, { allowLiveFallback: true, maxRounds: 1, disableThinking: true });
-        const stage1Text = (stage1Res.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
-        totalTokensUsed += stage1Res.responseJson?.usageMetadata?.totalTokenCount || 0;
-        lastModelUsed = stage1Res.modelUsed || lastModelUsed;
+    const shouldTryLocalWhisper = hasAudioAttached
+      && localAudioBlobs.length > 0
+      && isLocalWhisperEnabled()
+      && !consultation.forceCloudAudioTranscription;
 
-        if (stage1Text && stage1Text.length >= 15) {
+    if (shouldTryLocalWhisper) {
+      try {
+        const whisperRes = await transcribeAudioBlobsWithLocalWhisper(localAudioBlobs, onProgressMilestone);
+        if (whisperRes && whisperRes.transcript && whisperRes.transcript.length >= 15) {
           verbatimTranscript = consultation.previousRawTranscript
-            ? `${consultation.previousRawTranscript}\n\n--- CONTINUAÇÃO DO ATENDIMENTO ---\n${stage1Text}`
-            : stage1Text;
-          // Salva imediatamente a transcrição literal completa no banco de dados local!
+            ? `${consultation.previousRawTranscript}\n\n--- CONTINUAÇÃO DO ATENDIMENTO ---\n${whisperRes.transcript}`
+            : whisperRes.transcript;
+          activeTranscriptionSource = 'whisper-local';
+          consultation.transcriptionEngine = 'whisper-local';
+          consultation.whisperModelUsed = whisperRes.modelLabel;
+          consultation.forceCloudAudioTranscription = false;
           consultation.rawTranscript = fixBrazilianMedicationSpelling(verbatimTranscript);
           await window.ScribeDB.saveConsultation(consultation);
         }
-      } catch (stage1Err) {
-        console.warn('Etapa 1 (transcrição dedicada) falhou, seguindo com envio multimodal direto na Etapa 2:', stage1Err);
-        // Atendimento continuado: sem a transcrição da continuação NÃO seguimos (evita gerar evolução só com o áudio final
-        // e perder as partes anteriores). A evolução atual permanece intacta e o médico pode tentar de novo.
-        if (consultation.previousRawTranscript || consultation.previousEvolutionText) {
-          throw new Error('Não foi possível transcrever a continuação agora. A evolução anterior foi preservada — clique em "Atualizar" para tentar novamente.');
+      } catch (whisperErr) {
+        console.warn('Whisper Local falhou, fazendo fallback automático para Gemini (nuvem):', whisperErr);
+        showToast('⚠️ Whisper Local indisponível neste áudio — enviando automaticamente ao Gemini...');
+        if (onProgressMilestone) {
+          onProgressMilestone(20, '☁️ Whisper indisponível — subindo áudio automaticamente para o Gemini...');
+        }
+      }
+    }
+
+    if (!verbatimTranscript && hasAudioAttached && window.buildVerbatimAudioTranscriptionPrompt) {
+      await ensureGeminiAudioPartsPrepared();
+      if (audioParts.length > 0) {
+        if (onProgressMilestone) {
+          onProgressMilestone(22, audioParts.length > 1
+            ? `🎙️ Etapa 1/2 (Gemini): Juntando e transcrevendo os ${audioParts.length} arquivos de áudio...`
+            : '🎙️ Etapa 1/2 (Gemini): Transcrevendo 100% do áudio palavra por palavra...');
+        }
+        try {
+          const prevHeaderLines = (consultation.previousConsultationText || '')
+            .split('\n')
+            .map(l => l.trim())
+            .filter(l => l.startsWith('#'))
+            .slice(0, 12)
+            .join('\n');
+          const verbatimPrompt = window.buildVerbatimAudioTranscriptionPrompt(consultation.durationSeconds, {
+            templateName: tpl.name,
+            quickNotes: consultation.quickNotes || '',
+            previousHeaderSummary: prevHeaderLines,
+            audioFilesCount: audioParts.length
+          });
+          const stage1Body = {
+            contents: [{
+              role: 'user',
+              parts: [
+                ...audioParts,
+                { text: verbatimPrompt }
+              ]
+            }],
+            generationConfig: {
+              temperature: 0.0,
+              maxOutputTokens: 65536
+            }
+          };
+          const stage1Res = await callGeminiWithFallbackAndRetry(stage1Body, apiKey, (statusMsg) => {
+            if (onProgressMilestone) {
+              onProgressMilestone(null, null, statusMsg.replace(/^⚡\s*Estruturando\s*/i, '').replace(/^\(|\)\.\.\.$/g, ''));
+            }
+          }, { allowLiveFallback: true, maxRounds: 1, disableThinking: true });
+          const stage1Text = (stage1Res.responseJson?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+          totalTokensUsed += stage1Res.responseJson?.usageMetadata?.totalTokenCount || 0;
+          lastModelUsed = stage1Res.modelUsed || lastModelUsed;
+
+          if (stage1Text && stage1Text.length >= 15) {
+            verbatimTranscript = consultation.previousRawTranscript
+              ? `${consultation.previousRawTranscript}\n\n--- CONTINUAÇÃO DO ATENDIMENTO ---\n${stage1Text}`
+              : stage1Text;
+            activeTranscriptionSource = 'gemini-cloud';
+            consultation.transcriptionEngine = 'gemini-cloud';
+            consultation.whisperModelUsed = '';
+            consultation.forceCloudAudioTranscription = false;
+            // Salva imediatamente a transcrição literal completa no banco de dados local!
+            consultation.rawTranscript = fixBrazilianMedicationSpelling(verbatimTranscript);
+            await window.ScribeDB.saveConsultation(consultation);
+          }
+        } catch (stage1Err) {
+          console.warn('Etapa 1 (transcrição dedicada) falhou, seguindo com envio multimodal direto na Etapa 2:', stage1Err);
+          // Atendimento continuado: sem a transcrição da continuação NÃO seguimos (evita gerar evolução só com o áudio final
+          // e perder as partes anteriores). A evolução atual permanece intacta e o médico pode tentar de novo.
+          if (consultation.previousRawTranscript || consultation.previousEvolutionText) {
+            throw new Error('Não foi possível transcrever a continuação agora. A evolução anterior foi preservada — clique em "Atualizar" para tentar novamente.');
+          }
         }
       }
     }
 
     if (!verbatimTranscript && consultation.rawTranscript) {
       verbatimTranscript = consultation.rawTranscript;
+    }
+    if (!verbatimTranscript && hasAudioAttached) {
+      await ensureGeminiAudioPartsPrepared();
+    }
+    if (consultation.forceCloudAudioTranscription) {
+      consultation.forceCloudAudioTranscription = false;
     }
 
     // =========================================================================
@@ -2466,7 +2873,8 @@
       hasPreTranscribedDialogue,
       consultPatientAge,
       consultPatientSex,
-      consultVdVisitDate
+      consultVdVisitDate,
+      activeTranscriptionSource
     );
 
     const parts = [];
@@ -6455,8 +6863,31 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     document.getElementById('viewPatientTitle').textContent = consult.patientLabel;
     document.getElementById('viewTemplateBadge').textContent = `${consult.templateIcon || '🩺'} ${consult.templateName}`;
+    const srcBadge = document.getElementById('viewTranscriptionSourceBadge');
+    if (srcBadge) {
+      if (consult.transcriptionEngine === 'whisper-local') {
+        srcBadge.style.display = 'inline-flex';
+        srcBadge.textContent = `🎙️ ${consult.whisperModelUsed || 'Whisper Local'}`;
+      } else if (consult.transcriptionEngine === 'gemini-cloud') {
+        srcBadge.style.display = 'inline-flex';
+        srcBadge.textContent = '☁️ Áudio: Gemini';
+      } else {
+        srcBadge.style.display = 'none';
+      }
+    }
     const viewDateEl = document.getElementById('viewDateLabel');
     if (viewDateEl) viewDateEl.textContent = fullDateStr;
+
+    const btnRetranscribeGemini = document.getElementById('btnRetranscribeWithGemini');
+    if (btnRetranscribeGemini) {
+      const hasRawAudioSaved = Boolean((consult.chunkCount > 0 && !consult.audioDeleted) || consult.remoteFileUri);
+      btnRetranscribeGemini.style.display = hasRawAudioSaved ? 'inline-flex' : 'none';
+      if (consult.transcriptionEngine === 'whisper-local') {
+        btnRetranscribeGemini.textContent = '☁️ Não gostou? Re-transcrever no Gemini';
+      } else {
+        btnRetranscribeGemini.textContent = '☁️ Re-transcrever no Gemini';
+      }
+    }
 
     // Sincroniza a Barra de Troca de Modelo do Histórico
     const modalTplSelect = document.getElementById('modalChangeConsultationTemplate');
@@ -7846,6 +8277,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
     const sel = document.getElementById('preferredModelSelect');
     if (sel) sel.value = localStorage.getItem('ubs_preferred_model') || 'auto';
+    updateWhisperModeUI();
+    checkWhisperCapabilitiesUI();
     renderApiKeysQuotaDashboard();
     if (modal) modal.style.display = 'flex';
   }
@@ -8415,6 +8848,66 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     document.getElementById('btnReprocessWithNewTemplate')?.addEventListener('click', triggerReprocessCurrent);
     document.getElementById('btnReprocessConsultation')?.addEventListener('click', triggerReprocessCurrent);
+
+    // Botão 1-clique: "Não gostou da transcrição do Whisper? Subir o áudio gravado direto para o Gemini"
+    document.getElementById('btnRetranscribeWithGemini')?.addEventListener('click', async () => {
+      if (!state.activeConsultationId) return;
+      const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
+      if (!c) return;
+      const hasRawAudioSaved = Boolean((c.chunkCount > 0 && !c.audioDeleted) || c.remoteFileUri);
+      if (!hasRawAudioSaved) {
+        showToast('⚠️ O áudio original deste atendimento já foi expirado/excluído.');
+        return;
+      }
+      if (c.evolutionText && c.evolutionText.trim().length > 20) {
+        const prevBackups = Array.isArray(c.evolutionBackups) ? c.evolutionBackups : [];
+        c.evolutionBackups = [{ at: Date.now(), text: c.evolutionText }, ...prevBackups].slice(0, 3);
+      }
+      c.forceCloudAudioTranscription = true;
+      c.status = 'queued';
+      c.errorMessage = '';
+      if (c.previousRawTranscript && c.previousRawTranscript.length >= 50) {
+        c.previousEvolutionText = '';
+      }
+      c.rawTranscript = c.previousRawTranscript || '';
+      await window.ScribeDB.saveConsultation(c);
+      await refreshQueueSidebar();
+      await renderActiveConsultationView(c);
+      processQueueInBackground();
+      showToast(`☁️ Enviando áudio de "${c.patientLabel}" direto para o Gemini na nuvem...`);
+    });
+
+    // Botão rápido da barra superior para ligar/desligar Whisper Local neste computador
+    document.getElementById('btnToggleWhisperMode')?.addEventListener('click', () => {
+      const nextEnabled = !isLocalWhisperEnabled();
+      setLocalWhisperEnabled(nextEnabled);
+      const profLabel = formatWhisperProfileLabel(getLocalWhisperProfile());
+      if (nextEnabled) {
+        showToast(`🎙️ Whisper Local (${profLabel}) ATIVADO neste computador! Na 1ª consulta o navegador baixa o cache automaticamente.`);
+      } else {
+        showToast('☁️ Transcrição na Nuvem (Gemini) ativada neste computador.');
+      }
+    });
+
+    document.getElementById('chkEnableLocalWhisper')?.addEventListener('change', (e) => {
+      const nextEnabled = Boolean(e.target.checked);
+      setLocalWhisperEnabled(nextEnabled);
+      const profLabel = formatWhisperProfileLabel(getLocalWhisperProfile());
+      showToast(nextEnabled
+        ? `🎙️ Whisper Local (${profLabel}) ativado neste computador!`
+        : '☁️ Transcrição na Nuvem (Gemini) ativada neste computador.');
+    });
+
+    document.getElementById('whisperProfileSelect')?.addEventListener('change', (e) => {
+      setLocalWhisperProfile(e.target.value);
+      showToast(`🎙️ Modelo Whisper selecionado: ${formatWhisperProfileLabel(e.target.value)}`);
+    });
+
+    document.getElementById('btnPreloadWhisper')?.addEventListener('click', preloadLocalWhisperModel);
+    document.getElementById('btnUnloadWhisper')?.addEventListener('click', async () => {
+      await unloadWhisperWorker();
+      showToast('🧹 Whisper descarregado da memória RAM (o cache salvo no navegador foi mantido).');
+    });
 
     document.getElementById('btnDeleteConsultation')?.addEventListener('click', async () => {
       if (!state.activeConsultationId) return;

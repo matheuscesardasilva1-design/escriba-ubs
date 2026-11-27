@@ -805,7 +805,7 @@ Responda APENAS com a transcrição literal completa, linha por linha, do iníci
 // ============================================================================
 // GERADOR DE PROMPT CLÍNICO PARA EVOLUÇÃO SOAP + PDF DE EXAMES COMPLEMENTARES
 // ============================================================================
-window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader, hasPreTranscribedAudio = false, patientAge = '', patientSex = '', vdVisitDate = '') {
+window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSummary, hasExamFiles, previousEvolutionContext, previousConsultationText, preTranscribedExamsText, soapSubtypeHeader, hasPreTranscribedAudio = false, patientAge = '', patientSex = '', vdVisitDate = '', transcriptionSource = 'gemini') {
   const todayStr = new Date().toLocaleDateString('pt-BR');
   const notesExamDetection = window.detectExamsInText(quickNotes);
   const parsedPrev = window.parsePreviousConsultationData(previousConsultationText);
@@ -813,6 +813,7 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
   const effectivePatientSex = isPrenatalTemplate ? 'F' : (patientSex || '');
   const isTelessaudeTemplate = templateObj.id === 'telessaude';
   const isVdTemplate = templateObj.id === 'visita_domiciliar';
+  const isWhisperSource = transcriptionSource === 'whisper-local';
   const hasAnyExamsToFormat = Boolean(
     hasExamFiles ||
     preTranscribedExamsText ||
@@ -851,7 +852,15 @@ window.buildMedicalEvolutionPrompt = function(templateObj, quickNotes, zScoreSum
   return `Você é um Médico de Família e Comunidade experiente na Atenção Primária à Saúde (UBS / SUS).
 Sua missão é produzir uma evolução médica COMPLETA, DETALHADA e IMPECÁVEL, pronta para inserção direta no Prontuário Eletrônico do Cidadão (PEC e-SUS / APS).
 ${hasPreTranscribedAudio
-  ? `Sua tarefa agora é ler minuciosamente CADA LINHA da "TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE" fornecida abaixo (do início ao fim, sem ignorar nenhuma fala!) e construir uma "evolucao_completa" médica extremamente completa, fiel e detalhada, integrando 100% do que foi conversado na consulta com as notas rápidas, os exames anexados e os dados permanentes da evolução anterior.`
+  ? `Sua tarefa agora é ler minuciosamente CADA LINHA da "TRANSCRIÇÃO LITERAL COMPLETA DO ÁUDIO DA CONSULTA DE HOJE" fornecida abaixo (do início ao fim, sem ignorar nenhuma fala!) e construir uma "evolucao_completa" médica extremamente completa, fiel e detalhada, integrando 100% do que foi conversado na consulta com as notas rápidas, os exames anexados e os dados permanentes da evolução anterior.${isWhisperSource ? `
+
+ATENÇÃO ESPECIAL — TRANSCRIÇÃO GERADA POR WHISPER LOCAL (SEM RÓTULOS [MÉDICO]/[PACIENTE]):
+- A transcrição literal abaixo veio do motor local Whisper (português contínuo, sem etiquetas "[MÉDICO]:" ou "[PACIENTE]:").
+- Use seu raciocínio clínico apurado para distinguir perfeitamente:
+  1) O que são queixas, sintomas, história, controle domiciliar de PA/HGT, respostas negativas e relatos do PACIENTE/FAMILIAR -> coloque exclusivamente no SUBJETIVO.
+  2) O que são sinais vitais e achados do EXAME FÍSICO ditados pelo médico -> coloque exclusivamente no OBJETIVO (sem inventar sistemas não avaliados!).
+  3) O que são explicações, orientações, prescrições com doses exatas, pedidos de exames, renovação de receitas e encaminhamentos ditados pelo MÉDICO -> coloque exclusivamente na CONDUTA (e ações para futuras consultas no PLANO).
+- Corrija com precisão eventuais pequenos desvios fonéticos do Whisper em nomes de medicações ou termos médicos brasileiros (ex.: "los artana" → Losartana, "anlo de pino" → Anlodipino, "hgt" / "agate" → HGT, "desloratadina", "sinvastatina", "levotiroxina", "metformina", "espirometria", etc.) apoiando-se no contexto clínico e na "# MUC" anterior, MAS JAMAIS invente dosagens, exames ou achados que não foram ditos!` : ''}`
   : `Sua tarefa tem DUAS ETAPAS OBRIGATÓRIAS E SEQUENCIAIS:
 ETAPA 1 (TRANSCRIÇÃO INTEGRAL DE 100% DO ÁUDIO): Ouvir o áudio anexado do primeiro ao último segundo (00:00 até o fim) e transcrever literalmente TUDO o que foi dito na chave "transcricao_literal_do_audio" do JSON (identificando "[MÉDICO]:" e "[PACIENTE]:"). É TERMINANTEMENTE PROIBIDO pular, resumir ou ignorar falas da paciente (especialmente relatos de ida à emergência/hospital e todas as queixas relatadas!).
 ETAPA 2 (EVOLUÇÃO CLÍNICA ESTRUTURADA): Preencher "evolucao_completa" usando 100% dos fatos reais presentes na sua "transcricao_literal_do_audio", nas notas rápidas, nos exames anexados e nos dados permanentes da evolução anterior.`}

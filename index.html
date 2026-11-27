@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261126_65" />
+  <link rel="stylesheet" href="styles.css?v=20261126_66" />
   <script>
     (function() {
       try {
@@ -54,7 +54,7 @@
     <div class="brand" id="brandHomeBtn" style="cursor: pointer;" title="Ir para a primeira página">
       <div class="brand-icon">⚕</div>
       <span class="brand-title">Prontuário APS</span>
-      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.26-65</span>
+      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.26-66</span>
     </div>
 
     <nav class="nav-tabs">
@@ -70,6 +70,9 @@
     <div class="topbar-right">
       <button type="button" class="btn-top" id="btnToggleDarkMode" onclick="window.__toggleDarkMode && window.__toggleDarkMode()" title="Alternar Modo Escuro / Claro">
         🌙 Modo Escuro
+      </button>
+      <button type="button" class="btn-top" id="btnToggleWhisperMode" title="Alternar transcrição de áudio entre Whisper Local (no navegador) e Gemini (nuvem) — salvo separado neste computador">
+        ☁️ Áudio: Gemini
       </button>
       <span class="quota-pill" id="btnOpenQuotaMonitor" style="cursor: pointer;" title="Clique para abrir o Mostrador de Limites, Uso e Saldo Disponível de cada Chave API">
         <strong id="dailyTokenCounter" style="color: #059669;">🟢 Sistema Pronto (0 hoje)</strong>
@@ -691,6 +694,7 @@
         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
           <h2 id="viewPatientTitle" style="font-size: 20px; font-weight: 800; text-transform: uppercase;">PACIENTE</h2>
           <span class="h-tpl-tag" id="viewTemplateBadge" style="font-size: 12px; padding: 4px 10px;">Modelo</span>
+          <span id="viewTranscriptionSourceBadge" style="display: none; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 99px; background: #ecfeff; color: #0e7490; border: 1px solid #67e8f9;"></span>
           <span id="viewDateLabel" style="font-size: 12.5px; color: var(--text-muted); font-weight: 600;"></span>
         </div>
 
@@ -711,6 +715,9 @@
           </button>
           <button type="button" class="btn btn-secondary" id="btnReprocessConsultation" title="Reprocessar">
             🔄 Atualizar
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnRetranscribeWithGemini" style="display: none; font-weight: 700; color: #1d4ed8; border-color: #93c5fd; background: #eff6ff;" title="Não gostou da transcrição local? Clique para enviar o áudio gravado direto para o Gemini na nuvem e refazer do zero">
+            ☁️ Re-transcrever no Gemini
           </button>
           <button type="button" class="btn btn-secondary" id="btnRestorePrevVersion" style="display: none;" title="Voltar para a versão da evolução que existia antes da última atualização/continuação">
             ↩️ Versão anterior
@@ -1053,6 +1060,51 @@
         <div id="apiKeysQuotaDashboard"></div>
       </div>
 
+      <!-- MOTOR DE TRANSCRIÇÃO LOCAL DE ÁUDIO (WHISPER NO NAVEGADOR — INDEPENDENTE POR COMPUTADOR) -->
+      <div id="whisperLocalConfigSection" style="background: #f0fdfa; border: 1.5px solid #99f6e4; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+          <div>
+            <strong style="font-size: 13.5px; color: #115e59;">🎙️ Transcrição Local de Áudio (Whisper no Navegador)</strong>
+            <div style="font-size: 11.5px; color: #0f766e;">Salvo separadamente neste computador • Não precisa instalar nada • O Gemini continua organizando o SOAP</div>
+          </div>
+          <span id="whisperHardwareBadge" style="font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: #ccfbf1; color: #115e59; border: 1px solid #5eead4;">
+            🔍 Verificando GPU...
+          </span>
+        </div>
+
+        <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: #134e4a; cursor: pointer; margin-bottom: 8px;">
+          <input type="checkbox" id="chkEnableLocalWhisper" style="width: 16px; height: 16px; cursor: pointer;" />
+          <span>Ativar Whisper Local neste computador (transcreve áudio localmente e envia só o texto p/ o Gemini organizar)</span>
+        </label>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;">
+          <select id="whisperProfileSelect" class="select-box" style="flex: 1; min-width: 240px; font-size: 12.5px; font-weight: 600;">
+            <option value="turbo">🏆 Whisper Large V3 Turbo — Excelente Transcrição Médica (Recomendado Mac M5 / GPU • ~540 MB cache)</option>
+            <option value="small">⚡ Whisper Small — Mais Leve (PC simples da UBS sem placa de vídeo • ~240 MB cache)</option>
+          </select>
+          <button type="button" class="btn btn-primary" id="btnPreloadWhisper" style="padding: 6px 12px; font-size: 12px; font-weight: 700; background: #0d9488; border-color: #0f766e;">
+            ⬇️ Baixar / Testar Whisper Agora
+          </button>
+          <button type="button" class="btn btn-secondary" id="btnUnloadWhisper" style="padding: 6px 10px; font-size: 11.5px;" title="Descarregar modelo da memória RAM">
+            🧹 Liberar RAM
+          </button>
+        </div>
+
+        <div id="whisperDownloadProgressWrap" style="display: none; margin-top: 6px;">
+          <div style="display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 700; color: #0f766e; margin-bottom: 4px;">
+            <span id="whisperProgressLabel">Preparando Whisper...</span>
+            <span id="whisperProgressPct">0%</span>
+          </div>
+          <div style="width: 100%; height: 6px; background: rgba(13, 148, 136, 0.18); border-radius: 99px; overflow: hidden;">
+            <div id="whisperProgressBarFill" style="width: 0%; height: 100%; background: linear-gradient(90deg, #0d9488, #06b6d4); border-radius: 99px; transition: width 0.25s ease;"></div>
+          </div>
+        </div>
+
+        <div id="whisperConfigStatusText" style="margin-top: 6px; font-size: 11.5px; color: #115e59; line-height: 1.45;">
+          💡 Se ativado, o áudio é transcrito no próprio navegador (economiza ~85% da cota da API e evita erro 503). Se não gostar da transcrição de algum paciente, use o botão <strong>"☁️ Re-transcrever no Gemini"</strong> dentro do atendimento. Se falhar neste PC, cai automaticamente para o Gemini!
+        </div>
+      </div>
+
       <div style="margin-bottom: 12px;">
         <label style="font-weight: 700; display: block; margin-bottom: 5px;">Dispositivo de Entrada (Microfone):</label>
         <select id="micSelect" class="select-box">
@@ -1158,9 +1210,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261126_65"></script>
-  <script src="zscore.js?v=20261126_65"></script>
-  <script src="db.js?v=20261126_65"></script>
-  <script src="app.js?v=20261126_65"></script>
+  <script src="templates.js?v=20261126_66"></script>
+  <script src="zscore.js?v=20261126_66"></script>
+  <script src="db.js?v=20261126_66"></script>
+  <script src="app.js?v=20261126_66"></script>
 </body>
 </html>
