@@ -4303,8 +4303,67 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
-    // 2. Remove frases metalinguísticas inaceitáveis no Objetivo e garante ectoscopia padrão
+    // 2. Remove frases metalinguísticas inaceitáveis no Objetivo e padroniza formato fixo + bloqueia sistemas não avaliados
     text = text.replace(/OBJETIVO\s*\n\s*(?:Exame\s+f[íi]sico\s+n[ãa]o\s+detalhado[^\n]*|Exame\s+f[íi]sico\s+n[ãa]o\s+mencionado[^\n]*|N[ãa]o\s+detalhado\s+na\s+transcri[çc][ãa]o[^\n]*)\n*/gi, 'OBJETIVO\nBEG, LOC, MUC\n\n');
+
+    // 2.1 Normalização determinística do bloco OBJETIVO: mantém siglas padronizadas fixas e remove sistemas inventados que não constam no áudio/notas
+    const objSectionMatch = text.match(/(\nOBJETIVO\s*\n)([\s\S]*?)(\n\s*(?:EXAMES COMPLEMENTARES|ULTRASSONOGRAFIA|AVALIAÇÃO|CONDUTA|PLANO)\b|$)/i);
+    if (objSectionMatch) {
+      const objHeader = objSectionMatch[1];
+      let objBody = objSectionMatch[2] || '';
+      const objTail = objSectionMatch[3] || '';
+      const isPueri = templateId === 'puericultura' || /CONSULTA DE PUERICULTURA/i.test(text);
+      const isPrenatal = templateId === 'prenatal' || /CONSULTA DE PRÉ-NATAL/i.test(text);
+      const isLgbt = templateId === 'lgbt_primeira' || templateId === 'lgbt_seguimento';
+      const todayExamEvidence = `${rawTranscript || ''}\n${quickNotes || ''}\n${zScoreSummary || ''}`;
+      const hasEvidenceToAudit = todayExamEvidence.trim().length >= 30;
+
+      const normalizedObjLines = objBody.split('\n').map(l => {
+        let ln = l.trim().replace(/^[-•*]\s*/, '');
+        if (!ln) return '';
+        // Padroniza ectoscopia base (fora Puericultura e LGBT) para "BEG, LOC, MUC"
+        if (!isPueri && !isLgbt && /^(?:Bom\s+estado\s+geral|BEG\s*,\s*LOC\s*,\s*(?:corad|hidratad|mucosas))/i.test(ln)) {
+          ln = 'BEG, LOC, MUC';
+        }
+        // Padroniza rótulos por extenso para as siglas fixas
+        ln = ln
+          .replace(/^Ausculta\s+pulmonar\s*:\s*/i, 'AP: ')
+          .replace(/^Aparelho\s+respirat[óo]rio\s*:\s*/i, 'AP: ')
+          .replace(/^Ausculta\s+card[íi]aca\s*:\s*/i, 'AC: ')
+          .replace(/^Aparelho\s+cardiovascular\s*:\s*/i, 'AC: ')
+          .replace(/^Abd[ôo]men?\s*:\s*/i, 'ABD: ')
+          .replace(/^Membros\s+inferiores\s*:\s*/i, 'MMII: ')
+          .replace(/^Sistema\s+nervoso\s*:\s*/i, 'SN: ')
+          .replace(/^Press[ãa]o\s+arterial\s*:\s*/i, 'PA: ')
+          .replace(/^Frequ[êe]ncia\s+card[íi]aca\s*:\s*/i, 'FC: ')
+          .replace(/^Frequ[êe]ncia\s+respirat[óo]ria\s*:\s*/i, 'FR: ')
+          .replace(/^Temperatura(?:\s+axilar)?\s*:\s*/i, 'Tax: ')
+          .replace(/^Satura[çc][ãa]o(?:\s+de\s+O2)?\s*:\s*/i, 'SpO2: ');
+        return ln;
+      }).filter(ln => {
+        if (!ln) return false;
+        if (!hasEvidenceToAudit) return true;
+        // Remove sistemas extras que a IA costuma inventar como "normais" quando NÃO foram citados no áudio nem nas notas
+        if (/^SN\s*:/i.test(ln) && !/\b(?:men[íi]ng|rigidez|nuca|neurol[óo]g|reflexo|pupila|for[çc]a\s+muscular|marcha|glasgow|sensibilidade|parestesia|kernig|brudzinski)\b/i.test(todayExamEvidence)) {
+          return false;
+        }
+        if (/^Pele\s*:/i.test(ln) && !/\b(?:pele|exantema|mancha|les[ãa]o|les[õo]es|pet[ée]quia|eritema|prurido|descama|ferida|cicatriz|n[óo]dulo|p[áa]pula|ves[íi]cula|bolha|urtic[áa]ria)\b/i.test(todayExamEvidence)) {
+          return false;
+        }
+        // Em SOAP Geral / VD / Interconsulta (onde o modelo base tem apenas BEG, LOC, MUC), não permite inventar AC/AP/ABD/MMII "normais" se não avaliados
+        if (!isPueri && !isPrenatal && !isLgbt) {
+          if (/^AC\s*:/i.test(ln) && !/\b(?:cora[çc][ãa]o|card[íi]ac|ausculta|sopro|ritmo|bulha|rcr|bnf|2t|ac\b|batimento)\b/i.test(todayExamEvidence)) return false;
+          if (/^AP\s*:/i.test(ln) && !/\b(?:pulm[ãa]o|pulmonar|ausculta|respir|murm[úu]rio|sibilo|ronco|estertor|mv\+|mvud|sra|ap\b|tosse|falta\s+de\s+ar|dispneia|peito)\b/i.test(todayExamEvidence)) return false;
+          if (/^ABD\s*:/i.test(ln) && !/\b(?:abd[ôo]m|barriga|palpa[çc][ãa]o|epig[áa]str|fossa\s+il[íi]aca|hipoc[ôo]ndrio|rha|visceromegal|blumberg|murphy|giordano|abd\b|deita|maca)\b/i.test(todayExamEvidence)) return false;
+          if (/^MMII\s*:/i.test(ln) && !/\b(?:mmii|membro[s]?\s+inferior|perna|tornozelo|p[ée]s?|edema|incha[çc]o|panturrilha|pulso[s]?\s+pedios|homans|cacifo)\b/i.test(todayExamEvidence)) return false;
+        }
+        return true;
+      });
+
+      if (normalizedObjLines.length > 0) {
+        text = text.replace(objSectionMatch[0], `${objHeader}${normalizedObjLines.join('\n')}${objTail}`);
+      }
+    }
 
     // 3. Se média domiciliar de PA ou HGT foi parar no Objetivo, move automaticamente para o final do Subjetivo
     const homePaInObjMatch = text.match(/\nOBJETIVO\s*\n([\s\S]*?)(\n\s*(?:EXAMES|ULTRASSONOGRAFIA|AVALIAÇÃO)\b)/i);
