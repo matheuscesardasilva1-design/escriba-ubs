@@ -5863,6 +5863,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     try {
       let liveAudioPart = null;
+      let liveWhisperTranscript = '';
       if (state.isRecording && state.recordingConsultationId && state.mediaRecorder) {
         try {
           if (state.mediaRecorder.state === 'recording') {
@@ -5873,10 +5874,25 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             await state.lastChunkSavePromise;
           }
           const partialBlob = await window.ScribeDB.assembleAudioBlob(state.recordingConsultationId);
-          if (partialBlob && partialBlob.size > 0 && partialBlob.size <= 15 * 1024 * 1024) {
-            const cleanMime = normalizeAudioMimeType(partialBlob, '');
-            const b64 = await blobToBase64(partialBlob);
-            liveAudioPart = { inlineData: { mimeType: cleanMime, data: b64 } };
+          if (partialBlob && partialBlob.size > 0) {
+            // Se o Whisper Local estiver ativo neste computador, transcreve o áudio parcial localmente (rápido e sem gastar cota de áudio!)
+            if (isLocalWhisperEnabled()) {
+              try {
+                const wRes = await transcribeAudioBlobsWithLocalWhisper([partialBlob], (pct, stageMsg) => {
+                  if (btn && stageMsg) btn.textContent = `⏳ ${stageMsg}`;
+                });
+                if (wRes && wRes.transcript && wRes.transcript.length >= 10) {
+                  liveWhisperTranscript = fixBrazilianMedicationSpelling(wRes.transcript);
+                }
+              } catch (wLiveErr) {
+                console.warn('Whisper Local no encaminhamento ao vivo falhou, usando fallback Gemini:', wLiveErr);
+              }
+            }
+            if (!liveWhisperTranscript && partialBlob.size <= 15 * 1024 * 1024) {
+              const cleanMime = normalizeAudioMimeType(partialBlob, '');
+              const b64 = await blobToBase64(partialBlob);
+              liveAudioPart = { inlineData: { mimeType: cleanMime, data: b64 } };
+            }
           }
         } catch (_) {}
       }
@@ -5893,16 +5909,16 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         prevConsult ? `=== EVOLUÇÃO ANTERIOR DO PACIENTE ===\n${prevConsult}` : '',
         quickNotes ? `=== ANOTAÇÕES RÁPIDAS DE HOJE ===\n${quickNotes}` : '',
         draftTyped ? `=== RASCUNHO DIGITADO PELO MÉDICO NO ENCAMINHAMENTO ===\n${draftTyped}` : ''
-      ].filter(Boolean).join('\n\n') || 'Consulta em andamento (utilize o áudio gravado até o momento, motivo e dados adicionais informados).';
+      ].filter(Boolean).join('\n\n') || 'Consulta em andamento (utilize o áudio/transcrição gravados até o momento, motivo e dados adicionais informados).';
 
-      const caseEvidence = `${especialidade}\n${motivoEncaminhamento}\n${dadosExtrasRegulacao}\n${combinedContextText}`;
+      const caseEvidence = `${especialidade}\n${motivoEncaminhamento}\n${dadosExtrasRegulacao}\n${combinedContextText}\n${liveWhisperTranscript}`;
       const targetedProtocol = extractRelevantProtocolSection(telessaudeProtocol?.conteudo_extraido || '', caseEvidence, motivoEncaminhamento);
 
       const prompt = window.buildReferralPrompt({
         templateId: state.selectedTemplateId,
         templateName: state.templates[state.selectedTemplateId]?.name || 'Consulta APS',
         evolucaoTexto: combinedContextText,
-        rawTranscript: '',
+        rawTranscript: liveWhisperTranscript,
         preTranscribedExamsText: preExams,
         especialidade,
         motivoEncaminhamento,
@@ -5912,7 +5928,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       });
 
       const userParts = [];
-      if (liveAudioPart) userParts.push(liveAudioPart);
+      if (liveAudioPart && !liveWhisperTranscript) userParts.push(liveAudioPart);
       userParts.push({ text: prompt });
 
       const requestBody = {
@@ -5926,7 +5942,12 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
       let responseJson;
       try {
-        ({ responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey, onLiveRefStatus, { maxRounds: 1, fastTimeoutMs: 45000, disableThinking: true }));
+        ({ responseJson } = await callGeminiWithFallbackAndRetry(requestBody, apiKey, onLiveRefStatus, {
+          maxRounds: 1,
+          fastTimeoutMs: 45000,
+          disableThinking: true,
+          allowGemmaFallback: Boolean(liveWhisperTranscript || !liveAudioPart)
+        }));
       } catch (audioRefErr) {
         if (liveAudioPart) {
           // Fallback imediato só com texto (Evolução Anterior + Notas + Motivo + Exames) se o WebM ainda em gravação falhar
@@ -5934,7 +5955,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             contents: [{ role: 'user', parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.15, maxOutputTokens: 8192 }
           };
-          ({ responseJson } = await callGeminiWithFallbackAndRetry(textOnlyBody, apiKey, onLiveRefStatus, { maxRounds: 1, fastTimeoutMs: 35000, disableThinking: true }));
+          ({ responseJson } = await callGeminiWithFallbackAndRetry(textOnlyBody, apiKey, onLiveRefStatus, { maxRounds: 1, fastTimeoutMs: 35000, disableThinking: true, allowGemmaFallback: true }));
         } else {
           throw audioRefErr;
         }
