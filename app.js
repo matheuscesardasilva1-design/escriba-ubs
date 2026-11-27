@@ -2410,7 +2410,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_72', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261126_73', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -4194,6 +4194,31 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     let text = String(evolutionText || '');
     if (!text || /Áudio sem conteúdo de consulta médica/i.test(text)) return text;
 
+    // 0. Detecta se o médico declarou "registro posterior de atendimento" (no áudio ou nas Anotações Rápidas)
+    // para garantir que NUNCA seja ignorado nem sobrescrito em nenhum dos 8 modelos!
+    const combinedPosteriorSource = `${rawTranscript || ''}\n${quickNotes || ''}`;
+    const isPosteriorRecord = /\b(?:registro\s+posterior(?:\s+(?:de|do)\s+atendimento)?|evolu[çc][ãa]o\s+posterior|registro\s+(?:tardio|retroativo)|atendimento\s+(?:foi\s+)?(?:realizado\s+)?(?:ontem|anteriormente|no\s+dia\s+\d{1,2}\/\d{1,2}))\b/i.test(combinedPosteriorSource);
+    const posteriorDateMatch = combinedPosteriorSource.match(/(?:registro\s+posterior(?:\s+(?:de|do)\s+atendimento)?|evolu[çc][ãa]o\s+posterior|registro\s+(?:tardio|retroativo)|atendimento\s+(?:foi\s+)?(?:realizado\s+)?|consulta\s+(?:foi\s+)?(?:realizada\s+)?)\s*(?:d[eo]\s+dia|em|no\s+dia|de|do)?\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i);
+    const posteriorDateStr = posteriorDateMatch ? posteriorDateMatch[1].trim() : '';
+
+    const applyPosteriorHeaderIfNeeded = (txt) => {
+      if (!isPosteriorRecord) return txt;
+      const suffix = posteriorDateStr ? ` - REGISTRO POSTERIOR (${posteriorDateStr})` : ' - REGISTRO POSTERIOR';
+      if (/^\s*##\s*([^\n#]+?)\s*##/i.test(txt)) {
+        return txt.replace(/^\s*##\s*([^\n#]+?)\s*##/i, (full, inner) => {
+          const cleanInner = inner.trim();
+          if (/REGISTRO\s+POSTERIOR/i.test(cleanInner)) {
+            if (posteriorDateStr && !cleanInner.includes(posteriorDateStr)) {
+              return `## ${cleanInner} (${posteriorDateStr}) ##`;
+            }
+            return full;
+          }
+          return `## ${cleanInner}${suffix} ##`;
+        });
+      }
+      return `## REGISTRO POSTERIOR DE ATENDIMENTO${posteriorDateStr ? ` (${posteriorDateStr})` : ''} ##\n\n${txt.trimStart()}`;
+    };
+
     // 1. Garante o cabeçalho da modalidade na Consulta Geral (SOAP):
     // ## CONSULTA AGENDADA - 0800 ## | ## RETORNO MÉDICO ## | ## DEMANDA ESPONTÂNEA ## | Sem ##
     if (templateId === 'geral') {
@@ -4275,7 +4300,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         .replace(/^\s*(?:\d+\.\s*)?(?:SUBJETIVO|OBJETIVO(?:\s*\(EXAME FÍSICO\))?|EXAMES COMPLEMENTARES|AVALIAÇÃO|CONDUTA|PLANO)\s*:?\s*$/gim, '')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
-      return `## INTERCONSULTA COM A ENFERMAGEM ##\n\n${text}`;
+      return applyPosteriorHeaderIfNeeded(`## INTERCONSULTA COM A ENFERMAGEM ##\n\n${text}`);
     }
 
     // 2. Padroniza a paridade obstétrica para o formato compacto "# G01PV0PC0A0" (sem espaços entre G, PV, PC, A)
@@ -4770,6 +4795,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       }
     }
 
+    text = applyPosteriorHeaderIfNeeded(text);
     return text;
   }
 
