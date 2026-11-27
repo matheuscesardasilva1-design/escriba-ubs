@@ -271,6 +271,7 @@
     bindUIEvents();
     updateApiKeyStatusBadge();
     updateWhisperModeUI();
+    checkWhisperCapabilitiesUI();
     updateStorageStatsUI();
     renderPendingExamFilesUI();
     updateDocumentTitle();
@@ -2334,32 +2335,56 @@
     updateWhisperModeUI();
   }
 
-  function getLocalWhisperProfile() {
+  function getLocalWhisperProfileSetting() {
     const p = localStorage.getItem('ubs_whisper_profile');
-    return (p === 'small' || p === 'turbo' || p === 'turbo_compact') ? p : 'turbo_compact';
+    return (p === 'auto' || p === 'small' || p === 'turbo' || p === 'turbo_compact') ? p : 'auto';
+  }
+
+  function getRecommendedWhisperProfileForThisPC() {
+    const caps = whisperCachedCaps || { hasWebGpu: false, hasF16: false, ramGB: 0, cores: 0 };
+    if (caps.hasWebGpu) {
+      // Com WebGPU (Mac M1-M5 ou PC moderno com GPU): Turbo Intermediário (~540 MB) é o ponto doce entre velocidade, tamanho e precisão médica
+      if (caps.ramGB && caps.ramGB <= 4) return 'small';
+      return 'turbo_compact';
+    }
+    // Sem WebGPU (CPU/WASM — típico PC simples de UBS): Small (~240 MB) para não travar a máquina
+    return 'small';
+  }
+
+  function getLocalWhisperProfile() {
+    const setting = getLocalWhisperProfileSetting();
+    if (setting === 'auto') {
+      return getRecommendedWhisperProfileForThisPC();
+    }
+    return setting;
   }
 
   function setLocalWhisperProfile(profile) {
-    const safe = (profile === 'small' || profile === 'turbo' || profile === 'turbo_compact') ? profile : 'turbo_compact';
+    const safe = (profile === 'auto' || profile === 'small' || profile === 'turbo' || profile === 'turbo_compact') ? profile : 'auto';
     localStorage.setItem('ubs_whisper_profile', safe);
     updateWhisperModeUI();
   }
 
   function formatWhisperProfileLabel(profileKey) {
-    if (profileKey === 'small') return 'Whisper Small';
-    if (profileKey === 'turbo') return 'Whisper Turbo FP16';
-    return 'Whisper Turbo Intermediário';
+    if (profileKey === 'auto') {
+      const rec = getRecommendedWhisperProfileForThisPC();
+      return `Automático (${formatWhisperProfileLabel(rec)})`;
+    }
+    if (profileKey === 'small') return 'Whisper Small (~240 MB)';
+    if (profileKey === 'turbo') return 'Whisper Turbo FP16 (~1,4 GB)';
+    return 'Whisper Turbo Intermediário (~540 MB)';
   }
 
   function updateWhisperModeUI() {
     const enabled = isLocalWhisperEnabled();
-    const profile = getLocalWhisperProfile();
+    const setting = getLocalWhisperProfileSetting();
+    const effective = getLocalWhisperProfile();
     const topBtn = document.getElementById('btnToggleWhisperMode');
     if (topBtn) {
       if (enabled) {
         topBtn.textContent = '🎙️ Whisper';
         topBtn.classList.add('whisper-active');
-        topBtn.title = `${formatWhisperProfileLabel(profile)} ATIVADO neste computador (clique para voltar ao Gemini na nuvem)`;
+        topBtn.title = `${formatWhisperProfileLabel(effective)} ATIVADO neste computador (clique para voltar ao Gemini na nuvem)`;
       } else {
         topBtn.textContent = '☁️ Gemini';
         topBtn.classList.remove('whisper-active');
@@ -2369,12 +2394,12 @@
     const chk = document.getElementById('chkEnableLocalWhisper');
     if (chk) chk.checked = enabled;
     const sel = document.getElementById('whisperProfileSelect');
-    if (sel) sel.value = profile;
+    if (sel) sel.value = setting;
   }
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_70', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261126_71', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -2431,6 +2456,8 @@
     try {
       let hasWebGpu = false;
       let hasF16 = false;
+      const ramGB = Number(navigator.deviceMemory || 0);
+      const cores = Number(navigator.hardwareConcurrency || 0);
       if (navigator.gpu) {
         const adapter = await navigator.gpu.requestAdapter();
         if (adapter) {
@@ -2438,16 +2465,29 @@
           hasF16 = Boolean(adapter.features && adapter.features.has('shader-f16'));
         }
       }
-      whisperCachedCaps = { hasWebGpu, hasF16 };
+      whisperCachedCaps = { hasWebGpu, hasF16, ramGB, cores };
+      const recProfile = getRecommendedWhisperProfileForThisPC();
+      const recLabel = formatWhisperProfileLabel(recProfile);
+
+      // Atualiza o texto da opção "Automático" no seletor para mostrar exatamente qual modelo foi escolhido para este PC
+      const sel = document.getElementById('whisperProfileSelect');
+      if (sel && sel.options && sel.options[0] && sel.options[0].value === 'auto') {
+        sel.options[0].textContent = `✨ Automático (Indicado p/ este PC: ${recLabel})`;
+      }
+
       if (badge) {
         if (hasWebGpu) {
-          badge.textContent = hasF16 ? '⚡ WebGPU FP16 ativo (Velocidade Máxima!)' : '⚡ WebGPU ativo (Acelerado)';
+          badge.textContent = hasF16
+            ? `⚡ WebGPU FP16 • Indicado: ${recLabel}`
+            : `⚡ WebGPU • Indicado: ${recLabel}`;
         } else {
-          badge.textContent = '💻 Modo CPU/WASM (Sem WebGPU — use Small se ficar lento)';
+          badge.textContent = `💻 CPU/WASM • Indicado: ${recLabel}`;
         }
       }
+      updateWhisperModeUI();
     } catch (_) {
-      if (badge) badge.textContent = '💻 Modo CPU/WASM disponível';
+      whisperCachedCaps = { hasWebGpu: false, hasF16: false, ramGB: 0, cores: 0 };
+      if (badge) badge.textContent = '💻 CPU/WASM • Indicado: Whisper Small (~240 MB)';
     }
   }
 
@@ -2485,6 +2525,9 @@
 
   async function preloadLocalWhisperModel() {
     whisperDownloadCancelled = false;
+    if (!whisperCachedCaps) {
+      await checkWhisperCapabilitiesUI();
+    }
     const profile = getLocalWhisperProfile();
     const label = formatWhisperProfileLabel(profile);
     const btn = document.getElementById('btnPreloadWhisper');
@@ -2610,6 +2653,9 @@
   }
 
   async function transcribeAudioBlobsWithLocalWhisper(blobsArray, onProgressMilestone) {
+    if (!whisperCachedCaps) {
+      await checkWhisperCapabilitiesUI();
+    }
     const profile = getLocalWhisperProfile();
     const profileLabel = formatWhisperProfileLabel(profile);
 
