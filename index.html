@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Prontuário Clínico APS - Evolução & Regulação</title>
   <link id="dynamicFavicon" rel="icon" type="image/png" href="" />
-  <link rel="stylesheet" href="styles.css?v=20261126_71" />
+  <link rel="stylesheet" href="styles.css?v=20261126_72" />
   <script>
     (function() {
       try {
@@ -54,7 +54,7 @@
     <div class="brand" id="brandHomeBtn" style="cursor: pointer;" title="Ir para a primeira página">
       <div class="brand-icon">⚕</div>
       <span class="brand-title">Prontuário APS</span>
-      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.26-71</span>
+      <span id="appVersionBadge" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 6px; background: rgba(99, 102, 241, 0.12); color: #6366f1; border: 1px solid rgba(99, 102, 241, 0.25); margin-left: 5px; white-space: nowrap; opacity: 0.85;" title="Versão atual carregada pelo navegador">v2026.11.26-72</span>
     </div>
 
     <nav class="nav-tabs">
@@ -570,11 +570,11 @@
       </div>
 
       <div style="display: flex; gap: 10px; justify-content: space-between; flex-wrap: wrap;">
-        <label class="btn btn-secondary" style="cursor: pointer; flex: 1;">
+        <label id="btnImportExternalAudioLabel" class="btn btn-secondary" style="display: none; cursor: pointer; flex: 1;">
           📂 Importar Registro Externo (VD / WhatsApp)
           <input type="file" id="audioFileInput" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" multiple style="display: none;" />
         </label>
-        <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly">
+        <button type="button" class="btn btn-secondary" id="btnProcessNotesOnly" style="flex: 1;">
           ⚡ Gerar Só das Anotações / PDF
         </button>
         <button type="button" class="btn btn-secondary" id="btnClearAllSheetBottom" style="color: #b91c1c; border-color: #fecaca; background: #fff5f5;" title="Limpar todos os campos, exames e anotações quando não for seguir com o atendimento">
@@ -609,7 +609,7 @@
       </div>
 
       <div id="whatsappDropZone" class="drop-zone" style="margin-top: 8px;">
-        Arraste arquivos de Visita Domiciliar ou PDFs para cá (ou pressione Ctrl+V)
+        Arraste PDFs ou imagens de exames para cá (ou pressione Ctrl+V)
       </div>
     </div>
   </main>
@@ -702,7 +702,7 @@
           <button type="button" class="btn btn-primary" id="btnContinueRecordingPatient" title="Abrir novamente a folha deste mesmo paciente para gravar uma continuação e juntar na mesma evolução">
             ➕ Continuar Atendimento
           </button>
-          <label class="btn btn-secondary" style="cursor: pointer; font-weight: 700; color: #0284c7; border-color: #7dd3fc;" title="Enviar arquivo de áudio gravado posteriormente na UBS (ex: relato de como foi a VD e o que foi feito) para incluir nesta evolução">
+          <label id="btnUploadPostVdAudioLabel" class="btn btn-secondary" style="display: none; cursor: pointer; font-weight: 700; color: #0284c7; border-color: #7dd3fc;" title="Enviar arquivo de áudio gravado posteriormente na UBS (ex: relato de como foi a VD e o que foi feito) para incluir nesta evolução">
             📂 + Enviar Áudio Pós-VD / Extra
             <input type="file" id="continuationAudioFileInput" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" multiple style="display: none;" />
           </label>
@@ -1215,9 +1215,9 @@
   <div class="toast" id="toastNotification"></div>
 
   <!-- SCRIPTS LOCAIS -->
-  <script src="templates.js?v=20261126_71"></script>
-  <script src="zscore.js?v=20261126_71"></script>
-  <script src="db.js?v=20261126_71"></script>
-  <script src="app.js?v=20261126_71"></script>
+  <script src="templates.js?v=20261126_72"></script>
+  <script src="zscore.js?v=20261126_72"></script>
+  <script src="db.js?v=20261126_72"></script>
+  <script src="app.js?v=20261126_72"></script>
 </body>
 </html>

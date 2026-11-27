@@ -1433,36 +1433,68 @@ body.dark-mode,
   color: #ffffff;
 }
 
-/* Seção de Encaminhamentos Telessaúde / Regulação */
+/* Seção de Encaminhamentos Telessaúde / Regulação (Contraste limpo em Dark Mode — sem roxo escuro apagado!) */
 .dark-mode .referral-section {
-  background: #151124;
-  border-color: #581c87;
+  background: #1e293b !important;
+  border-color: #475569 !important;
 }
 
+.dark-mode .referral-header-toggle,
+.dark-mode .referral-header-toggle > div,
+.dark-mode .referral-header-toggle span,
 .dark-mode .referral-header-toggle strong {
-  color: #d8b4fe !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode #liveSavedReferralsCountBadge,
+.dark-mode #savedReferralsCountBadge {
+  background: #334155 !important;
+  color: #e2e8f0 !important;
+  border: 1px solid #475569 !important;
+}
+
+.dark-mode #liveReferralDrawerBody,
+.dark-mode #referralDrawerBody {
+  border-top-color: #334155 !important;
+}
+
+.dark-mode #liveReferralDrawerBody > div,
+.dark-mode #referralDrawerBody > div,
+.dark-mode #referralOutputContainer {
+  background: #162032 !important;
+  border-color: #475569 !important;
+  color: #f1f5f9 !important;
+}
+
+.dark-mode #liveReferralDrawerBody label,
+.dark-mode #referralDrawerBody label,
+.dark-mode #liveReferralDrawerBody label span,
+.dark-mode #referralDrawerBody label span {
+  color: #cbd5e1 !important;
+}
+
+.dark-mode #liveReferralConditionInput,
+.dark-mode #referralConditionInput {
+  background: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #64748b !important;
 }
 
 .dark-mode .saved-ref-item {
-  background: #1c1533;
-  border-color: #6b21a8;
-  color: #f3e8ff;
+  background: #222c40;
+  border-color: #475569;
+  color: #f1f5f9;
 }
 
 .dark-mode .saved-ref-item.active {
-  background: #3b0764;
-  border-color: #c084fc;
-}
-
-.dark-mode #referralOutputContainer {
-  background: #130f24 !important;
-  border-color: #7c3aed !important;
+  background: #334155;
+  border-color: #818cf8;
 }
 
 .dark-mode .referral-editor {
-  background: #1b2434 !important;
+  background: #0f172a !important;
   color: #f8fafc !important;
-  border-color: #6b21a8 !important;
+  border-color: #475569 !important;
 }
 
 /* Caixas de Alerta, Passos e Notificações */

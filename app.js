@@ -863,6 +863,9 @@
     const pueriPanel = document.getElementById('puericulturaZScoreBox');
     const pnPanel = document.getElementById('prenatalObjectiveBox');
     const vdPanel = document.getElementById('vdSpecificBox');
+    const importExtLabel = document.getElementById('btnImportExternalAudioLabel');
+    const dropZone = document.getElementById('whatsappDropZone');
+    const isVd = state.selectedTemplateId === 'visita_domiciliar';
     if (soapPanel) {
       soapPanel.style.display = state.selectedTemplateId === 'geral' ? 'block' : 'none';
     }
@@ -876,7 +879,15 @@
       pnPanel.style.display = state.selectedTemplateId === 'prenatal' ? 'block' : 'none';
     }
     if (vdPanel) {
-      vdPanel.style.display = state.selectedTemplateId === 'visita_domiciliar' ? 'block' : 'none';
+      vdPanel.style.display = isVd ? 'block' : 'none';
+    }
+    if (importExtLabel) {
+      importExtLabel.style.display = isVd ? 'inline-flex' : 'none';
+    }
+    if (dropZone) {
+      dropZone.textContent = isVd
+        ? 'Arraste áudios de Visita Domiciliar ou PDFs para cá (ou pressione Ctrl+V)'
+        : 'Arraste PDFs ou imagens de exames para cá (ou pressione Ctrl+V)';
     }
   }
 
@@ -2399,7 +2410,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_71', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261126_72', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -7009,6 +7020,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     }
     const viewDateEl = document.getElementById('viewDateLabel');
     if (viewDateEl) viewDateEl.textContent = fullDateStr;
+
+    const btnUploadPostVd = document.getElementById('btnUploadPostVdAudioLabel');
+    if (btnUploadPostVd) {
+      btnUploadPostVd.style.display = (consult.templateId === 'visita_domiciliar') ? 'inline-flex' : 'none';
+    }
 
     const btnRetranscribeGemini = document.getElementById('btnRetranscribeWithGemini');
     if (btnRetranscribeGemini) {
