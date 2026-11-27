@@ -4321,8 +4321,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const normalizedObjLines = objBody.split('\n').map(l => {
         let ln = l.trim().replace(/^[-•*]\s*/, '');
         if (!ln) return '';
-        // Padroniza ectoscopia base (fora Puericultura e LGBT) para "BEG, LOC, MUC"
-        if (!isPueri && !isLgbt && /^(?:Bom\s+estado\s+geral|BEG\s*,\s*LOC\s*,\s*(?:corad|hidratad|mucosas))/i.test(ln)) {
+        // Padroniza ectoscopia normal expandida por extenso para "BEG, LOC, MUC", preservando SEMPRE qualquer alteração (REG, MEG, hipocorado, desidratado, desorientado, prostrado, etc.)
+        const hasAbnormalEctoscopy = /\b(?:REG|MEG|regular|mau\s+estado|hipocorad|descorad|p[áa]lid|desidratad|desorientad|confus|sonolent|prostrad|acamad|restrit[oa]\s+ao\s+leito|ict[ée]ric|cian[óo]tic|febril|dispneic|taquipneic|choros|ansios|agitad|irritad|emagrecid|desnutrid|caqu[ée]tic|torporos|let[áa]rgic|hipoativ|ast[êe]nic|sudoreic|gemente|secas|ressecad|f[áa]cies\s+de\s+dor)\b/i.test(ln);
+        if (!isPueri && !isLgbt && !hasAbnormalEctoscopy && /^(?:Bom\s+estado\s+geral|BEG\s*,\s*LOC\s*,\s*(?:corad|hidratad|mucosas))/i.test(ln)) {
           ln = 'BEG, LOC, MUC';
         }
         // Padroniza rótulos por extenso para as siglas fixas
