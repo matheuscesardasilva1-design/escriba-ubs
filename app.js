@@ -863,7 +863,7 @@
     const pueriPanel = document.getElementById('puericulturaZScoreBox');
     const pnPanel = document.getElementById('prenatalObjectiveBox');
     const vdPanel = document.getElementById('vdSpecificBox');
-    const importExtLabel = document.getElementById('btnImportExternalAudioLabel');
+    const importExtText = document.getElementById('btnImportExternalAudioText');
     const dropZone = document.getElementById('whatsappDropZone');
     const isVd = state.selectedTemplateId === 'visita_domiciliar';
     if (soapPanel) {
@@ -881,13 +881,15 @@
     if (vdPanel) {
       vdPanel.style.display = isVd ? 'block' : 'none';
     }
-    if (importExtLabel) {
-      importExtLabel.style.display = isVd ? 'inline-flex' : 'none';
+    if (importExtText) {
+      importExtText.textContent = isVd
+        ? '📂 Importar Áudio da VD / WhatsApp'
+        : '📂 Importar Áudio para Transcrição';
     }
     if (dropZone) {
       dropZone.textContent = isVd
         ? 'Arraste áudios de Visita Domiciliar ou PDFs para cá (ou pressione Ctrl+V)'
-        : 'Arraste PDFs ou imagens de exames para cá (ou pressione Ctrl+V)';
+        : 'Arraste arquivos de áudio ou PDFs de exames para cá (ou pressione Ctrl+V)';
     }
   }
 
@@ -2177,15 +2179,20 @@
         procInterval = setInterval(() => {
           elapsedSec += 0.5;
           const prevPct = state.activeProcessingProgress?.percent || 5;
-          // Curva assintótica suave até 94% enquanto aguarda a conclusão da IA
+          const existingCustomStage = state.activeProcessingProgress?.customStageLabel || '';
+          const isWhisperRunning = /Whisper|Decodificando|Baixando/i.test(existingCustomStage);
+          // Enquanto o Whisper reporta progresso real bloco a bloco, NÃO dispara a barra artificialmente até 94% nem apaga o texto dele!
           const timeRatio = elapsedSec / estTotalSec;
-          const targetByTime = Math.min(94, Math.round(18 + 76 * (1 - Math.exp(-1.55 * timeRatio))));
+          const targetByTime = isWhisperRunning
+            ? prevPct
+            : Math.min(94, Math.round(18 + 76 * (1 - Math.exp(-1.55 * timeRatio))));
           const nextPct = Math.min(94, Math.max(prevPct, targetByTime));
           updateLiveProcessingUI({
             consultId: nextItem.id,
             patientLabel: nextItem.patientLabel,
             percent: nextPct,
-            stageLabel: getStageDescriptionForPercent(nextPct),
+            stageLabel: existingCustomStage || getStageDescriptionForPercent(nextPct),
+            customStageLabel: existingCustomStage,
             elapsedSec: Math.floor(elapsedSec),
             extraQueueCount,
             modelStatus: state.activeProcessingProgress?.modelStatus || ''
@@ -2194,12 +2201,19 @@
 
         try {
           const result = await processSingleConsultationWithGemini(nextItem, apiKey, (milestonePct, customStage, modelInfo) => {
-            const currentPct = Math.max(state.activeProcessingProgress?.percent || 0, milestonePct || 0);
+            const prevPct = state.activeProcessingProgress?.percent || 0;
+            const currentPct = (milestonePct !== null && milestonePct !== undefined)
+              ? Math.max(prevPct, milestonePct)
+              : prevPct;
+            const resolvedCustomStage = (customStage !== null && customStage !== undefined)
+              ? customStage
+              : (state.activeProcessingProgress?.customStageLabel || '');
             updateLiveProcessingUI({
               consultId: nextItem.id,
               patientLabel: nextItem.patientLabel,
               percent: currentPct,
-              stageLabel: customStage || getStageDescriptionForPercent(currentPct),
+              stageLabel: resolvedCustomStage || getStageDescriptionForPercent(currentPct),
+              customStageLabel: resolvedCustomStage,
               elapsedSec: Math.floor(elapsedSec),
               extraQueueCount,
               modelStatus: modelInfo !== undefined ? modelInfo : (state.activeProcessingProgress?.modelStatus || '')
@@ -2436,15 +2450,17 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261126_74', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261127_75', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
       if (!entry) return;
       if (msg.type === 'download_progress' || msg.type === 'status') {
+        if (typeof entry.resetTimeout === 'function') entry.resetTimeout();
         if (typeof entry.onProgress === 'function') entry.onProgress(msg);
         return;
       }
+      if (entry.timeoutId) clearTimeout(entry.timeoutId);
       whisperPendingRequests.delete(msg.requestId);
       if (msg.type === 'error') {
         entry.reject(new Error(msg.message || 'Erro no Whisper Local'));
@@ -2455,6 +2471,7 @@
     worker.onerror = (err) => {
       const message = err?.message || 'Erro ao executar o Web Worker do Whisper Local';
       for (const [, entry] of whisperPendingRequests.entries()) {
+        if (entry.timeoutId) clearTimeout(entry.timeoutId);
         entry.reject(new Error(message));
       }
       whisperPendingRequests.clear();
@@ -2465,12 +2482,32 @@
     return worker;
   }
 
-  function sendWhisperWorkerRequest(payload, transferables = [], onProgress = null) {
+  function sendWhisperWorkerRequest(payload, transferables = [], onProgress = null, timeoutMs = 45000) {
     return new Promise((resolve, reject) => {
       try {
         const worker = getOrCreateWhisperWorker();
         const requestId = ++whisperReqSeq;
-        whisperPendingRequests.set(requestId, { resolve, reject, onProgress });
+        const entry = { resolve, reject, onProgress, timeoutId: null, resetTimeout: null };
+        const armTimer = () => {
+          if (entry.timeoutId) clearTimeout(entry.timeoutId);
+          if (timeoutMs > 0) {
+            entry.timeoutId = setTimeout(() => {
+              whisperPendingRequests.delete(requestId);
+              // Encerra o worker travado para liberar GPU/RAM imediatamente e permitir fallback limpo ao Gemini!
+              try { worker.terminate(); } catch (_) {}
+              if (whisperWorkerInstance === worker) whisperWorkerInstance = null;
+              for (const [, other] of whisperPendingRequests.entries()) {
+                if (other.timeoutId) clearTimeout(other.timeoutId);
+                other.reject(new Error('Whisper Local travou/excedeu o tempo limite.'));
+              }
+              whisperPendingRequests.clear();
+              reject(new Error(`Tempo limite excedido no Whisper Local (${Math.round(timeoutMs / 1000)}s sem resposta).`));
+            }, timeoutMs);
+          }
+        };
+        entry.resetTimeout = armTimer;
+        armTimer();
+        whisperPendingRequests.set(requestId, entry);
         worker.postMessage({ ...payload, requestId }, transferables);
       } catch (e) {
         reject(e);
@@ -2481,8 +2518,11 @@
   async function unloadWhisperWorker() {
     if (!whisperWorkerInstance) return;
     try {
-      await sendWhisperWorkerRequest({ type: 'unload' });
+      await sendWhisperWorkerRequest({ type: 'unload' }, [], null, 5000);
     } catch (_) {}
+    for (const [, entry] of whisperPendingRequests.entries()) {
+      if (entry.timeoutId) clearTimeout(entry.timeoutId);
+    }
     try { whisperWorkerInstance.terminate(); } catch (_) {}
     whisperWorkerInstance = null;
     whisperPendingRequests.clear();
@@ -2537,6 +2577,7 @@
       whisperWorkerInstance = null;
     }
     for (const [, entry] of whisperPendingRequests.entries()) {
+      if (entry.timeoutId) clearTimeout(entry.timeoutId);
       entry.reject(new Error('CANCELLED_BY_USER'));
     }
     whisperPendingRequests.clear();
@@ -2597,7 +2638,7 @@
         } else if (ev.type === 'status' && ev.message) {
           if (progLabel) progLabel.textContent = ev.message;
         }
-      });
+      }, 90000);
       if (whisperDownloadCancelled) return;
       if (progPct) progPct.textContent = '100%';
       if (progFill) progFill.style.width = '100%';
@@ -2702,7 +2743,7 @@
       onProgressMilestone(12, `🎙️ Preparando ${profileLabel} local no navegador...`);
     }
 
-    // 1. Garante o modelo carregado no Web Worker (com barra de progresso real se for o 1º download)
+    // 1. Garante o modelo carregado no Web Worker (timeout de 90s sem progresso de download/warmup)
     const preloadInfo = await sendWhisperWorkerRequest({ type: 'preload', profile }, [], (ev) => {
       if (!onProgressMilestone) return;
       if (ev.type === 'download_progress') {
@@ -2712,13 +2753,31 @@
       } else if (ev.type === 'status' && ev.message) {
         onProgressMilestone(null, `🎙️ ${ev.message}`);
       }
-    });
+    }, 90000);
 
     const devTag = preloadInfo.device === 'webgpu' ? 'WebGPU' : 'CPU';
     const fileTranscripts = [];
     const SAMPLE_RATE = 16000;
-    const SEGMENT_SAMPLES = 120 * SAMPLE_RATE; // blocos de 2 minutos (evita estouro de memória em consultas >1h e dá progresso suave!)
-    const OVERLAP_SAMPLES = 2 * SAMPLE_RATE;   // sobreposição de 2 segundos entre macro-blocos
+    // Janelas nativas de 28 segundos (com 1,5s de sobreposição) -> elimina 100% os travamentos de chunking/timestamp do WebGPU e dá progresso real a cada bloco!
+    const SEGMENT_SAMPLES = 28 * SAMPLE_RATE;
+    const OVERLAP_SAMPLES = Math.round(1.5 * SAMPLE_RATE);
+
+    const mergeOverlapText = (prevText, nextText) => {
+      if (!prevText) return nextText;
+      if (!nextText) return prevText;
+      const pWords = prevText.trim().split(/\s+/);
+      const nWords = nextText.trim().split(/\s+/);
+      const maxCheck = Math.min(5, pWords.length, nWords.length);
+      const normW = (w) => w.toLowerCase().replace(/[^a-zà-ÿ0-9]/gi, '');
+      for (let k = maxCheck; k >= 1; k--) {
+        const pTail = pWords.slice(-k).map(normW).join(' ');
+        const nHead = nWords.slice(0, k).map(normW).join(' ');
+        if (pTail && pTail === nHead) {
+          return `${prevText.trim()} ${nWords.slice(k).join(' ')}`.trim();
+        }
+      }
+      return `${prevText.trim()} ${nextText.trim()}`.trim();
+    };
 
     for (let fIdx = 0; fIdx < blobsArray.length; fIdx++) {
       const blob = blobsArray[fIdx];
@@ -2733,7 +2792,7 @@
       const pcm = await decodeAudioBlobTo16kMono(blob);
       if (!pcm || pcm.length < SAMPLE_RATE * 0.5) continue;
 
-      // Divide em macro-segmentos de 2 minutos para progresso contínuo e estabilidade de GPU
+      // Divide em janelas nativas de <= 28 segundos
       const segments = [];
       if (pcm.length <= SEGMENT_SAMPLES + OVERLAP_SAMPLES) {
         segments.push(pcm);
@@ -2747,32 +2806,35 @@
         }
       }
 
-      const segTexts = [];
+      let mergedFileText = '';
       for (let sIdx = 0; sIdx < segments.length; sIdx++) {
         const segPcm = segments[sIdx];
-        const segPct = 28 + Math.round(((fIdx + (sIdx / Math.max(1, segments.length))) / Math.max(1, blobsArray.length)) * 32);
+        const segPct = 28 + Math.round(((fIdx + ((sIdx + 0.2) / Math.max(1, segments.length))) / Math.max(1, blobsArray.length)) * 34);
         if (onProgressMilestone) {
           const blockInfo = segments.length > 1 ? ` — bloco ${sIdx + 1}/${segments.length}` : '';
           const fileInfo = blobsArray.length > 1 ? ` (áudio ${fIdx + 1}/${blobsArray.length})` : '';
           onProgressMilestone(segPct, `🎙️ Etapa 1/2 (${profileLabel} • ${devTag})${fileInfo}${blockInfo}...`);
         }
 
-        // Pula segmentos de silêncio absoluto (evita alucinação em pausas longas)
+        // Pula janelas de silêncio absoluto (evita alucinação em pausas longas)
         if (computePcmRms(segPcm) < 0.0012) {
           continue;
         }
 
         const segCopy = new Float32Array(segPcm);
+        // Watchdog de 40s por bloco de 28s: se o WebGPU travar, encerra e cai imediatamente para o Gemini!
         const segRes = await sendWhisperWorkerRequest(
           { type: 'transcribe_segment', profile, segmentIndex: sIdx, audio: segCopy },
-          [segCopy.buffer]
+          [segCopy.buffer],
+          null,
+          40000
         );
         if (segRes && segRes.text && segRes.text.trim()) {
-          segTexts.push(segRes.text.trim());
+          mergedFileText = mergeOverlapText(mergedFileText, segRes.text.trim());
         }
       }
 
-      const joinedFile = segTexts.join(' ').replace(/\s{2,}/g, ' ').trim();
+      const joinedFile = mergedFileText.replace(/\s{2,}/g, ' ').trim();
       if (joinedFile) {
         fileTranscripts.push(blobsArray.length > 1 ? `--- ÁUDIO ${fIdx + 1} ---\n${joinedFile}` : joinedFile);
       }
@@ -2934,10 +2996,11 @@
           : '';
         await runLocalWhisperStage1(autoNote);
       } catch (whisperErr) {
+        const shortWhisperReason = String(whisperErr?.message || 'indisponível').slice(0, 90);
         console.warn('Whisper Local falhou, fazendo fallback automático para Gemini (nuvem):', whisperErr);
-        showToast('⚠️ Whisper Local indisponível neste áudio — enviando automaticamente ao Gemini...');
+        showToast(`⚠️ Whisper Local falhou (${shortWhisperReason}) — enviando automaticamente ao Gemini...`);
         if (onProgressMilestone) {
-          onProgressMilestone(20, '☁️ Whisper indisponível — subindo áudio automaticamente para o Gemini...');
+          onProgressMilestone(20, `☁️ Whisper falhou (${shortWhisperReason}) — subindo áudio para o Gemini...`);
         }
       }
     }
@@ -5534,12 +5597,18 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     let allFailedByDailyQuota = false;
     const keysToTry = getSavedApiKeysList(apiKey);
     const maxTransientRounds = options.maxRounds || 2;
+    const callStartedAt = Date.now();
+    const overallDeadlineMs = options.overallTimeoutMs || 150000; // Teto global de 2m30s (evita ficar travado em 94% por 5+ min!)
 
     for (let round = 1; round <= maxTransientRounds; round++) {
+      if (Date.now() - callStartedAt > overallDeadlineMs) {
+        throw lastError || new Error('Tempo limite global atingido (servidor do Google demorou demais). Clique em "Atualizar" para tentar novamente.');
+      }
       let sawTransientFailure = false;
       allFailedByDailyQuota = false;
 
       for (let kIdx = 0; kIdx < keysToTry.length; kIdx++) {
+        if (Date.now() - callStartedAt > overallDeadlineMs) break;
         const currentKey = keysToTry[kIdx];
         const keyTag = keysToTry.length > 1 ? ` [Chave ${kIdx + 1}/${keysToTry.length}]` : '';
         let modelsToTry = [...(await getActiveGeminiModels(currentKey))];
@@ -5548,6 +5617,7 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         if (notCooling.length > 0) modelsToTry = notCooling;
 
       for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
+        if (Date.now() - callStartedAt > overallDeadlineMs) break;
         const model = modelsToTry[mIdx];
         const maxAttempts = (keysToTry.length > 1 || mIdx < modelsToTry.length - 1) ? 1 : 2;
         let disableThinkingForThisModel = false;
@@ -5592,8 +5662,10 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
             const abortCtrl = new AbortController();
             const serializedBody = JSON.stringify(bodyForModel);
-            // Consultas longas (>1h ou payload >3.5MB) recebem timeout de 180s (3 min); chamadas rápidas usam fastTimeoutMs
-            const timeoutMs = options.fastTimeoutMs || (serializedBody.length > 3500000 ? 180000 : 75000);
+            // Timeout enxuto por tentativa (55s p/ texto/áudio curto, 110s p/ áudio >3.5MB) respeitando sempre o teto global
+            const remainingBudgetMs = Math.max(15000, overallDeadlineMs - (Date.now() - callStartedAt));
+            const baseTimeoutMs = options.fastTimeoutMs || (serializedBody.length > 3500000 ? 110000 : 55000);
+            const timeoutMs = Math.min(baseTimeoutMs, remainingBudgetMs);
             const fetchTimeoutId = setTimeout(() => abortCtrl.abort(), timeoutMs);
             let res;
             try {
@@ -7113,9 +7185,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
     const viewDateEl = document.getElementById('viewDateLabel');
     if (viewDateEl) viewDateEl.textContent = fullDateStr;
 
-    const btnUploadPostVd = document.getElementById('btnUploadPostVdAudioLabel');
-    if (btnUploadPostVd) {
-      btnUploadPostVd.style.display = (consult.templateId === 'visita_domiciliar') ? 'inline-flex' : 'none';
+    const btnUploadPostVdText = document.getElementById('btnUploadPostVdAudioText');
+    if (btnUploadPostVdText) {
+      btnUploadPostVdText.textContent = (consult.templateId === 'visita_domiciliar')
+        ? '📂 + Enviar Áudio Pós-VD'
+        : '📂 + Enviar Áudio Extra';
     }
 
     const btnRetranscribeGemini = document.getElementById('btnRetranscribeWithGemini');

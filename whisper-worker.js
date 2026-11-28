@@ -1,7 +1,7 @@
 // ============================================================================
 // WHISPER LOCAL WORKER (WEBGPU / WASM NO NAVEGADOR — SEM INSTALAR NADA)
-// Roda onnx-community/whisper-large-v3-turbo (Máxima Precisão Médica) ou
-// onnx-community/whisper-small (Modo Leve p/ PC simples da UBS) em background.
+// Processa janelas nativas <= 28s com return_timestamps:false (evita travamentos
+// conhecidos de chunking/timestamp no WebGPU) + autoteste de inferência no load.
 // ============================================================================
 
 let transformersModule = null;
@@ -47,7 +47,7 @@ async function loadTransformersLibrary() {
       lastErr = e;
     }
   }
-  throw new Error(`Não foi possível carregar o motor Transformers.js (${lastErr?.message || 'rede bloqueada'}).`);
+  throw new Error(`Não foi possível carregar Transformers.js (${lastErr?.message || 'rede bloqueada'}).`);
 }
 
 async function detectWebGpuCapability() {
@@ -76,7 +76,6 @@ function getDtypeForProfile(profileKey, device, hasF16) {
     return { encoder_model: 'q8', decoder_model_merged: 'q8' };
   }
   if (profileKey === 'turbo_compact') {
-    // Intermediário (~540 MB no WebGPU q4f16): excelente português médico e quase 3x menor que o FP16!
     if (device === 'webgpu') {
       return hasF16
         ? { encoder_model: 'q4f16', decoder_model_merged: 'q4f16' }
@@ -84,10 +83,10 @@ function getDtypeForProfile(profileKey, device, hasF16) {
     }
     return { encoder_model: 'q4', decoder_model_merged: 'q4' };
   }
-  // Máxima precisão (~1,4 GB no WebGPU): encoder fp16 + decoder q4f16
+  // Receita oficial Transformers.js WebGPU para Máxima Precisão sem pico excessivo de VRAM:
   if (device === 'webgpu') {
     return hasF16
-      ? { encoder_model: 'fp16', decoder_model_merged: 'q4f16' }
+      ? { encoder_model: 'fp16', decoder_model_merged: 'q4' }
       : { encoder_model: 'q4', decoder_model_merged: 'q4' };
   }
   return { encoder_model: 'q8', decoder_model_merged: 'q8' };
@@ -97,7 +96,6 @@ function cleanWhisperPortugueseArtifacts(rawText) {
   let t = String(rawText || '').trim();
   if (!t) return '';
 
-  // Remove alucinações clássicas de silêncio do Whisper em português
   const silenceArtifacts = [
     /(?:^|\s)(?:Legendas?\s+pela\s+comunidade\s+Amara\.org|Subt[íi]tulos\s+realizados\s+por\s+la\s+comunidad\s+de\s+Amara\.org|Amara\.org)\.?/gi,
     /(?:^|\s)(?:Obrigado\s+por\s+assistir(?:\s+ao\s+v[íi]deo)?|Obrigada\s+por\s+assistir|Inscreva-se\s+no\s+canal|Curta\s+e\s+compartilhe|Ative\s+o\s+sininho|Deixe\s+seu\s+like)\.?/gi,
@@ -107,7 +105,6 @@ function cleanWhisperPortugueseArtifacts(rawText) {
     t = t.replace(re, ' ');
   }
 
-  // Colapsa eventuais loops repetitivos idênticos (ex: frase repetida 3+ vezes seguidas em ruído)
   t = t.replace(/(\b[^.!?\n]{8,90}[.!?]?)(?:\s+\1){2,}/gi, '$1');
   t = t.replace(/(\b\w+(?:\s+\w+){0,4}\b)(?:,?\s+\1){3,}/gi, '$1');
 
@@ -127,7 +124,6 @@ async function ensureWhisperPipeline(profileKey, requestId) {
     };
   }
 
-  // Se estava com outro perfil carregado, libera antes de carregar o novo
   if (activePipeline && typeof activePipeline.dispose === 'function') {
     try { await activePipeline.dispose(); } catch (_) {}
   }
@@ -175,28 +171,21 @@ async function ensureWhisperPipeline(profileKey, requestId) {
         type: 'status',
         requestId,
         stage: 'ready',
-        message: `${profile.label} carregado na memória!`
+        message: `${profile.label} carregado! Validando inferência...`
       });
     }
   };
 
-  // Tenta WebGPU primeiro com fallback progressivo até WASM (CPU)
   const attempts = [];
   if (gpu.hasWebGpu) {
     attempts.push({ device: 'webgpu', dtype: getDtypeForProfile(safeKey, 'webgpu', gpu.hasF16) });
-    if (gpu.hasF16 && safeKey === 'turbo') {
+    if (gpu.hasF16 && safeKey === 'turbo_compact') {
+      attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
+    } else if (gpu.hasF16 && safeKey === 'turbo') {
       attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4f16', decoder_model_merged: 'q4f16' } });
-      attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
-    } else if (gpu.hasF16 && safeKey === 'turbo_compact') {
-      attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
-    } else if (safeKey === 'small') {
-      attempts.push({ device: 'webgpu', dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' } });
     }
   }
   attempts.push({ device: 'wasm', dtype: getDtypeForProfile(safeKey, 'wasm', false) });
-  if (safeKey === 'turbo' || safeKey === 'turbo_compact') {
-    attempts.push({ device: 'wasm', dtype: { encoder_model: 'q8', decoder_model_merged: 'q8' } });
-  }
 
   let lastErr = null;
   for (const attempt of attempts) {
@@ -212,6 +201,20 @@ async function ensureWhisperPipeline(profileKey, requestId) {
         dtype: attempt.dtype,
         progress_callback: progressCallback
       });
+
+      // Autoteste rápido de 1s de áudio silencioso: garante que o shader WebGPU/WASM realmente executa inferência sem travar!
+      self.postMessage({
+        type: 'status',
+        requestId,
+        stage: 'warmup',
+        message: `Validando motor ${profile.label} (${attempt.device === 'webgpu' ? 'WebGPU' : 'CPU'})...`
+      });
+      await pipe(new Float32Array(16000), {
+        language: 'portuguese',
+        task: 'transcribe',
+        return_timestamps: false
+      });
+
       activePipeline = pipe;
       activeProfileKey = safeKey;
       activeDeviceUsed = attempt.device;
@@ -250,7 +253,7 @@ self.addEventListener('message', async (event) => {
     }
 
     if (type === 'preload') {
-      const info = await ensureWhisperPipeline(msg.profile || 'turbo', requestId);
+      const info = await ensureWhisperPipeline(msg.profile || 'turbo_compact', requestId);
       self.postMessage({
         type: 'preload_done',
         requestId,
@@ -263,30 +266,15 @@ self.addEventListener('message', async (event) => {
     }
 
     if (type === 'transcribe_segment') {
-      const info = await ensureWhisperPipeline(msg.profile || 'turbo', requestId);
+      const info = await ensureWhisperPipeline(msg.profile || 'turbo_compact', requestId);
       const audioData = msg.audio instanceof Float32Array ? msg.audio : new Float32Array(msg.audio);
 
-      let out;
-      try {
-        out = await info.pipe(audioData, {
-          language: 'portuguese',
-          task: 'transcribe',
-          chunk_length_s: 28,
-          stride_length_s: 5,
-          return_timestamps: true,
-          no_repeat_ngram_size: 4,
-          repetition_penalty: 1.1
-        });
-      } catch (optErr) {
-        // Fallback seguro com opções essenciais caso alguma versão do ORT rejeite kwargs extras
-        out = await info.pipe(audioData, {
-          language: 'portuguese',
-          task: 'transcribe',
-          chunk_length_s: 28,
-          stride_length_s: 5,
-          return_timestamps: true
-        });
-      }
+      // Cada segmento já chega <= 28s (janela nativa única do Whisper) -> return_timestamps:false (zero travamentos WebGPU!)
+      const out = await info.pipe(audioData, {
+        language: 'portuguese',
+        task: 'transcribe',
+        return_timestamps: false
+      });
 
       const rawText = (out && typeof out.text === 'string' && out.text.trim())
         ? out.text
