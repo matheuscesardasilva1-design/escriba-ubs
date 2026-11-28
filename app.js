@@ -2450,7 +2450,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261127_78', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261127_79', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -2482,7 +2482,32 @@
     return worker;
   }
 
+  let whisperIdleUnloadTimer = null;
+
+  function clearWhisperIdleUnloadTimer() {
+    if (whisperIdleUnloadTimer) {
+      clearTimeout(whisperIdleUnloadTimer);
+      whisperIdleUnloadTimer = null;
+    }
+  }
+
+  function scheduleWhisperIdleUnload(delayMs = 120000) {
+    clearWhisperIdleUnloadTimer();
+    whisperIdleUnloadTimer = setTimeout(async () => {
+      whisperIdleUnloadTimer = null;
+      if (!whisperWorkerInstance) return;
+      if (whisperPendingRequests.size > 0 || state.queueRunning) {
+        scheduleWhisperIdleUnload(60000);
+        return;
+      }
+      await unloadWhisperWorker();
+    }, delayMs);
+  }
+
   function sendWhisperWorkerRequest(payload, transferables = [], onProgress = null, timeoutMs = 45000) {
+    if (payload && payload.type !== 'unload') {
+      clearWhisperIdleUnloadTimer();
+    }
     return new Promise((resolve, reject) => {
       try {
         const worker = getOrCreateWhisperWorker();
@@ -2516,6 +2541,7 @@
   }
 
   async function unloadWhisperWorker() {
+    clearWhisperIdleUnloadTimer();
     if (!whisperWorkerInstance) return;
     try {
       await sendWhisperWorkerRequest({ type: 'unload' }, [], null, 5000);
@@ -2650,6 +2676,7 @@
       if (getAudioEngineMode() === 'cloud') {
         setAudioEngineMode('auto');
       }
+      scheduleWhisperIdleUnload(120000);
       showToast(`✅ ${res.label || label} pronto neste computador (${devLabel})!`);
     } catch (err) {
       if (whisperDownloadCancelled || err?.message === 'CANCELLED_BY_USER') return;
@@ -2841,6 +2868,7 @@
     }
 
     const fullTranscript = fileTranscripts.join('\n\n').trim();
+    scheduleWhisperIdleUnload(120000);
     if (!fullTranscript || fullTranscript.length < 10) {
       throw new Error('Whisper Local não detectou fala compreensível neste áudio.');
     }
