@@ -2450,7 +2450,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261127_75', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261127_76', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -7194,7 +7194,20 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
 
     const btnRetranscribeGemini = document.getElementById('btnRetranscribeWithGemini');
     if (btnRetranscribeGemini) {
-      const hasRawAudioSaved = Boolean((consult.chunkCount > 0 && !consult.audioDeleted) || consult.remoteFileUri);
+      let hasRealLocalChunks = false;
+      if (consult.chunkCount > 0 && !consult.audioDeleted && window.ScribeDB.getAudioChunks) {
+        try {
+          const chs = await window.ScribeDB.getAudioChunks(consult.id);
+          hasRealLocalChunks = Boolean(chs && chs.some(ch => ch && ch.blob && ch.blob.size > 0));
+          if (!hasRealLocalChunks) {
+            consult.chunkCount = 0;
+            consult.audioBytes = 0;
+            consult.audioDeleted = true;
+            window.ScribeDB.saveConsultation(consult).catch(() => {});
+          }
+        } catch (_) {}
+      }
+      const hasRawAudioSaved = Boolean(hasRealLocalChunks || consult.remoteFileUri);
       btnRetranscribeGemini.style.display = hasRawAudioSaved ? 'inline-flex' : 'none';
       if (consult.transcriptionEngine === 'whisper-local') {
         btnRetranscribeGemini.textContent = '☁️ Não gostou? Re-transcrever no Gemini';
@@ -8188,12 +8201,21 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const exportList = [];
       for (const c of all.slice(0, 60)) {
         const copy = { ...c };
+        let embedded = false;
         // Se o atendimento ainda não foi transcrito e tem áudio no disco, embute o áudio em base64 para poder transcrever em casa!
         if (c.status !== 'done' && c.chunkCount > 0 && !c.audioDeleted) {
           const blob = await window.ScribeDB.assembleAudioBlob(c.id, c.mimeType);
           if (blob && blob.size > 0 && blob.size < 25 * 1024 * 1024) {
             copy.embeddedAudioBase64 = await blobToBase64(blob);
+            embedded = true;
           }
+        }
+        // CRÍTICO: se o áudio NÃO foi embutido no arquivo .ubs, zera chunkCount na cópia para o outro PC
+        // nunca achar que há áudio local e apagar rawTranscript ao clicar em "Atualizar"!
+        if (!embedded) {
+          copy.chunkCount = 0;
+          copy.audioBytes = 0;
+          copy.audioDeleted = true;
         }
         exportList.push(copy);
       }
@@ -8229,6 +8251,21 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         if (!item || !item.id) continue;
         const embeddedB64 = item.embeddedAudioBase64;
         delete item.embeddedAudioBase64;
+
+        if (!embeddedB64) {
+          // Garante que registros importados sem áudio embutido não carreguem chunkCount fantasma do outro PC
+          const existingChunks = window.ScribeDB.getAudioChunks ? await window.ScribeDB.getAudioChunks(item.id) : [];
+          const hasLocalAudioAlready = Boolean(existingChunks && existingChunks.some(ch => ch && ch.blob && ch.blob.size > 0));
+          if (!hasLocalAudioAlready) {
+            item.chunkCount = 0;
+            item.audioBytes = 0;
+            item.audioDeleted = true;
+          }
+        } else {
+          item.chunkCount = 0;
+          item.audioBytes = 0;
+          item.audioDeleted = false;
+        }
 
         await window.ScribeDB.saveConsultation(item);
         if (embeddedB64) {
@@ -9153,9 +9190,39 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         } else if (c.templateId === 'interconsulta') {
           c.soapSubtypeHeader = interSelect ? interSelect.value : 'completa';
         }
+        // Verifica no IndexedDB se REALMENTE existem blocos de áudio gravados neste computador!
+        // (Atendimentos importados via .ubs ou nuvem de outro PC podem não ter áudio local — NUNCA apagar rawTranscript se não houver áudio real!)
+        let hasRealLocalAudio = false;
+        if (c.chunkCount > 0 && !c.audioDeleted && window.ScribeDB.getAudioChunks) {
+          try {
+            const chunks = await window.ScribeDB.getAudioChunks(c.id);
+            hasRealLocalAudio = Boolean(chunks && chunks.some(ch => ch && ch.blob && ch.blob.size > 0));
+          } catch (_) {}
+        }
+        if (!hasRealLocalAudio && c.chunkCount > 0) {
+          c.chunkCount = 0;
+          c.audioBytes = 0;
+          c.audioDeleted = true;
+        }
+        const hasAnyAudioSource = Boolean(hasRealLocalAudio || c.remoteFileUri);
+        const hasSavedTranscriptOrNotes = Boolean(
+          (c.rawTranscript && c.rawTranscript.trim().length >= 15)
+          || (c.quickNotes && c.quickNotes.trim().length >= 5)
+          || (c.preTranscribedExamsText && c.preTranscribedExamsText.trim().length >= 5)
+          || (c.examFileCount > 0)
+        );
+        if (!hasAnyAudioSource && !hasSavedTranscriptOrNotes) {
+          await window.ScribeDB.saveConsultation(c);
+          showToast('⚠️ Este atendimento foi importado sem o áudio original e sem transcrição literal — não é possível reprocessar sem o áudio.');
+          return;
+        }
+        if (c.evolutionText && c.evolutionText.trim().length > 20) {
+          const prevBackups = Array.isArray(c.evolutionBackups) ? c.evolutionBackups : [];
+          c.evolutionBackups = [{ at: Date.now(), text: c.evolutionText }, ...prevBackups].slice(0, 3);
+        }
         c.status = 'queued';
         c.errorMessage = '';
-        if (c.chunkCount > 0) {
+        if (hasAnyAudioSource) {
           // Atendimento CONTINUADO: o áudio salvo contém só a última parte. As partes anteriores vivem em
           // previousRawTranscript (transcrição cumulativa). Preserva essa base e reestrutura TUDO junto,
           // sem fusão com a evolução antiga (evita perder exame físico/quadro das partes anteriores).
@@ -9168,7 +9235,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         await refreshQueueSidebar();
         await renderActiveConsultationView(c);
         processQueueInBackground();
-        showToast(`🔄 Reprocessando "${c.patientLabel}" em ${c.templateName || 'Consulta Geral (SOAP)'}...`);
+        showToast(hasAnyAudioSource
+          ? `🔄 Reprocessando áudio de "${c.patientLabel}" em ${c.templateName || 'Consulta Geral (SOAP)'}...`
+          : `🔄 Reorganizando "${c.patientLabel}" a partir da transcrição salva (áudio não está neste PC)...`);
       }
     };
 
@@ -9180,9 +9249,21 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       if (!state.activeConsultationId) return;
       const c = await window.ScribeDB.getConsultation(state.activeConsultationId);
       if (!c) return;
-      const hasRawAudioSaved = Boolean((c.chunkCount > 0 && !c.audioDeleted) || c.remoteFileUri);
+      let hasRealLocalAudio = false;
+      if (c.chunkCount > 0 && !c.audioDeleted && window.ScribeDB.getAudioChunks) {
+        try {
+          const chunks = await window.ScribeDB.getAudioChunks(c.id);
+          hasRealLocalAudio = Boolean(chunks && chunks.some(ch => ch && ch.blob && ch.blob.size > 0));
+        } catch (_) {}
+      }
+      const hasRawAudioSaved = Boolean(hasRealLocalAudio || c.remoteFileUri);
       if (!hasRawAudioSaved) {
-        showToast('⚠️ O áudio original deste atendimento já foi expirado/excluído.');
+        c.chunkCount = 0;
+        c.audioBytes = 0;
+        c.audioDeleted = true;
+        await window.ScribeDB.saveConsultation(c);
+        await renderActiveConsultationView(c);
+        showToast('⚠️ O áudio original deste atendimento não está salvo neste computador (foi importado de outro PC ou expirado).');
         return;
       }
       if (c.evolutionText && c.evolutionText.trim().length > 20) {
