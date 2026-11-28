@@ -2450,7 +2450,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261127_76', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261127_77', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -4355,8 +4355,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           text = `${soapSubtypeHeader}\n\n${text.trimStart()}`;
         }
       } else if (soapSubtypeHeader === '') {
-        // Se escolheu "Sem título ##", remove qualquer cabeçalho ## no topo
-        text = text.replace(/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|ATENDIMENTO SOAP)\s*##\s*\n*/i, '');
+        // Se escolheu "Sem título ##", remove qualquer cabeçalho ## genérico no topo
+        text = text.replace(/^\s*##\s*(?:DEMANDA ESPONTÂNEA|CONSULTA AGENDADA[^\n#]*|RETORNO MÉDICO|CONSULTA DE SEGUIMENTO|CONSULTA M[ÉE]DICA|ATENDIMENTO SOAP)\s*##\s*\n*/i, '');
       }
     }
 
@@ -4601,10 +4601,16 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
               headerPart = `${headerPart.trimEnd()}\n${fullBlockText}\n`;
             }
           } else if (block.subs.length > 0) {
-            // A condição "#" existe, mas verifica se alguma sub-linha ("- " ou ">> ") abaixo dela foi omitida
+            // A condição "#" existe, mas verifica se alguma sub-linha ("- " ou ">> ") abaixo dela foi omitida.
+            // NÃO re-injeta sub-linhas cirúrgicas obsoletas ("- Plano CX...", "- Aguardando cirurgia...") se o cabeçalho já registrou Pós-operatório / cirurgia realizada!
+            const headerHasPostOp = /\b(?:p[óo]s-?operat[óo]rio|PO\s+de|realizou\s+cirurgia|operad[oa]|herniorrafia|colecistectomia|histerectomia)\b/i.test(headerPart);
             const missingCondSubs = block.subs.filter(sub => {
               const subNorm = normalizeCompare(sub);
-              return subNorm && !normalizeCompare(headerPart).includes(subNorm);
+              if (!subNorm || normalizeCompare(headerPart).includes(subNorm)) return false;
+              if (headerHasPostOp && /\b(?:plano\s+(?:cx|cir[úu]rgico)|aguardando\s+(?:cx|cirurgia)|em\s+fila\s+para\s+cirurgia)\b/i.test(sub)) {
+                return false;
+              }
+              return true;
             });
             if (missingCondSubs.length > 0) {
               const escapedMain = block.main.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -4614,6 +4620,11 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
               }
             }
           }
+        }
+
+        // Remove sub-linha cirúrgica obsoleta ("- Plano CX...") caso o mesmo bloco já tenha "- Pós-operatório..."
+        if (/\b(?:p[óo]s-?operat[óo]rio|PO\s+de)\b/i.test(headerPart)) {
+          headerPart = headerPart.replace(/^-\s*(?:Plano\s+(?:CX|cir[úu]rgico)|Aguardando\s+(?:CX|cirurgia))[^\n]*\n?/gim, '');
         }
 
         // Se já houver condições "#" reais preenchidas, remove linhas "#" vazias soltas ("# ") que sobraram do esqueleto
@@ -4969,7 +4980,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       .replace(/\bfedorenta\b/gi, 'de odor fétido')
       .replace(/\bfezes brancas\b/gi, 'fezes esbranquiçadas (hipocolia fecal)')
       .replace(/ardor semelhante a azia\/refluxo/gi, 'epigastralgia em queimação e pirose')
-      .replace(/dor no meio do estômago/gi, 'dor em região epigástrica');
+      .replace(/dor no meio do estômago/gi, 'dor em região epigástrica')
+      .replace(/\bsinais\s+(?:inflamat[óo]rios\s+)?log[íi]sticos\b/gi, 'sinais flogísticos')
+      .replace(/\bStatus\s+p[óo]s-?operat[óo]rio\b/gi, 'Pós-operatório');
 
     // 1.1 Limpeza estrita de contaminação do SUBJETIVO com condutas médicas ou frases de IA em 3ª pessoa
     text = sanitizeSubjectiveAndConductPerspectives(text);
@@ -5379,8 +5392,9 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           }
           return /\b(?:na\s+pr[óo]xima\s+consulta|em\s+pr[óo]xima\s+consulta|na\s+pr[óo]xima\s+avalia[çc][ãa]o|na\s+pr[óo]xima\s+visita|no\s+pr[óo]ximo\s+atendimento|na\s+consulta\s+seguinte|na\s+consulta\s+subsequente|no\s+pr[óo]ximo\s+retorno|no\s+pr[óo]ximo\s+acompanhamento|para\s+a\s+pr[óo]xima\s+consulta|segunda\s+etapa\s+da\s+triagem|M-CHAT-R\/F|para\s+definir\s+necessidade\s+de\s+(?:investiga|encaminh))\b/i.test(t)
             || /\b(?:no\s+retorno|em\s+retorno|ap[óo]s\s+retorno)\b[^.\n]{0,60}\b(?:solicitar|solicitarei|pedir|pedirei|encaminhar|encaminharei|avaliar|avaliarei|reavaliar|considerar|iniciar|trocar|ajustar|titular|repetir|checar|verificar|definir|decidir|coletar|dosar|exame)\b/i.test(t)
-            || /^(?:Planejo|Programo|Fica\s+planejad[oa]|Fica\s+programad[oa]|Plano\s*:|Aguardar\s+resultado[^.\n]*para\s+(?:definir|avaliar|encaminhar|solicitar))\b/i.test(t)
-            || /\b(?:se\s+mantiver|se\s+persistir|caso\s+persista|caso\s+mantenha|se\s+n[ãa]o\s+houver\s+melhora)\b[^.\n]{0,60}\b(?:encaminh|solicit|pedir|iniciar|trocar|associar)\b/i.test(t);
+            || /^(?:Planejo|Programo|Fica\s+planejad[oa]|Fica\s+programad[oa]|Plano\s*:|Aguardar\s+resultado[^.\n]*para\s+(?:definir|avaliar|encaminhar|solicitar)|Avaliar\s+(?:necessidade|indica[çc][ãa]o|desmame|suspens[ãa]o|introdu[çc][ãa]o|ajuste|troca|encaminhamento)\b|Se\s+retorno\s+em\b)/i.test(t)
+            || /\b(?:conforme\s+resultados?\s+(?:de|dos)\s+(?:exames?|imagem))\b/i.test(t)
+            || /\b(?:se\s+(?:os\s+sintomas\s+)?(?:mantiver|persistir|retornarem|persistirem|mantiverem|n[ãa]o\s+houver\s+melhora)|caso\s+(?:os\s+sintomas[^\n]{0,30})?(?:persista|mantenha|retornem|recidive|n[ãa]o\s+melhore))\b[^.\n]{0,90}\b(?:encaminh|solicit|pedir|iniciar|trocar|associar|indica[çc][ãa]o|investiga[çc][ãa]o|eda|endoscopia|fisioterapia)\b/i.test(t);
         };
         for (const ln of condLines) {
           if (isFuturePlanLine(ln)) {
@@ -5389,8 +5403,17 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
             keptCondLines.push(ln);
           }
         }
+        // Mantém "Ciente, concordante e sem dúvidas." sempre como ÚLTIMA linha da CONDUTA (nunca no meio dela!)
+        const cienteIdx = keptCondLines.findIndex(l => /^(?:(?:Paciente|Familiar|Respons[áa]vel|Gestante|M[ãa]e)\s+)?ciente,\s*concordante\s+e\s+sem\s+d[úu]vidas\.?$/i.test(l.trim()));
+        if (cienteIdx >= 0 && cienteIdx < keptCondLines.length - 1) {
+          const [cienteLine] = keptCondLines.splice(cienteIdx, 1);
+          keptCondLines.push(cienteLine);
+        }
         if (extractedPlanLines.length > 0 && keptCondLines.some(l => l.trim().length > 0)) {
           const newCondutaPart = `${condHeader}${keptCondLines.join('\n').trimEnd()}\n\n\nPLANO\n${extractedPlanLines.join('\n')}${pendSuffix}`;
+          spacedText = spacedText.replace(condutaBlockMatch[0], newCondutaPart);
+        } else if (cienteIdx >= 0) {
+          const newCondutaPart = `${condHeader}${keptCondLines.join('\n').trimEnd()}${pendSuffix}`;
           spacedText = spacedText.replace(condutaBlockMatch[0], newCondutaPart);
         }
       }
