@@ -2450,7 +2450,7 @@
 
   function getOrCreateWhisperWorker() {
     if (whisperWorkerInstance) return whisperWorkerInstance;
-    const worker = new Worker('whisper-worker.js?v=20261127_77', { type: 'module' });
+    const worker = new Worker('whisper-worker.js?v=20261127_78', { type: 'module' });
     worker.onmessage = (event) => {
       const msg = event.data || {};
       const entry = whisperPendingRequests.get(msg.requestId);
@@ -4647,15 +4647,32 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       const restBody = headerSubjSplit[2];
 
       // Remove sub-linhas "- Medicamento Xmg (1-0-0)" que tenham vazado abaixo de patologias "#" (movendo para # MUC se necessário)
+      // Remove sub-linhas soltas de medicamentos com traço ("- Omeprazol 20mg...") abaixo de diagnósticos "#"
+      // e desduplica condições "#" equivalentes (ex.: "# ICFER" e "# Insuficiência cardíaca com fração de ejeção reduzida")
       const hLines = cleanHeader.split('\n');
       const filteredHLines = [];
       const rescuedMeds = [];
+      const seenConditionHashes = [];
       let currentHSection = '';
+      let skippingDuplicateCondition = false;
       for (const hl of hLines) {
         const tr = hl.trim();
         if (tr.startsWith('#')) {
           currentHSection = tr.toUpperCase();
+          skippingDuplicateCondition = false;
+          const isStructuralHdr = /^#\s*(?:G\d|IG\b|TS\b|TOXO\b|SOROLOGIAS\b|VACINAS\b|MUC\b|TABAGIS|EX-?TABAGIS|ALERGIA|CONSULTA\s+ODONTO|DUM\b|HIST[ÓO]RICO\s+DO\s+PARTO|TRIAGEM\s+NEONATAL|EQUIPE\s+PRESENTE|FAMILIAR\s*\/\s*CUIDADOR|$)/i.test(currentHSection);
+          if (!isStructuralHdr && window.areMedicalConditionsEquivalent) {
+            const isDupCond = seenConditionHashes.some(prevH => window.areMedicalConditionsEquivalent(prevH, tr));
+            if (isDupCond) {
+              skippingDuplicateCondition = true;
+              continue;
+            }
+            seenConditionHashes.push(tr);
+          }
           filteredHLines.push(hl);
+          continue;
+        }
+        if (skippingDuplicateCondition && (tr.startsWith('-') || tr.startsWith('>'))) {
           continue;
         }
         if (tr.startsWith('-') && !/^#\s*(?:VACINAS|SOROLOGIAS|HIST[ÓO]RICO\s+DO\s+PARTO|TRIAGEM\s+NEONATAL)/i.test(currentHSection)) {
@@ -4830,8 +4847,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
         }
 
         const cleanedFinalLabs = [];
+        // Se idade ou sexo não foram digitados nos campos manuais, tenta inferir de forma 100% inequívoca a partir do próprio texto da evolução (ex.: "Paciente de 81 anos" + "próstata"/"PSA" -> M; "gestante"/"útero" -> F)
+        let effectiveLabAge = patientAge;
+        let effectiveLabSex = patientSex;
+        if (!effectiveLabAge) {
+          const ageInText = text.match(/\bPaciente(?:\s+(?:masculino|feminino|do\s+sexo\s+\w+))?\s+de\s+(\d{2,3})\s+anos\b/i);
+          if (ageInText) effectiveLabAge = ageInText[1];
+        }
+        if (!effectiveLabSex) {
+          if (/\b(?:pr[óo]stata|prost[áa]tica|hiperplasia\s+prost[áa]tica|hpb\b|psa\b|ves[íi]culas?\s+seminais|disfun[çc][ãa]o\s+er[ée]til|escroto|test[íi]culo|sexo\s+masculino)\b/i.test(text)) {
+            effectiveLabSex = 'M';
+          } else if (/\b(?:gestante|pr[ée]-?natal|[úu]tero|ov[áa]rios?|colposcopia|papanicolau|preventivo\s+do\s+colo|mamografia|sexo\s+feminino)\b/i.test(text)) {
+            effectiveLabSex = 'F';
+          }
+        }
         for (const rawLab of rawCandidateLabs) {
-          const formattedLab = formatCleanCompactLabLine(rawLab, patientAge, patientSex);
+          const formattedLab = formatCleanCompactLabLine(rawLab, effectiveLabAge, effectiveLabSex);
           if (!formattedLab) continue;
           const dateStr = extractExamDate(formattedLab);
           const normCur = normLineKey(formattedLab);
@@ -4982,7 +5013,8 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
       .replace(/ardor semelhante a azia\/refluxo/gi, 'epigastralgia em queimação e pirose')
       .replace(/dor no meio do estômago/gi, 'dor em região epigástrica')
       .replace(/\bsinais\s+(?:inflamat[óo]rios\s+)?log[íi]sticos\b/gi, 'sinais flogísticos')
-      .replace(/\bStatus\s+p[óo]s-?operat[óo]rio\b/gi, 'Pós-operatório');
+      .replace(/\bStatus\s+p[óo]s-?operat[óo]rio\b/gi, 'Pós-operatório')
+      .replace(/\bacompanhad[oa]\s+(?:por|pelo|pela|de)\s+(?:um(?:a)?\s+)?acompanhante\b/gi, 'com acompanhante');
 
     // 1.1 Limpeza estrita de contaminação do SUBJETIVO com condutas médicas ou frases de IA em 3ª pessoa
     text = sanitizeSubjectiveAndConductPerspectives(text);
@@ -5392,13 +5424,22 @@ Toda e qualquer conduta, conselho, orientação médica dada durante a consulta,
           }
           return /\b(?:na\s+pr[óo]xima\s+consulta|em\s+pr[óo]xima\s+consulta|na\s+pr[óo]xima\s+avalia[çc][ãa]o|na\s+pr[óo]xima\s+visita|no\s+pr[óo]ximo\s+atendimento|na\s+consulta\s+seguinte|na\s+consulta\s+subsequente|no\s+pr[óo]ximo\s+retorno|no\s+pr[óo]ximo\s+acompanhamento|para\s+a\s+pr[óo]xima\s+consulta|segunda\s+etapa\s+da\s+triagem|M-CHAT-R\/F|para\s+definir\s+necessidade\s+de\s+(?:investiga|encaminh))\b/i.test(t)
             || /\b(?:no\s+retorno|em\s+retorno|ap[óo]s\s+retorno)\b[^.\n]{0,60}\b(?:solicitar|solicitarei|pedir|pedirei|encaminhar|encaminharei|avaliar|avaliarei|reavaliar|considerar|iniciar|trocar|ajustar|titular|repetir|checar|verificar|definir|decidir|coletar|dosar|exame)\b/i.test(t)
-            || /^(?:Planejo|Programo|Fica\s+planejad[oa]|Fica\s+programad[oa]|Plano\s*:|Aguardar\s+resultado[^.\n]*para\s+(?:definir|avaliar|encaminhar|solicitar)|Avaliar\s+(?:necessidade|indica[çc][ãa]o|desmame|suspens[ãa]o|introdu[çc][ãa]o|ajuste|troca|encaminhamento)\b|Se\s+retorno\s+em\b)/i.test(t)
-            || /\b(?:conforme\s+resultados?\s+(?:de|dos)\s+(?:exames?|imagem))\b/i.test(t)
+            || /^(?:Planejo|Programo|Fica\s+planejad[oa]|Fica\s+programad[oa]|Plano\s*:|Aguardar\s+resultado[^.\n]*para\s+(?:definir|avaliar|encaminhar|solicitar)|Reavaliar\b|Avaliar\s+(?:necessidade|indica[çc][ãa]o|desmame|suspens[ãa]o|introdu[çc][ãa]o|ajuste|troca|encaminhamento|manuten[çc][ãa]o)\b|Considerar\s+|Se\s+retorno\s+em\b|Checar\s+resultados?|Repetir\s+exames?)\b/i.test(t)
+            || /\b(?:conforme\s+resultados?\s+(?:de|dos)\s+(?:exames?|imagem)|conforme\s+evolu[çc][ãa]o\s+d[oa])\b/i.test(t)
             || /\b(?:se\s+(?:os\s+sintomas\s+)?(?:mantiver|persistir|retornarem|persistirem|mantiverem|n[ãa]o\s+houver\s+melhora)|caso\s+(?:os\s+sintomas[^\n]{0,30})?(?:persista|mantenha|retornem|recidive|n[ãa]o\s+melhore))\b[^.\n]{0,90}\b(?:encaminh|solicit|pedir|iniciar|trocar|associar|indica[çc][ãa]o|investiga[çc][ãa]o|eda|endoscopia|fisioterapia)\b/i.test(t);
         };
+        const cienteLineRe = /^(?:(?:Paciente|Familiar|Respons[áa]vel|Gestante|M[ãa]e)\s+)?ciente,\s*concordante\s+e\s+sem\s+d[úu]vidas\.?$/i;
+        let seenCienteLine = false;
         for (const ln of condLines) {
-          if (isFuturePlanLine(ln)) {
-            extractedPlanLines.push(ln.trim());
+          const tr = ln.trim();
+          if (cienteLineRe.test(tr)) {
+            seenCienteLine = true;
+            keptCondLines.push(ln);
+            continue;
+          }
+          // Qualquer linha de ação futura (ou linha clínica escrita DEPOIS de "Ciente, concordante e sem dúvidas." que não seja um simples "Retorno em X dias") vai para PLANO!
+          if (isFuturePlanLine(ln) || (seenCienteLine && tr.length > 10 && !/^(?:Retorno|Agendo\s+retorno|Oriento\s+retorno)\b/i.test(tr))) {
+            extractedPlanLines.push(tr);
           } else {
             keptCondLines.push(ln);
           }

@@ -691,7 +691,10 @@ window.parsePreviousConsultationData = function(prevRawText) {
     ['drge', 'doencadorefluxogastroesofagico', 'refluxogastroesofagico'],
     ['hpb', 'hiperplasiaprostaticabenigna', 'hiperplasiaprostatica'],
     ['sop', 'sindromedosovariospolicisticos', 'ovariospolicisticos'],
-    ['ic', 'icc', 'insuficienciacardiaca', 'insuficienciacardiacacongestiva'],
+    ['ic', 'icc', 'icfer', 'icfep', 'icfemr', 'icfelr', 'insuficienciacardiaca', 'insuficienciacardiacacongestiva', 'insuficienciacardiacacomfracaodeejecaoreduzida', 'insuficienciacardiacacomfracaodeejecaopreservada'],
+    ['iam', 'iamcsst', 'iamssst', 'infartoagudodomiocardio', 'infartodomiocardio', 'infartoprevio'],
+    ['dac', 'doencaarterialcoronariana', 'coronariopatia', 'cardiopatiaisquemica'],
+    ['avc', 'ave', 'acidentevascularcerebral', 'acidentevascularencefalico'],
     ['fa', 'fibrilacaoatrial'],
     ['tab', 'transtornoafetivobipolar', 'transtornobipolar']
   ];
